@@ -18,14 +18,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "dbExplorer.container",
+          "id": "dbExplorer-container",
           "title": "数据库",
           "icon": "media/database.svg"
         }
       ]
     },
     "views": {
-      "dbExplorer.container": [
+      "dbExplorer-container": [
         {
           "id": "dbExplorer.connections",
           "name": "连接",
