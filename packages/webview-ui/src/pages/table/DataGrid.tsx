@@ -119,16 +119,38 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const [sizing, setSizing] = useState<Record<string, number>>({});
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [editText, setEditText] = useState('');
-  // 订阅覆盖层（rowEditState 经 get() 读取，不自动触发重渲染）
+  // 订阅覆盖层与选中集（rowEditState/toggleSelectRow 经 get() 读取，不自动触发重渲染）
   useTableStore((s) => s.updates);
   useTableStore((s) => s.deletes);
+  const selectedRows = useTableStore((s) => s.selectedRows);
+  const toggleSelectRow = useTableStore((s) => s.toggleSelectRow);
+  const clearSelection = useTableStore((s) => s.clearSelection);
+  const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
+  const dragSelectingRef = useRef(false);
+  const lastEditCellRef = useRef('');
 
   const totalRows = rows.length + inserts.length;
 
-  // 进入编辑态时初始化输入文本（NULL/对象按展示语义还原）
+  // 拖拽选择：在行首列按住滑动扩展选区，松开结束
+  useEffect(() => {
+    const stop = (): void => {
+      dragSelectingRef.current = false;
+    };
+    window.addEventListener('mouseup', stop);
+    return () => window.removeEventListener('mouseup', stop);
+  }, []);
+
+  // 进入编辑态时初始化输入文本（NULL/对象按展示语义还原）；
+  // 同一单元格重入（如失焦校验失败后再点回）保留已输入文本
   useEffect(() => {
     if (editing) {
-      setEditText(cellInputText(useTableStore.getState().effectiveValue(editing.rowIndex, editing.colIndex)));
+      const cellKey = `${editing.rowIndex}:${editing.colIndex}`;
+      if (lastEditCellRef.current !== cellKey) {
+        lastEditCellRef.current = cellKey;
+        setEditText(cellInputText(useTableStore.getState().effectiveValue(editing.rowIndex, editing.colIndex)));
+      }
+    } else {
+      lastEditCellRef.current = '';
     }
   }, [editing]);
 
@@ -222,7 +244,20 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   };
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" onClick={() => menu && setMenu(null)}>
+    <div
+      ref={scrollRef}
+      className="min-h-0 flex-1 overflow-auto"
+      onClick={() => menu && setMenu(null)}
+      onKeyDown={(e) => {
+        // 交互稿 §4.3：Delete 标记删除选中行；Esc 取消选择
+        if (e.key === 'Delete' && Object.keys(selectedRows).length > 0) {
+          e.preventDefault();
+          markDeleteSelected();
+        } else if (e.key === 'Escape') {
+          clearSelection();
+        }
+      }}
+    >
       <div style={{ width: bodyWidth }}>
         {/* 表头（垂直冻结） */}
         <div className="sticky top-0 z-20 flex border-b border-border bg-panel" style={{ height: ROW_HEIGHT }} role="row">
@@ -279,12 +314,14 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
               : editState.kind === 'updated'
                 ? applyOverlay(rows[rowIndex], columns, editState.overlay)
                 : rows[rowIndex];
+            const rowKeyStr = isInsert ? '' : rowKeyForRow(rowIndex);
+            const isSelected = !isInsert && Boolean(selectedRows[rowKeyStr]);
             return (
               <div
                 key={virtualRow.key}
                 role="row"
                 aria-rowindex={rowIndex + 1}
-                className={`absolute left-0 flex ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : 'hover:bg-row-hover'} ${error ? 'border-l-2 border-destructive' : ''}`}
+                className={`absolute left-0 flex ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : isSelected ? 'bg-row-selected' : 'hover:bg-row-hover'} ${error ? 'border-l-2 border-destructive' : ''}`}
                 style={{
                   top: virtualRow.start,
                   height: ROW_HEIGHT,
@@ -293,8 +330,22 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
               >
                 <div
                   role="gridcell"
-                  className={`sticky left-0 z-10 flex shrink-0 items-center justify-end gap-1 border-r border-border px-2 text-[12px] text-muted-foreground ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : 'bg-background'}`}
+                  aria-selected={isSelected}
+                  className={`sticky left-0 z-10 flex shrink-0 items-center justify-end gap-1 border-r border-border px-2 text-[12px] text-muted-foreground ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : isSelected ? 'bg-row-selected' : 'bg-background'} ${!isInsert ? 'cursor-pointer select-none' : ''}`}
                   style={{ width: ROW_NUM_WIDTH }}
+                  title={!isInsert ? '点击选择（Shift/拖拽范围选）· 右键行操作' : undefined}
+                  onMouseDown={(e) => {
+                    if (isInsert || e.button !== 0 || (e.target as HTMLElement).closest('button')) {
+                      return; // ↺ 等按钮不触发选择
+                    }
+                    dragSelectingRef.current = true;
+                    toggleSelectRow(rowIndex, e.shiftKey);
+                  }}
+                  onMouseEnter={() => {
+                    if (dragSelectingRef.current && !isInsert) {
+                      toggleSelectRow(rowIndex, true);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setMenu({ x: e.clientX, y: e.clientY, items: rowNumMenuItems(rowIndex) });
@@ -358,9 +409,10 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                           className="h-full w-full bg-input-bg px-1 font-mono text-[12px] text-input-fg outline-none ring-1 ring-ring"
                           onChange={(e) => setEditText(e.target.value)}
                           onBlur={() => {
-                            // 点击其他区域视为取消（Enter/Tab 已在 onKeyDown 处理确认）
+                            // 失焦即记录（评审反馈：输入后不必按 Enter）；
+                            // 校验失败时保持编辑态等待修正，Esc 仍是取消
                             if (useTableStore.getState().editing) {
-                              cancelEdit();
+                              confirmEdit(editText);
                             }
                           }}
                           onKeyDown={(e) => {

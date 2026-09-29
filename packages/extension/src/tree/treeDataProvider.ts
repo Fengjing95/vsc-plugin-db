@@ -117,17 +117,37 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
       }
 
       case 'database': {
+        // 目录节点描述 = 纯数字统计（M4 评审反馈：行估算意义有限，数量更有用）
+        const connId = node.payload.connId!;
+        const db = node.payload.db!;
+        const conn = await this.connections.ensureConnected(connId);
+        const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
+        const tableCount = objs.filter((o) => o.kind === 'table').length;
+        const viewCount = objs.filter((o) => o.kind === 'view').length;
         return [
-          this.folderNode(node, 'table', '表', 'folder'),
-          this.folderNode(node, 'view', '视图', 'folder'),
+          this.folderNode(node, 'table', '表', 'folder', countLabel(tableCount)),
+          this.folderNode(node, 'view', '视图', 'folder', countLabel(viewCount)),
         ];
       }
 
       case 'table': {
+        const connId = node.payload.connId!;
+        const db = node.payload.db!;
+        const obj = node.payload.obj!;
+        const conn = await this.connections.ensureConnected(connId);
+        const [cols, keys, indexes] = await Promise.all([
+          this.cache.getColumns(connId, db, obj, () => conn.listColumns(db, obj)),
+          this.cache.getKeys(connId, db, obj, () =>
+            conn.listKeys ? conn.listKeys(db, obj) : Promise.resolve([]),
+          ),
+          this.cache.getIndexes(connId, db, obj, () =>
+            conn.listIndexes ? conn.listIndexes(db, obj) : Promise.resolve([]),
+          ),
+        ]);
         return [
-          this.folderNode(node, 'columns', '列', 'symbol-field'),
-          this.folderNode(node, 'keys', '键', 'key'),
-          this.folderNode(node, 'indexes', '索引', 'list-ordered'),
+          this.folderNode(node, 'columns', '列', 'symbol-field', countLabel(cols.length)),
+          this.folderNode(node, 'keys', '键', 'key', countLabel(keys.length)),
+          this.folderNode(node, 'indexes', '索引', 'list-ordered', countLabel(indexes.length)),
         ];
       }
 
@@ -154,10 +174,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           id: `${node.id}:${o.name}`,
           type: kind,
           label: o.name,
-          description: o.rowEstimate !== undefined ? `~${o.rowEstimate} 行` : o.comment,
+          // 行估算不再上树（M4 评审反馈，交互稿 §8.1 v0.1.2）；注释可得时展示
+          description: o.comment,
           collapsibleState: kind === 'table' ? Collapsed : None,
           contextValue: kind,
           iconId: kind === 'table' ? 'table' : 'eye',
+          // rowEstimate 仍随 payload 供表格分页栏“约 N 行”（交互稿 §4.7）
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
         }));
     }
@@ -220,15 +242,21 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     }));
   }
 
-  private folderNode(parent: DbTreeNode, kind: FolderKind, label: string, iconId: string): DbTreeNode {
+  private folderNode(parent: DbTreeNode, kind: FolderKind, label: string, iconId: string, count?: string): DbTreeNode {
     return {
       id: `${parent.id}:folder-${kind}`,
       type: 'folder',
       label,
+      description: count,
       collapsibleState: Collapsed,
       contextValue: `folder-${kind}`,
       iconId,
       payload: { ...parent.payload, kind },
     };
   }
+}
+
+/** 目录节点统计：0 不显示（避免噪音） */
+function countLabel(n: number): string | undefined {
+  return n > 0 ? String(n) : undefined;
 }

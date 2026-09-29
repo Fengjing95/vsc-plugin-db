@@ -25,6 +25,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const revertAll = useTableStore((s) => s.revertAll);
   const previewing = useTableStore((s) => s.previewing);
   const committing = useTableStore((s) => s.committing);
+  const selectedCount = useTableStore((s) => Object.keys(s.selectedRows).length);
+  const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
 
   const [searchText, setSearchText] = useState('');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -99,6 +101,18 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           <Button variant="secondary" size="md" disabled={editBusy} onClick={addInsertRow} aria-label="新增行">
             ＋ 新增行
           </Button>
+          {selectedCount > 0 && (
+            <Button
+              variant="secondary"
+              size="md"
+              disabled={editBusy}
+              onClick={markDeleteSelected}
+              title="标记删除选中行（进入变更集，提交时落库）"
+              aria-label={`删除选中行（${selectedCount}）`}
+            >
+              🗑 删除选中行 ({selectedCount})
+            </Button>
+          )}
           <Button
             variant={counts.total > 0 ? 'primary' : 'secondary'}
             size="md"

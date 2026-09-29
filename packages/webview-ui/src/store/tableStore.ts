@@ -108,6 +108,10 @@ interface TableState {
   previewing: boolean;
   committing: boolean;
   toast: ToastState | null;
+  /** 选中行（rowKeyString → true，仅当前页服务端行；拖拽/点击/Shift 范围） */
+  selectedRows: Record<string, true>;
+  /** 范围选择锚点（行号） */
+  selectionAnchor: number | null;
 
   init(opts: { connId: string; db: string; obj: string; rowEstimate?: number; readOnly?: boolean }): void;
   refresh(): Promise<void>;
@@ -132,6 +136,10 @@ interface TableState {
   removeInsertRow(tempId: string): void;
   markDeleteRow(rowIndex: number): void;
   unmarkDeleteRow(rowIndex: number): void;
+  /** 行选择：点击切换 / Shift+点击或拖拽范围选择（交互稿 §4.3 选中行的入口） */
+  toggleSelectRow(rowIndex: number, extend: boolean): void;
+  clearSelection(): void;
+  markDeleteSelected(): void;
   revertRowByIndex(rowIndex: number): void;
   revertAll(): Promise<void>;
   openPreview(): Promise<void>;
@@ -194,6 +202,8 @@ export const useTableStore = create<TableState>((set, get) => ({
   previewing: false,
   committing: false,
   toast: null,
+  selectedRows: {},
+  selectionAnchor: null,
 
   init({ connId, db, obj, rowEstimate, readOnly }) {
     set({ connId, db, obj, rowEstimate, readOnly: readOnly ?? false, page: 0 });
@@ -240,6 +250,9 @@ export const useTableStore = create<TableState>((set, get) => ({
         executionMs: rs.executionMs,
         truncated: rs.truncated ?? false,
         hasMore: rs.rows.length === s.pageSize,
+        // 行数据已更替，选中集失效
+        selectedRows: {},
+        selectionAnchor: null,
       });
     } catch (err) {
       if (seq !== reqSeq) {
@@ -540,6 +553,55 @@ export const useTableStore = create<TableState>((set, get) => ({
     set({ deletes });
     queueOp({ op: 'unmarkDelete', rowKey: rowKeyOfRow(s.rows[rowIndex], s.columns, s.primaryKey) });
     scheduleSync(set, get);
+  },
+
+  toggleSelectRow(rowIndex, extend) {
+    const s = get();
+    if (rowIndex >= s.rows.length) {
+      return; // 仅服务端行可选中（插入行经工具栏管理）
+    }
+    const keyOf = (idx: number): string => rowKeyString(rowKeyOfRow(s.rows[idx], s.columns, s.primaryKey));
+    if (extend && s.selectionAnchor !== null) {
+      const [from, to] = [Math.min(s.selectionAnchor, rowIndex), Math.max(s.selectionAnchor, rowIndex)];
+      const selectedRows: Record<string, true> = {};
+      for (let i = from; i <= to; i++) {
+        if (i < s.rows.length) {
+          selectedRows[keyOf(i)] = true;
+        }
+      }
+      set({ selectedRows });
+      return;
+    }
+    const key = keyOf(rowIndex);
+    const selectedRows = { ...s.selectedRows };
+    if (selectedRows[key]) {
+      delete selectedRows[key];
+    } else {
+      selectedRows[key] = true;
+    }
+    set({ selectedRows, selectionAnchor: rowIndex });
+  },
+
+  clearSelection() {
+    set({ selectedRows: {}, selectionAnchor: null });
+  },
+
+  markDeleteSelected() {
+    const s = get();
+    if (!s.editEnabled || s.committing) {
+      return;
+    }
+    const keys = new Set(Object.keys(s.selectedRows));
+    if (keys.size === 0) {
+      return;
+    }
+    const keyOf = (idx: number): string => rowKeyString(rowKeyOfRow(s.rows[idx], s.columns, s.primaryKey));
+    for (let i = 0; i < s.rows.length; i++) {
+      if (keys.has(keyOf(i))) {
+        get().markDeleteRow(i);
+      }
+    }
+    set({ selectedRows: {}, selectionAnchor: null });
   },
 
   revertRowByIndex(rowIndex) {
