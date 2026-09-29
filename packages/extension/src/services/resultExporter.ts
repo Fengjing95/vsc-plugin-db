@@ -172,7 +172,8 @@ export class ResultExporter {
       }
 
       if (p.format === 'json') {
-        await writeChunk(rowsTotal === 0 ? '[]' : '\n]\n');
+        // rowsTotal=0 时为 "[\n\n]\n"，仍是合法 JSON
+        await writeChunk('\n]\n');
         jsonClosed = true;
       }
       await finish();
@@ -182,8 +183,8 @@ export class ResultExporter {
     } catch (err) {
       const canceled = DriverError.is(err) && err.code === 'E_CANCELED';
       if (canceled) {
-        // JSON 半成品补收口，避免留下非法文件；取消亦视为完成（canceled 标记）
-        if (p.format === 'json' && headerWritten && !jsonClosed && rowsTotal > 0) {
+        // JSON 半成品补收口（"[\\n" + "\\n]\\n" 仍合法），避免留下非法文件
+        if (p.format === 'json' && headerWritten && !jsonClosed) {
           stream.write('\n]\n');
         }
         await finish();

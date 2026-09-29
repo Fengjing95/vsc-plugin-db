@@ -23,7 +23,7 @@ function newDraft(column: string, op: FilterOp): FilterDraft {
  * 应用 → 服务端下推并回到第 1 页；未应用的改动在 [应用] 上以蓝点提示。
  */
 export function FilterBar() {
-  const columns = useTableStore((s) => s.columns);
+  const allColumns = useTableStore((s) => (s.allColumns.length > 0 ? s.allColumns : s.columns));
   const applied = useTableStore((s) => s.appliedDrafts);
   const applyFilters = useTableStore((s) => s.applyFilters);
   const clearFilters = useTableStore((s) => s.clearFilters);
@@ -38,11 +38,11 @@ export function FilterBar() {
     // 应用/清空后同步本地草稿
   }, [applied]);
 
-  const columnOptions = columns.map((c) => ({ value: c.name, label: c.name }));
-  const typeOf = (name: string) => columns.find((c) => c.name === name)?.type ?? 'unknown';
+  const columnOptions = allColumns.map((c) => ({ value: c.name, label: c.name }));
+  const typeOf = (name: string) => allColumns.find((c) => c.name === name)?.type ?? 'unknown';
 
   const addDraft = () => {
-    const first = columns[0];
+    const first = allColumns[0];
     if (first) {
       setDrafts((cur) => [...cur, newDraft(first.name, opsForType(first.type)[0])]);
     }
@@ -114,7 +114,7 @@ export function FilterBar() {
         );
       })}
 
-      <Button variant="ghost" size="sm" onClick={addDraft} disabled={columns.length === 0}>
+      <Button variant="ghost" size="sm" onClick={addDraft} disabled={allColumns.length === 0}>
         ＋ 条件
       </Button>
       <span className="flex-1" />

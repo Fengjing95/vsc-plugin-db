@@ -16,7 +16,7 @@ export function Toolbar({ db, obj }: { db: string; obj: string }) {
   const exportProgress = useTableStore((s) => s.exportProgress);
   const visibleColumns = useTableStore((s) => s.visibleColumns);
   const setVisibleColumns = useTableStore((s) => s.setVisibleColumns);
-  const columns = useTableStore((s) => s.columns);
+  const allColumns = useTableStore((s) => s.allColumns);
 
   const [searchText, setSearchText] = useState('');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -44,14 +44,14 @@ export function Toolbar({ db, obj }: { db: string; obj: string }) {
     void runExport(format, scope);
   };
 
-  const visible = visibleColumns ?? columns.map((c) => c.name);
+  const visible = visibleColumns ?? allColumns.map((c) => c.name);
   const visibleSet = new Set(visible);
 
   const toggleColumn = (name: string, show: boolean) => {
     const next = show ? [...visible, name] : visible.filter((c) => c !== name);
     // 保持列定义顺序
-    const ordered = columns.map((c) => c.name).filter((n) => next.includes(n));
-    void setVisibleColumns(ordered.length === columns.length ? null : ordered);
+    const ordered = allColumns.map((c) => c.name).filter((n) => next.includes(n));
+    void setVisibleColumns(ordered.length === allColumns.length ? null : ordered);
   };
 
   return (
@@ -106,7 +106,7 @@ export function Toolbar({ db, obj }: { db: string; obj: string }) {
           contentClassName="p-1 min-w-44 max-h-72 overflow-y-auto"
         >
           <div className="px-2 py-1 text-[11px] text-muted-foreground">显示/隐藏列（服务端投影）</div>
-          {columns.map((c) => (
+          {allColumns.map((c) => (
             <Checkbox
               key={c.name}
               checked={visibleSet.has(c.name)}

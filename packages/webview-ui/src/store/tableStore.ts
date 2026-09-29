@@ -29,6 +29,8 @@ interface TableState {
   fetching: boolean;
 
   columns: Array<{ name: string; type: string }>;
+  /** 全量列（未投影）；列设置/筛选构造器的选项来源，不随投影缩减 */
+  allColumns: Array<{ name: string; type: string }>;
   rows: unknown[][];
   primaryKey: string[];
   totalCount?: number;
@@ -72,6 +74,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   fetching: false,
 
   columns: [],
+  allColumns: [],
   rows: [],
   primaryKey: [],
   executionMs: 0,
@@ -109,7 +112,7 @@ export const useTableStore = create<TableState>((set, get) => ({
           search: s.searchApplied,
           visibleColumns: s.visibleColumns,
         },
-        s.columns,
+        s.allColumns.length > 0 ? s.allColumns : s.columns,
       );
       const rs = await request<ResultSetPayload>('table.fetchRows', params);
       if (seq !== reqSeq) {
@@ -121,6 +124,8 @@ export const useTableStore = create<TableState>((set, get) => ({
         errorCode: undefined,
         fetching: false,
         columns: rs.columns,
+        // 未投影的取数即全量列基线；投影时保留既有全量列，列设置才能恢复隐藏列
+        allColumns: s.visibleColumns === null ? rs.columns : s.allColumns.length > 0 ? s.allColumns : rs.columns,
         rows: rs.rows,
         primaryKey: rs.primaryKey ?? [],
         totalCount: rs.totalCount,
@@ -203,7 +208,7 @@ export const useTableStore = create<TableState>((set, get) => ({
           search: s.searchApplied,
           visibleColumns: s.visibleColumns,
         },
-        s.columns,
+        s.allColumns.length > 0 ? s.allColumns : s.columns,
       );
       // scope=page 只取当前页；scope=result 由 Host 循环取尽（概要设计 5.7）
       await request<unknown>(
