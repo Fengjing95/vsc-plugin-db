@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DriverRegistry, type ConnectionConfig } from '@db-explorer/core';
+import { DriverRegistry, MetadataCache, type ConnectionConfig } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { registerCommands } from './commands';
@@ -24,7 +24,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const output = vscode.window.createOutputChannel('Database Explorer');
   const store = new ConnectionStore(context.globalState, context.secrets);
   const connections = new ConnectionManager(registry, store);
-  const tree = new ConnectionsTreeProvider(connections);
+  const cache = new MetadataCache();
+  const tree = new ConnectionsTreeProvider(connections, cache);
   const treeView = vscode.window.createTreeView('dbExplorer.connections', {
     treeDataProvider: tree,
     showCollapseAll: true,

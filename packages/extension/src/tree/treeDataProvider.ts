@@ -1,7 +1,18 @@
 import * as vscode from 'vscode';
+import type { MetadataCache } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
 
-export type TreeNodeType = 'connection' | 'database' | 'folder' | 'table' | 'view' | 'column';
+export type TreeNodeType =
+  | 'connection'
+  | 'database'
+  | 'folder'
+  | 'table'
+  | 'view'
+  | 'column'
+  | 'key'
+  | 'index';
+
+export type FolderKind = 'table' | 'view' | 'columns' | 'keys' | 'indexes';
 
 export interface DbTreeNode {
   id: string;
@@ -11,7 +22,13 @@ export interface DbTreeNode {
   collapsibleState: vscode.TreeItemCollapsibleState;
   contextValue: string;
   iconId: string;
-  payload: { connId?: string; db?: string; obj?: string; kind?: 'table' | 'view' };
+  payload: {
+    connId?: string;
+    db?: string;
+    obj?: string;
+    kind?: FolderKind;
+    column?: string;
+  };
 }
 
 const { Collapsed, None } = vscode.TreeItemCollapsibleState;
@@ -20,10 +37,30 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   private readonly emitter = new vscode.EventEmitter<DbTreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  constructor(private readonly connections: ConnectionManager) {}
+  constructor(
+    private readonly connections: ConnectionManager,
+    private readonly cache: MetadataCache,
+  ) {}
 
   refresh(): void {
     this.emitter.fire(undefined);
+  }
+
+  /** 子树刷新：仅失效该节点以下的缓存（概要设计 5.3.3） */
+  refreshSubtree(node: DbTreeNode): void {
+    const { connId, db } = node.payload;
+    if (node.type === 'connection' && connId) {
+      this.cache.invalidateConnection(connId);
+    } else if (node.type === 'database' && connId && db) {
+      this.cache.invalidateDb(connId, db);
+    }
+    this.refresh();
+  }
+
+  /** 全局刷新：清空全部缓存并重载（概要设计 5.3.3） */
+  clearCacheAndRefresh(): void {
+    this.cache.clear();
+    this.refresh();
   }
 
   getTreeItem(node: DbTreeNode): vscode.TreeItem {
@@ -46,17 +83,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   async getChildren(node?: DbTreeNode): Promise<DbTreeNode[]> {
     if (!node) {
-      // M1：一级节点来自持久化连接配置（ConnectionStore），变更自动刷新
       const configs = await this.connections.listConfigs();
       return configs.map((c) => ({
         id: `conn:${c.id}`,
         type: 'connection',
         label: c.name,
-        description: [
-          c.driverId,
-          c.env ?? 'dev',
-          c.readOnly ? '只读' : undefined,
-        ]
+        description: [c.driverId, c.env ?? 'dev', c.readOnly ? '只读' : undefined]
           .filter(Boolean)
           .join(' · '),
         collapsibleState: Collapsed,
@@ -68,8 +100,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
     switch (node.type) {
       case 'connection': {
-        const conn = await this.connections.ensureConnected(node.payload.connId!);
-        const dbs = await conn.listDatabases();
+        const connId = node.payload.connId!;
+        const conn = await this.connections.ensureConnected(connId);
+        const dbs = await this.cache.getDatabases(connId, () => conn.listDatabases());
         return dbs.map((db) => ({
           id: `${node.id}:${db.name}`,
           type: 'database',
@@ -78,81 +111,123 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           collapsibleState: Collapsed,
           contextValue: 'database',
           iconId: 'server',
-          payload: { connId: node.payload.connId, db: db.name },
+          payload: { connId, db: db.name },
         }));
       }
 
       case 'database': {
         return [
-          {
-            id: `${node.id}:folder-tables`,
-            type: 'folder',
-            label: '表',
-            collapsibleState: Collapsed,
-            contextValue: 'folder-tables',
-            iconId: 'folder',
-            payload: { ...node.payload, kind: 'table' },
-          },
-          {
-            id: `${node.id}:folder-views`,
-            type: 'folder',
-            label: '视图',
-            collapsibleState: Collapsed,
-            contextValue: 'folder-views',
-            iconId: 'folder',
-            payload: { ...node.payload, kind: 'view' },
-          },
+          this.folderNode(node, 'table', '表', 'folder'),
+          this.folderNode(node, 'view', '视图', 'folder'),
+        ];
+      }
+
+      case 'table': {
+        return [
+          this.folderNode(node, 'columns', '列', 'symbol-field'),
+          this.folderNode(node, 'keys', '键', 'key'),
+          this.folderNode(node, 'indexes', '索引', 'list-ordered'),
         ];
       }
 
       case 'folder': {
-        const conn = await this.connections.ensureConnected(node.payload.connId!);
-        const objs: Awaited<ReturnType<typeof conn.listObjects>> = await conn.listObjects(
-          node.payload.db!,
-        );
-        const kind = node.payload.kind ?? 'table';
-        return objs
-          .filter((o) => o.kind === kind)
-          .map((o) => ({
-            id: `${node.id}:${o.name}`,
-            type: kind,
-            label: o.name,
-            description: o.rowEstimate !== undefined ? `~${o.rowEstimate} 行` : o.comment,
-            collapsibleState: kind === 'table' ? Collapsed : None,
-            contextValue: kind,
-            iconId: kind === 'table' ? 'table' : 'eye',
-            payload: { connId: node.payload.connId, db: node.payload.db, obj: o.name },
-          }));
-      }
-
-      case 'table': {
-        const conn = await this.connections.ensureConnected(node.payload.connId!);
-        const cols = await conn.listColumns(node.payload.db!, node.payload.obj!);
-        return cols.map((c) => ({
-          id: `${node.id}:${c.name}`,
-          type: 'column',
-          label: c.name,
-          description: columnDescription(c),
-          collapsibleState: None,
-          contextValue: 'column',
-          iconId: 'symbol-field',
-          payload: {},
-        }));
+        return this.getFolderChildren(node);
       }
 
       default:
         return [];
     }
   }
-}
 
-function columnDescription(c: {
-  dataType: string;
-  isPrimaryKey: boolean;
-  nullable: boolean;
-}): string {
-  const parts = [c.dataType];
-  if (c.isPrimaryKey) parts.push('PK');
-  if (!c.nullable) parts.push('NOT NULL');
-  return parts.join(' ');
+  private async getFolderChildren(node: DbTreeNode): Promise<DbTreeNode[]> {
+    const connId = node.payload.connId!;
+    const db = node.payload.db!;
+    const conn = await this.connections.ensureConnected(connId);
+    const kind = node.payload.kind ?? 'table';
+
+    if (kind === 'table' || kind === 'view') {
+      const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
+      return objs
+        .filter((o) => o.kind === kind)
+        .map((o) => ({
+          id: `${node.id}:${o.name}`,
+          type: kind,
+          label: o.name,
+          description: o.rowEstimate !== undefined ? `~${o.rowEstimate} 行` : o.comment,
+          collapsibleState: kind === 'table' ? Collapsed : None,
+          contextValue: kind,
+          iconId: kind === 'table' ? 'table' : 'eye',
+          payload: { connId, db, obj: o.name },
+        }));
+    }
+
+    if (kind === 'columns') {
+      const obj = node.payload.obj!;
+      const cols = await this.cache.getColumns(connId, db, obj, () => conn.listColumns(db, obj));
+      return cols.map((c) => ({
+        id: `${node.id}:${c.name}`,
+        type: 'column',
+        label: c.name,
+        description: [c.dataType, c.isPrimaryKey ? 'PK' : undefined, c.nullable ? undefined : 'NOT NULL']
+          .filter(Boolean)
+          .join(' '),
+        collapsibleState: None,
+        contextValue: 'column',
+        iconId: 'symbol-field',
+        payload: { connId, db, obj, column: c.name },
+      }));
+    }
+
+    if (kind === 'keys') {
+      const obj = node.payload.obj!;
+      const keys = await this.cache.getKeys(connId, db, obj, () =>
+        conn.listKeys ? conn.listKeys(db, obj) : Promise.resolve([]),
+      );
+      return keys.map((k) => ({
+        id: `${node.id}:${k.kind}:${k.name}`,
+        type: 'key',
+        label:
+          k.kind === 'FK'
+            ? `FK  ${k.columns.join(', ')} → ${k.refTable ?? '?'}.${(k.refColumns ?? ['?']).join(', ')}`
+            : k.kind === 'PK'
+              ? `PK  ${k.columns.join(', ')}`
+              : `${k.name}  (${k.columns.join(', ')})`,
+        description: k.kind === 'UNIQUE' ? 'UNIQUE' : k.name,
+        collapsibleState: None,
+        contextValue: 'key',
+        iconId: k.kind === 'FK' ? 'references' : 'key',
+        payload: { connId, db, obj },
+      }));
+    }
+
+    // indexes
+    const obj = node.payload.obj!;
+    const idx = await this.cache.getIndexes(connId, db, obj, () =>
+      conn.listIndexes ? conn.listIndexes(db, obj) : Promise.resolve([]),
+    );
+    return idx.map((i) => ({
+      id: `${node.id}:${i.name}`,
+      type: 'index',
+      label: i.name,
+      description: [i.unique ? 'UNIQUE' : undefined, i.type, `(${i.columns.join(', ')})`]
+        .filter(Boolean)
+        .join(' '),
+      collapsibleState: None,
+      contextValue: 'index',
+      iconId: 'list-ordered',
+      payload: { connId, db, obj },
+    }));
+  }
+
+  private folderNode(parent: DbTreeNode, kind: FolderKind, label: string, iconId: string): DbTreeNode {
+    return {
+      id: `${parent.id}:folder-${kind}`,
+      type: 'folder',
+      label,
+      collapsibleState: Collapsed,
+      contextValue: `folder-${kind}`,
+      iconId,
+      payload: { ...parent.payload, kind },
+    };
+  }
 }

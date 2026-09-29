@@ -343,6 +343,18 @@ export class MysqlConnection implements IConnection {
     return quoteMysqlIdentifier(name);
   }
 
+  async getDdl(db: string, obj: string): Promise<string> {
+    try {
+      const rows = await this.queryRows(
+        `SHOW CREATE TABLE ${quoteMysqlIdentifier(db)}.${quoteMysqlIdentifier(obj)}`,
+      );
+      const first = rows[0] ?? {};
+      return String(first['Create Table'] ?? first['Create View'] ?? '');
+    } catch (err) {
+      throw toDriverError(err);
+    }
+  }
+
   dispose(): void | Promise<void> {
     return this.pool.end().catch(() => undefined);
   }

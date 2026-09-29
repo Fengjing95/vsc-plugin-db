@@ -5,3 +5,4 @@ export * from './driver/types';
 export * from './driver/emitter';
 export * from './driver/registry';
 export * from './driver/host';
+export * from './services/metadataCache';

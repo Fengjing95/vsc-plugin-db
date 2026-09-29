@@ -2,7 +2,7 @@
 
 在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖“看结构 → 查数据 → 改数据 → 写 SQL”的完整链路。
 
-**当前状态：M0 骨架 ✅ + M1 连接管理 ✅** —— 连接持久化（globalState）+ SecretStorage 密钥 + 动态连接表单（测试连接）+ MySQL 驱动接入；M0 骨架：monorepo + 驱动契约 + DriverRegistry + RPC handshake + Mock 驱动资源树/表格演示。
+**当前状态：M0 骨架 ✅ + M1 连接管理 ✅ + M2 元数据树 ✅** —— 元数据层次缓存（TTL/并发去重/子树失效）、树五级展开（列/键/索引）、右键菜单（查看 DDL / 复制名称 / 生成 SELECT / 子树刷新）、MySQL + Mock 双驱动 DDL；M1：连接持久化（globalState）+ SecretStorage 密钥 + 动态连接表单（测试连接）；M0：monorepo + 驱动契约 + DriverRegistry + RPC handshake。
 
 ## 文档（docs/）
 

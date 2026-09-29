@@ -157,10 +157,43 @@ const tableDefs: Record<string, TableDef> = {
 const databases: DatabaseMeta[] = [
   { name: 'demo', charset: 'utf8mb4', comment: '演示业务库' },
   { name: 'analytics', charset: 'utf8mb4', comment: '分析库' },
+  { name: 'big', charset: 'utf8mb4', comment: '规模演示库（100 表，M2 性能验收）' },
 ];
 
-function defOf(db: string, obj: string): TableDef {
+/** big 库：t001..t100，验证“展开 100 表库 <1s”（概要设计 §10 M2 DoD） */
+const BIG_TABLE_COUNT = 100;
+
+function bigDef(_obj: string): TableDef {
+  return {
+    kind: 'table',
+    comment: 'big 表',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(32)', 'string', 2),
+      col('value', 'decimal(10,2)', 'decimal', 3),
+    ],
+    rows: () =>
+      Array.from({ length: 20 }, (_, i) => [i + 1, `row${i + 1}`, `${(i + 1) * 1.5}`]),
+  };
+}
+
+function getDef(db: string, obj: string): TableDef | undefined {
   const def = tableDefs[`${db}.${obj}`];
+  if (def) {
+    return def;
+  }
+  if (db === 'big' && /^t\d{3}$/.test(obj)) {
+    const n = Number(obj.slice(1));
+    if (n >= 1 && n <= BIG_TABLE_COUNT) {
+      return bigDef(obj);
+    }
+  }
+  return undefined;
+}
+
+function defOf(db: string, obj: string): TableDef {
+  const def = getDef(db, obj);
   if (!def) {
     throw new DriverError('E_NOT_FOUND', `表 "${db}.${obj}" 不存在`);
   }
@@ -222,6 +255,19 @@ export class MockConnection implements IConnection {
   }
 
   listObjects(db: string): Promise<ObjectMeta[]> {
+    if (db === 'big') {
+      return Promise.resolve(
+        Array.from({ length: BIG_TABLE_COUNT }, (_, i) => {
+          const name = `t${String(i + 1).padStart(3, '0')}`;
+          return {
+            name,
+            kind: 'table' as const,
+            comment: 'big 表',
+            rowEstimate: 20,
+          };
+        }),
+      );
+    }
     const prefix = `${db}.`;
     return Promise.resolve(
       Object.entries(tableDefs)
@@ -336,6 +382,30 @@ export class MockConnection implements IConnection {
 
   quoteIdentifier(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
+  }
+
+  getDdl(db: string, obj: string): Promise<string> {
+    const def = defOf(db, obj);
+    const q = (n: string) => `\`${n.replace(/`/g, '``')}\``;
+    if (def.kind === 'view') {
+      return Promise.resolve(`CREATE VIEW ${q(obj)} AS\nSELECT * FROM ${q(db)};\n`);
+    }
+    const lines = def.columns.map(
+      (c) =>
+        `  ${q(c.name)} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}${c.autoIncrement ? ' AUTO_INCREMENT' : ''}${c.comment ? ` COMMENT '${c.comment}'` : ''}`,
+    );
+    const pk = def.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+    if (pk.length > 0) {
+      lines.push(`  PRIMARY KEY (${pk.map(q).join(', ')})`);
+    }
+    for (const idx of def.indexes ?? []) {
+      lines.push(
+        `  ${idx.unique ? 'UNIQUE KEY' : 'KEY'} ${q(idx.name)} (${idx.columns.map(q).join(', ')})`,
+      );
+    }
+    return Promise.resolve(
+      `CREATE TABLE ${q(obj)} (\n${lines.join(',\n')}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4${def.comment ? ` COMMENT='${def.comment}'` : ''};\n`,
+    );
   }
 
   dispose(): void {

@@ -14,6 +14,11 @@ export interface AppServices {
   output: vscode.OutputChannel;
 }
 
+function copy(text: string, hint: string): void {
+  void vscode.env.clipboard.writeText(text);
+  void vscode.window.setStatusBarMessage(`已复制 ${hint}`, 2000);
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   services: AppServices,
@@ -77,7 +82,14 @@ export function registerCommands(
     }),
 
     vscode.commands.registerCommand('dbExplorer.refresh', () => {
-      tree.refresh();
+      // 全局刷新：清空全部元数据缓存并重载（概要设计 5.3.3）
+      tree.clearCacheAndRefresh();
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.refreshNode', (node?: DbTreeNode) => {
+      if (node) {
+        tree.refreshSubtree(node);
+      }
     }),
 
     vscode.commands.registerCommand('dbExplorer.newQuery', () => {
@@ -96,6 +108,50 @@ export function registerCommands(
         viewId: `${connId}/${db}/${obj}`,
         title: `${obj} @ ${db}`,
       });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.copyName', (node?: DbTreeNode) => {
+      if (node) {
+        copy(node.label, node.label);
+      }
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.copyQualifiedName', (node?: DbTreeNode) => {
+      const { db, obj, column } = node?.payload ?? {};
+      if (db && obj && column) {
+        copy(`${db}.${obj}.${column}`, `${db}.${obj}.${column}`);
+      }
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.generateSelect', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      const conn = await connections.ensureConnected(connId);
+      const q = conn.quoteIdentifier ?? ((n: string) => `\`${n.replace(/`/g, '``')}\``);
+      copy(`SELECT * FROM ${q(db)}.${q(obj)} LIMIT 100;`, 'SELECT 语句');
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.viewDdl', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      const conn = await connections.ensureConnected(connId);
+      if (typeof conn.getDdl !== 'function') {
+        void vscode.window.showInformationMessage('当前驱动未实现 DDL 查看。');
+        return;
+      }
+      try {
+        const ddl = await conn.getDdl(db, obj);
+        const doc = await vscode.workspace.openTextDocument({ content: ddl, language: 'sql' });
+        await vscode.window.showTextDocument(doc, { preview: true });
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `获取 DDL 失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }),
   ];
 }

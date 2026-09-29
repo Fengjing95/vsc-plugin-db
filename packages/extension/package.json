@@ -70,6 +70,31 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "dbExplorer.refreshNode",
+        "title": "刷新",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.viewDdl",
+        "title": "查看 DDL",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.copyName",
+        "title": "复制名称",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.copyQualifiedName",
+        "title": "复制全限定名 (库.表.列)",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.generateSelect",
+        "title": "生成 SELECT",
+        "category": "数据库"
+      },
+      {
         "command": "dbExplorer.openTable",
         "title": "打开表格视图",
         "category": "数据库"
@@ -105,6 +130,31 @@
           "command": "dbExplorer.copyConnection",
           "when": "viewItem == connection",
           "group": "9_cutcopypaste"
+        },
+        {
+          "command": "dbExplorer.refreshNode",
+          "when": "viewItem == connection || viewItem == database",
+          "group": "navigation@1"
+        },
+        {
+          "command": "dbExplorer.viewDdl",
+          "when": "viewItem == table || viewItem == view",
+          "group": "2_object@1"
+        },
+        {
+          "command": "dbExplorer.copyName",
+          "when": "viewItem == table || viewItem == view || viewItem == column || viewItem == index || viewItem == key",
+          "group": "2_object@2"
+        },
+        {
+          "command": "dbExplorer.generateSelect",
+          "when": "viewItem == table || viewItem == view",
+          "group": "2_object@3"
+        },
+        {
+          "command": "dbExplorer.copyQualifiedName",
+          "when": "viewItem == column",
+          "group": "2_object@1"
         }
       ]
     },

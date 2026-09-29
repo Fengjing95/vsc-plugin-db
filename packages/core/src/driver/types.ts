@@ -123,6 +123,8 @@ export interface IConnection extends Disposable {
   applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult>;
   /** 大字段按需拉取（capabilities.lazyCell 时实现） */
   fetchCell?(db: string, obj: string, rowKey: RowKey, column: string): Promise<string>;
+  /** DDL 生成（capabilities.supportsDdl = true 时实现，@since apiVersion 1） */
+  getDdl?(db: string, obj: string): Promise<string>;
   openSession?(): Promise<ISession>;
   getCompletionSource(db?: string): Promise<CompletionSource>;
   quoteIdentifier?(name: string): string;

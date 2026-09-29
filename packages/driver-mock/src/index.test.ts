@@ -27,7 +27,7 @@ describe('driver-mock：M0 可插拔契约演示', () => {
   it('三级结构：连接 → 库 → 表/视图', async () => {
     const conn = await connection();
     const dbs = await conn.listDatabases();
-    expect(dbs.map((d) => d.name)).toEqual(['demo', 'analytics']);
+    expect(dbs.map((d) => d.name)).toEqual(['demo', 'analytics', 'big']);
 
     const objs = await conn.listObjects('demo');
     expect(objs).toHaveLength(3);
@@ -36,6 +36,25 @@ describe('driver-mock：M0 可插拔契约演示', () => {
       'users',
     ]);
     expect(objs.find((o) => o.kind === 'view')?.name).toBe('v_active_users');
+  });
+
+  it('M2 性能验收：展开 100 表库 < 1s（概要设计 §10 DoD）', async () => {
+    const conn = await connection();
+    const started = Date.now();
+    const objs = await conn.listObjects('big');
+    expect(objs).toHaveLength(100);
+    const cols = await conn.listColumns('big', 't001');
+    expect(cols).toHaveLength(3);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('getDdl：由元数据生成且包含表名（M2）', async () => {
+    const conn = await connection();
+    const ddl = await conn.getDdl!('demo', 'users');
+    expect(ddl).toContain('CREATE TABLE `users`');
+    expect(ddl).toContain('`id` bigint NOT NULL AUTO_INCREMENT');
+    expect(ddl).toContain('PRIMARY KEY (`id`)');
+    expect(ddl).toContain('UNIQUE KEY `idx_email`');
   });
 
   it('列元数据含主键标记', async () => {
