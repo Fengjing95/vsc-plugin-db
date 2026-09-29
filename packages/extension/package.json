@@ -1,0 +1,108 @@
+{
+  "name": "db-explorer",
+  "displayName": "数据库浏览器 DB Explorer",
+  "description": "在 VSCode 内浏览、查询、编辑数据库。M0：资源树 + 表格视图 RPC 演示。",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "db-explorer-dev",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dbExplorer.container",
+          "title": "数据库",
+          "icon": "media/database.svg"
+        }
+      ]
+    },
+    "views": {
+      "dbExplorer.container": [
+        {
+          "id": "dbExplorer.connections",
+          "name": "连接",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "dbExplorer.focus",
+        "title": "聚焦数据库视图",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.newConnection",
+        "title": "新建连接",
+        "category": "数据库",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dbExplorer.refresh",
+        "title": "刷新",
+        "category": "数据库",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "dbExplorer.openTable",
+        "title": "打开表格视图",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.newQuery",
+        "title": "新建 SQL Console",
+        "category": "数据库"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "dbExplorer.newConnection", "group": "navigation@1" },
+        { "command": "dbExplorer.refresh", "group": "navigation@2" }
+      ],
+      "view/item/context": [
+        {
+          "command": "dbExplorer.openTable",
+          "when": "viewItem == table || viewItem == view",
+          "group": "inline@1"
+        }
+      ]
+    },
+    "keybindings": [
+      { "command": "dbExplorer.focus", "key": "ctrl+alt+d" },
+      { "command": "dbExplorer.newQuery", "key": "ctrl+alt+q" }
+    ],
+    "configuration": {
+      "title": "DB Explorer",
+      "properties": {
+        "dbExplorer.query.maxRows": {
+          "type": "number",
+          "default": 1000,
+          "description": "单次查询/表格取数行数上限"
+        },
+        "dbExplorer.query.timeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "驱动调用默认超时（毫秒）"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "@db-explorer/driver-mock": "workspace:*",
+    "@db-explorer/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0"
+  }
+}

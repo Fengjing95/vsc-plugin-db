@@ -1,0 +1,11 @@
+{
+  "name": "@db-explorer/driver-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "驱动契约测试套件：所有驱动的 CI 必过行为集（概要设计 12.2，随里程碑扩充）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@db-explorer/core": "workspace:*"
+  }
+}

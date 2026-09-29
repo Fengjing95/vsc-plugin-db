@@ -1,0 +1,11 @@
+{
+  "name": "@db-explorer/driver-mock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "M0 演示驱动：内存数据源，验证可插拔接入与三级树渲染",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@db-explorer/core": "workspace:*"
+  }
+}

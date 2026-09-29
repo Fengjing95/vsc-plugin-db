@@ -1,0 +1,86 @@
+/* M0 演示样式：颜色一律取 --vscode-* 主题变量（交互稿 §11：禁止硬编码色值） */
+body {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-editor-foreground, inherit);
+  background: var(--vscode-editor-background, transparent);
+}
+
+.status {
+  padding: 24px 0;
+  color: var(--vscode-descriptionForeground, gray);
+}
+
+.status.error {
+  color: var(--vscode-errorForeground, red);
+}
+
+.wrap header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.wrap h1 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.wrap .at {
+  font-weight: 400;
+  color: var(--vscode-descriptionForeground, gray);
+}
+
+.badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--vscode-widget-border, gray);
+  color: var(--vscode-descriptionForeground, gray);
+}
+
+.meta {
+  margin-bottom: 8px;
+  color: var(--vscode-descriptionForeground, gray);
+  font-size: 12px;
+}
+
+.grid {
+  overflow: auto;
+  max-height: calc(100vh - 96px);
+  border: 1px solid var(--vscode-widget-border, gray);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--vscode-widget-border, gray);
+  white-space: nowrap;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorWidget-foreground, inherit);
+  font-weight: 600;
+}
+
+tbody tr:hover {
+  background: var(--vscode-list-hoverBackground, transparent);
+}
+
+td:has(.null) {
+  color: var(--vscode-descriptionForeground, gray);
+  font-style: italic;
+}

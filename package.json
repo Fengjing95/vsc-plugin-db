@@ -1,0 +1,27 @@
+{
+  "name": "vscode-db-explorer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "数据库浏览器 VSCode 插件 — 统一的、可插拔的数据库访问入口",
+  "packageManager": "pnpm@9.12.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm --filter @db-explorer/webview-ui build && pnpm --filter db-explorer build",
+    "watch": "pnpm --filter db-explorer watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^20.17.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^3.0.0"
+  }
+}

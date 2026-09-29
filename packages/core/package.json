@@ -1,0 +1,14 @@
+{
+  "name": "@db-explorer/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "核心契约：驱动接口、统一数据模型、DriverRegistry、DriverHost",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0"
+  }
+}

@@ -1,0 +1,7 @@
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="currentColor" stroke-width="1.6">
+    <ellipse cx="12" cy="5.5" rx="7" ry="2.8" />
+    <path d="M5 5.5v13c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-13" />
+    <path d="M5 12c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8" />
+  </g>
+</svg>
