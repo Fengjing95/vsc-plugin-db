@@ -1,101 +1,118 @@
-import type { HandshakeResult, ResultSetPayload } from '@db-explorer/protocol';
-import { useEffect, useState } from 'react';
-import { request } from '../rpc/client';
+import type { HandshakeResult } from '@db-explorer/protocol';
+import {
+  ExportProgressEventSchema,
+  RPC_PROTOCOL_VERSION,
+  RpcEvents,
+} from '@db-explorer/protocol';
+import { useEffect } from 'react';
+import { Button } from '../components/ui/button';
+import { errorCodeToMessage } from '../lib/errors';
+import { request, subscribeEvents } from '../rpc/client';
+import { useTableStore } from '../store/tableStore';
+import { DataGrid } from './table/DataGrid';
+import { FilterBar } from './table/FilterBar';
+import { PaginationBar } from './table/PaginationBar';
+import { Toolbar } from './table/Toolbar';
 
-type Phase = 'connecting' | 'ready' | 'error';
+interface TablePageProps {
+  connId: string;
+  db: string;
+  obj: string;
+  rowEstimate?: number;
+  readOnly: boolean;
+}
 
-/** 表格视图（M0 演示版；M3 起替换为 TanStack Table 虚拟网格） */
-export function TablePage({ connId, db, obj }: { connId: string; db: string; obj: string }) {
-  const [phase, setPhase] = useState<Phase>('connecting');
-  const [table, setTable] = useState<ResultSetPayload | null>(null);
-  const [error, setError] = useState('');
+/**
+ * 表格视图（M3 只读）：工具栏 / 筛选栏 / 虚拟网格 / 分页栏。
+ * 生命周期：sys.handshake（协议版本校验）→ 初始化 store → 首屏取数。
+ */
+export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageProps) {
+  const phase = useTableStore((s) => s.phase);
+  const errorMsg = useTableStore((s) => s.errorMsg);
+  const errorCode = useTableStore((s) => s.errorCode);
+  const rows = useTableStore((s) => s.rows);
+  const refresh = useTableStore((s) => s.refresh);
+  const clearFilters = useTableStore((s) => s.clearFilters);
+  const appliedDrafts = useTableStore((s) => s.appliedDrafts);
+  const searchApplied = useTableStore((s) => s.searchApplied);
+  const setExportProgress = useTableStore((s) => s.setExportProgress);
+  const page = useTableStore((s) => s.page);
+  const pageSize = useTableStore((s) => s.pageSize);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // 1) 握手：校验协议版本（M4 起同时恢复 ChangeSet 快照）
-        await request<HandshakeResult>('sys.handshake', { stateId: null });
-        if (cancelled) return;
+    let disposed = false;
+    const unsub = subscribeEvents((evt) => {
+      if (evt.event === RpcEvents.exportProgress) {
+        const parsed = ExportProgressEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          setExportProgress({ rows: parsed.data.rows, bytes: parsed.data.bytes });
+        }
+      }
+    });
 
-        // 2) 取数：走完整 RPC 链路（Webview → Host → 驱动 → 数据）
-        const rs = await request<ResultSetPayload>('table.fetchRows', {
-          connId,
-          db,
-          obj,
-          limit: 50,
-        });
-        if (cancelled) return;
-        setTable(rs);
-        setPhase('ready');
+    void (async () => {
+      try {
+        // 1) 握手：协议版本协商（概要设计 7.4.3）
+        const hs = await request<HandshakeResult>('sys.handshake', { stateId: null });
+        if (disposed) return;
+        if (hs.protocolVersion !== RPC_PROTOCOL_VERSION) {
+          useTableStore.setState({
+            phase: 'error',
+            errorMsg: '插件与视图版本不一致，请重载窗口',
+          });
+          return;
+        }
+
+        // 2) 初始化并取数（M4 起握手同时恢复 ChangeSet 快照）
+        useTableStore.getState().init({ connId, db, obj, rowEstimate, readOnly });
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setPhase('error');
+        if (!disposed) {
+          useTableStore.setState({
+            phase: 'error',
+            errorMsg: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [connId, db, obj]);
 
-  if (phase === 'connecting') {
-    return <div className="status">连接 Extension Host…</div>;
-  }
+    return () => {
+      disposed = true;
+      unsub();
+    };
+    // init 仅应执行一次（connId/db/obj 为静态 bootstrap 参数）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (phase === 'error') {
-    return <div className="status error">加载失败：{error}</div>;
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3">
+        <div className="text-destructive">{errorCodeToMessage(errorCode, errorMsg)}</div>
+        <Button variant="secondary" onClick={() => void refresh()}>
+          重试
+        </Button>
+      </div>
+    );
   }
+
+  const hasQuery = appliedDrafts.length > 0 || searchApplied !== '';
 
   return (
-    <div className="wrap">
-      <header>
-        <h1>
-          {obj} <span className="at">@ {db}</span>
-        </h1>
-        <span className="badge">M1 · RPC 打通</span>
-      </header>
-
-      {table ? (
-        <>
-          <div className="meta">
-            第 1-{table.rowCount} 行 · 共 {table.totalCount ?? '—'} 行 · {table.executionMs}ms
-            {table.truncated ? ' · 已截断' : ''}
-          </div>
-          <div className="grid">
-            <table>
-              <thead>
-                <tr>
-                  {table.columns.map((c) => (
-                    <th key={c.name}>{c.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {table.rows.map((row, i) => (
-                  <tr key={i}>
-                    {row.map((cell, j) => (
-                      <td key={j}>{renderCell(cell)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+    <div className="flex h-screen flex-col">
+      <Toolbar db={db} obj={obj} />
+      <FilterBar />
+      {phase === 'ready' && rows.length === 0 ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+          <span>无匹配数据</span>
+          {hasQuery && (
+            <Button variant="secondary" onClick={() => void clearFilters()}>
+              清除筛选
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="status">加载数据中…</div>
+        <DataGrid pageOffset={page * pageSize} />
       )}
+      <PaginationBar />
     </div>
   );
-}
-
-function renderCell(cell: unknown): string {
-  if (cell === null || cell === undefined) {
-    return 'NULL';
-  }
-  if (typeof cell === 'object') {
-    return JSON.stringify(cell);
-  }
-  return String(cell);
 }

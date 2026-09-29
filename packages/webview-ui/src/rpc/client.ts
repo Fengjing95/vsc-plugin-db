@@ -1,8 +1,9 @@
-import type { RpcFrame } from '@db-explorer/protocol';
+import type { RpcEvent, RpcFrame } from '@db-explorer/protocol';
 
 /**
  * Webview 侧 RPC 客户端（概要设计 7.4）：请求/响应 id 映射 + 超时。
- * 响应按协议用 zod 在 App 层校验（ADR D-06 双端校验的 Webview 侧）。
+ * 响应按协议在 App 层用 zod 校验（ADR D-06 双端校验的 Webview 侧）。
+ * evt 帧（Host → Webview 单向推送）经 subscribe 分发给订阅者。
  */
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,42 +16,67 @@ type Pending = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value: any) => void;
   reject: (err: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
 };
 
 const pending = new Map<string, Pending>();
+const eventListeners = new Set<(evt: RpcEvent) => void>();
 let seq = 0;
 
 window.addEventListener('message', (ev: MessageEvent) => {
   const frame = ev.data as RpcFrame;
-  if (!frame || frame.kind !== 'res') {
-    return; // evt 帧的事件分发随 M3/M4 状态层接入
+  if (!frame || frame.kind === 'req') {
+    return;
+  }
+  if (frame.kind === 'evt') {
+    for (const listener of eventListeners) {
+      listener(frame);
+    }
+    return;
   }
   const entry = pending.get(frame.id);
   if (!entry) {
     return;
   }
   pending.delete(frame.id);
-  clearTimeout(entry.timer);
+  if (entry.timer !== undefined) {
+    clearTimeout(entry.timer);
+  }
   if (frame.ok) {
     entry.resolve(frame.result);
   } else {
     const { code, message } = frame.error ?? {};
-    entry.reject(new Error(`[${code ?? 'E_INTERNAL'}] ${message ?? '请求失败'}`));
+    entry.reject(new RpcError(code ?? 'E_INTERNAL', message ?? '请求失败'));
   }
 });
 
-export function request<T>(
-  method: string,
-  params?: unknown,
-  timeoutMs = 30_000,
-): Promise<T> {
+export class RpcError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(`[${code}] ${message}`);
+    this.name = 'RpcError';
+  }
+}
+
+/** 订阅 Host 推送事件；返回取消订阅函数 */
+export function subscribeEvents(listener: (evt: RpcEvent) => void): () => void {
+  eventListeners.add(listener);
+  return () => eventListeners.delete(listener);
+}
+
+/** timeoutMs = 0 表示不限时（如 export.run，靠进度事件保活） */
+export function request<T>(method: string, params?: unknown, timeoutMs = 30_000): Promise<T> {
   const id = `wv-${++seq}`;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error(`请求超时：${method}`));
-    }, timeoutMs);
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            pending.delete(id);
+            reject(new Error(`请求超时：${method}`));
+          }, timeoutMs)
+        : undefined;
     pending.set(id, {
       resolve: resolve as (value: unknown) => void,
       reject,
