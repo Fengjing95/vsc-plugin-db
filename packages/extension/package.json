@@ -97,7 +97,8 @@
       {
         "command": "dbExplorer.openTable",
         "title": "打开表格视图",
-        "category": "数据库"
+        "category": "数据库",
+        "icon": "$(table)"
       },
       {
         "command": "dbExplorer.newQuery",
