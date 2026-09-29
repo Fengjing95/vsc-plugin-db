@@ -19,6 +19,7 @@ interface SelectProps<V extends string = string> {
 /**
  * Base UI Select 包装（技术选型 T-07：shadcn/ui · Base UI 基座）。
  * 颜色全部走 tokens.css 语义 token（--vscode-* 映射）。
+ * alignItemWithTrigger=false：弹层固定从触发器下方展开，不覆盖触发器。
  */
 export function Select<V extends string = string>({
   value,
@@ -52,7 +53,14 @@ export function Select<V extends string = string>({
         <BaseSelect.Icon className="shrink-0 text-muted-foreground">▾</BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
-        <BaseSelect.Positioner sideOffset={4} className="z-50 outline-none">
+        {/* Positioner 是真正定位的元素，z-index 必须加在这里（低于它层级无效，
+            会被表格 sticky 表头 z-30 遮盖） */}
+        <BaseSelect.Positioner
+          sideOffset={4}
+          alignItemWithTrigger={false}
+          align="start"
+          className="z-50 outline-none"
+        >
           <BaseSelect.Popup
             className={cn(
               'z-50 max-h-72 min-w-(--trigger-width) overflow-y-auto rounded-sm border border-border bg-panel py-1 text-[13px] text-panel-foreground shadow-lg',
@@ -64,8 +72,10 @@ export function Select<V extends string = string>({
                 value={o.value}
                 className={cn(
                   'flex cursor-default items-center justify-between gap-2 px-2 py-1 outline-none',
-                  'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
-                  'data-[selected]:text-primary',
+                  // 悬停高亮（选中项除外，避免与选中底色叠加冲突）
+                  'data-[highlighted]:not-data-[selected]:bg-accent data-[highlighted]:not-data-[selected]:text-accent-foreground',
+                  // 选中项：列表活动选择色对（--vscode-list-activeSelection*），对比度有保证
+                  'data-[selected]:bg-selected data-[selected]:font-medium data-[selected]:text-selected-foreground',
                 )}
               >
                 <BaseSelect.ItemText>{o.label}</BaseSelect.ItemText>
