@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { DriverRegistry } from '@db-explorer/core';
+import { DriverRegistry, type ConnectionConfig } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { registerCommands } from './commands';
 import { ConnectionManager } from './services/connectionManager';
-import { ConnectionStore, type ConnectionConfig } from './services/connectionStore';
+import { ConnectionStore } from './services/connectionStore';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
 const MOCK_CONNECTION: ConnectionConfig = {

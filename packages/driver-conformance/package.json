@@ -5,6 +5,9 @@
   "description": "驱动契约测试套件：所有驱动的 CI 必过行为集（概要设计 12.2，随里程碑扩充）",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*"

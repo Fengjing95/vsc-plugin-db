@@ -21,6 +21,9 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 类型检查
+        run: pnpm typecheck
+
       - name: Lint
         run: pnpm lint
 

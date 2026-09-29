@@ -38,10 +38,9 @@ export type RpcEvent = z.infer<typeof RpcEventSchema>;
 export type RpcFrame = RpcRequest | RpcResponse | RpcEvent;
 
 export function isRpcFrame(data: unknown): data is RpcFrame {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'kind' in data &&
-    (data as { kind: unknown }).kind in { req: 1, res: 1, evt: 1 }
-  );
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
+  const kind = (data as { kind?: unknown }).kind;
+  return kind === 'req' || kind === 'res' || kind === 'evt';
 }

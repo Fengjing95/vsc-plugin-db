@@ -5,6 +5,9 @@
   "description": "MySQL 驱动（mysql2）：元数据自省、分页取数、SQL 执行、参数化筛选下推",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@db-explorer/core": "workspace:*",
     "mysql2": "^3.11.0"

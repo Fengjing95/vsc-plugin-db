@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DriverError } from './errors';
 import { InProcessDriverHost } from './host';
-import type { FetchRowsRequest, IConnection, ResultSet } from '../model';
+import type { FetchRowsRequest, ResultSet } from '../model/rows';
+import type { IConnection } from './types';
 
 function fakeConnection(impl: Partial<IConnection>): IConnection {
   return {

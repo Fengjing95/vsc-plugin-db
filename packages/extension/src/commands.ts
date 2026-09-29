@@ -39,7 +39,10 @@ export function registerCommands(
 
     vscode.commands.registerCommand('dbExplorer.copyConnection', async (node?: DbTreeNode) => {
       const connId = node?.payload.connId;
-      const cfg = connId ? store.get(connId) : undefined;
+      if (!connId) {
+        return;
+      }
+      const cfg = store.get(connId);
       if (!cfg) {
         return;
       }
@@ -50,7 +53,10 @@ export function registerCommands(
 
     vscode.commands.registerCommand('dbExplorer.deleteConnection', async (node?: DbTreeNode) => {
       const connId = node?.payload.connId;
-      const cfg = connId ? store.get(connId) : undefined;
+      if (!connId) {
+        return;
+      }
+      const cfg = store.get(connId);
       if (!cfg) {
         return;
       }

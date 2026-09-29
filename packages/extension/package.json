@@ -12,7 +12,8 @@
   "main": "./dist/extension.js",
   "scripts": {
     "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch"
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit"
   },
   "contributes": {
     "viewsContainers": {

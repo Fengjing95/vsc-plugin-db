@@ -11,6 +11,7 @@ import {
   type HandshakeResult,
 } from '@db-explorer/protocol';
 import { secretRefOf, type ConnectionStore } from '../services/connectionStore';
+import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 
 const panels = new Map<string, vscode.WebviewPanel>();

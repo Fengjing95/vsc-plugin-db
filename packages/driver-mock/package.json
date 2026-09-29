@@ -5,6 +5,9 @@
   "description": "M0 演示驱动：内存数据源，验证可插拔接入与三级树渲染",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@db-explorer/core": "workspace:*"
   }

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "pnpm --filter @db-explorer/webview-ui build && pnpm --filter db-explorer build",
     "watch": "pnpm --filter db-explorer watch",
+    "typecheck": "pnpm -r --stream run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",

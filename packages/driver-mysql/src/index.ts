@@ -1,4 +1,4 @@
-import { createPool, type FieldInfo, type Pool } from 'mysql2/promise';
+import { createPool, type Pool } from 'mysql2/promise';
 import {
   DriverError,
   type ColumnMeta,
@@ -274,7 +274,8 @@ export class MysqlConnection implements IConnection {
       if (Array.isArray(rows)) {
         const all = rows as Record<string, unknown>[];
         const sliced = all.slice(0, req.maxRows);
-        const cols = (fields ?? []).map((f: FieldInfo) => ({
+        const rawFields = (fields ?? []) as RawField[];
+        const cols = rawFields.map((f) => ({
           name: f.name ?? '',
           type: guessType(f.type, all[0]?.[f.name ?? '']),
         }));
@@ -312,7 +313,7 @@ export class MysqlConnection implements IConnection {
     );
   }
 
-  applyChanges(): Promise<ReturnType<IConnection['applyChanges']>> {
+  applyChanges(): Promise<never> {
     return Promise.reject(
       new DriverError('E_UNSUPPORTED', '表格编辑在 M4 交付（ChangeSet 接入后开放）'),
     );
@@ -353,7 +354,12 @@ function commentOrUndefined(v: unknown): string | undefined {
   return s && s !== 'VIEW' ? s : undefined;
 }
 
-/** console 结果列类型：优先 mysql2 字段类型，退化为按值嗅探 */
+/** console 结果列类型：优先 mysql2 字段类型，退化为按值嗅探（mysql2/promise 不导出 FieldInfo，此处用本地结构） */
+interface RawField {
+  name?: string;
+  type?: string;
+}
+
 function guessType(fieldType: string | undefined, sample: unknown): NormalizedType {
   switch (fieldType) {
     case 'LONGLONG':

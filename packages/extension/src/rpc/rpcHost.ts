@@ -64,7 +64,13 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
 
         case RpcMethods.fetchRows: {
           if (!deps.connections || !deps.host) {
-            throw new DriverError('E_UNKNOWN_METHOD', `当前视图不支持 "${req.method}"`);
+            respond(false, {
+              error: {
+                code: 'E_UNKNOWN_METHOD',
+                message: `当前视图不支持 "${req.method}"`,
+              },
+            });
+            return;
           }
           const p = FetchRowsParamsSchema.parse(req.params);
           const conn = await deps.connections.ensureConnected(p.connId);
