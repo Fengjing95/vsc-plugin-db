@@ -52,7 +52,7 @@ export function Select<V extends string = string>({
         <BaseSelect.Icon className="shrink-0 text-muted-foreground">▾</BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
-        <BaseSelect.Positioner sideOffset={4} className="outline-none">
+        <BaseSelect.Positioner sideOffset={4} className="z-50 outline-none">
           <BaseSelect.Popup
             className={cn(
               'z-50 max-h-72 min-w-(--trigger-width) overflow-y-auto rounded-sm border border-border bg-panel py-1 text-[13px] text-panel-foreground shadow-lg',

@@ -18,7 +18,9 @@ export function Popover({ trigger, children, open, onOpenChange, contentClassNam
     <BasePopover.Root open={open} onOpenChange={onOpenChange}>
       <BasePopover.Trigger render={trigger} />
       <BasePopover.Portal>
-        <BasePopover.Positioner align={align} sideOffset={4} className="outline-none">
+        {/* Positioner 是真正定位的元素，z-index 必须加在这里（低于它层级无效，
+            会被表格 sticky 表头 z-30 遮盖） */}
+        <BasePopover.Positioner align={align} sideOffset={4} className="z-50 outline-none">
           <BasePopover.Popup
             className={cn(
               'z-50 rounded-sm border border-border bg-panel text-panel-foreground shadow-lg outline-none',

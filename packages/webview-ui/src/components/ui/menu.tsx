@@ -22,7 +22,7 @@ export function Menu({ trigger, items, contentClassName, align = 'end' }: MenuPr
     <BaseMenu.Root>
       <BaseMenu.Trigger render={trigger} />
       <BaseMenu.Portal>
-        <BaseMenu.Positioner align={align} sideOffset={4} className="outline-none">
+        <BaseMenu.Positioner align={align} sideOffset={4} className="z-50 outline-none">
           <BaseMenu.Popup
             className={cn(
               'z-50 min-w-36 rounded-sm border border-border bg-panel py-1 text-[13px] text-panel-foreground shadow-lg outline-none',

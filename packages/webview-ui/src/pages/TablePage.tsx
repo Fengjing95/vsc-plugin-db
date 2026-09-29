@@ -97,7 +97,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   const hasQuery = appliedDrafts.length > 0 || searchApplied !== '';
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <Toolbar db={db} obj={obj} />
       <FilterBar />
       {phase === 'ready' && rows.length === 0 ? (
