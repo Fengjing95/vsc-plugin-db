@@ -51,4 +51,15 @@ packages/
 
 ## 里程碑
 
-M0 骨架 ✅ → M1 连接管理 → M2 元数据树 → M3 表格只读 → M4 表格编辑 → M5 SQL Console → M6 Redis 驱动（验证可插拔）→ M7 增强。规划与 DoD 见[概要设计 第 10 章](docs/概要设计.md)。
+M0 骨架 ✅ → M1 连接管理 ✅ → M2 元数据树 ✅（均已人工验证）→ **M3 表格视图-只读（下一步）** → M4 表格编辑 → M5 SQL Console → M6 Redis 驱动（验证可插拔）→ M7 增强。规划与 DoD 见[概要设计 第 10 章](docs/概要设计.md)。
+
+### M3 开工清单（交接备忘）
+
+1. webview-ui 接入 Tailwind v4 + shadcn/ui（技术选型 T-07），建立 `--vscode-*` 变量映射层
+2. 表格页重构：TanStack Table + TanStack Virtual 虚拟滚动（T-06），渲染行式 ResultSet
+3. RPC 扩充：`table.fetchRows` 增加 filters/sorts/search（core 的 `FetchRowsRequest` 已支持，protocol schema 待扩展），Host 侧经 `DriverHost` 下推
+4. 分页栏（totalCount 缺省细则见交互稿 §4.7）、列排序、筛选构造器（交互稿 §4.4）、全局搜索、列显示/隐藏
+5. 导出 CSV/JSON：`ResultExporter`（概要 §5.7，Host 流式写 + withProgress + 可取消）
+6. 契约测试：driver-conformance 增加"分页/筛选下推"组
+
+纪律：四道门禁（typecheck/test/lint/build）全绿再提交；陷阱备忘见 `packages/extension/src/views/webviewHtmlInject.ts` 头注释（Webview CSP nonce）。
