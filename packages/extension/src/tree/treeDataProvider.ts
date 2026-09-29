@@ -46,15 +46,23 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   async getChildren(node?: DbTreeNode): Promise<DbTreeNode[]> {
     if (!node) {
-      return this.connections.list().map((c) => ({
-        id: `conn:${c.config.id}`,
+      // M1：一级节点来自持久化连接配置（ConnectionStore），变更自动刷新
+      const configs = await this.connections.listConfigs();
+      return configs.map((c) => ({
+        id: `conn:${c.id}`,
         type: 'connection',
-        label: c.config.name,
-        description: `${c.config.driverId} · ${c.config.env ?? 'dev'}`,
+        label: c.name,
+        description: [
+          c.driverId,
+          c.env ?? 'dev',
+          c.readOnly ? '只读' : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         collapsibleState: Collapsed,
         contextValue: 'connection',
         iconId: 'database',
-        payload: { connId: c.config.id },
+        payload: { connId: c.id },
       }));
     }
 
@@ -109,8 +117,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             id: `${node.id}:${o.name}`,
             type: kind,
             label: o.name,
-            description:
-              o.rowEstimate !== undefined ? `~${o.rowEstimate} 行` : o.comment,
+            description: o.rowEstimate !== undefined ? `~${o.rowEstimate} 行` : o.comment,
             collapsibleState: kind === 'table' ? Collapsed : None,
             contextValue: kind,
             iconId: kind === 'table' ? 'table' : 'eye',
@@ -139,7 +146,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   }
 }
 
-function columnDescription(c: { dataType: string; isPrimaryKey: boolean; nullable: boolean }): string {
+function columnDescription(c: {
+  dataType: string;
+  isPrimaryKey: boolean;
+  nullable: boolean;
+}): string {
   const parts = [c.dataType];
   if (c.isPrimaryKey) parts.push('PK');
   if (!c.nullable) parts.push('NOT NULL');

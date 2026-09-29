@@ -2,7 +2,7 @@
 
 在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖“看结构 → 查数据 → 改数据 → 写 SQL”的完整链路。
 
-**当前状态：M0 骨架已完成** —— monorepo + 驱动契约 + DriverRegistry + RPC handshake + Mock 驱动资源树/表格演示。
+**当前状态：M0 骨架 ✅ + M1 连接管理 ✅** —— 连接持久化（globalState）+ SecretStorage 密钥 + 动态连接表单（测试连接）+ MySQL 驱动接入；M0 骨架：monorepo + 驱动契约 + DriverRegistry + RPC handshake + Mock 驱动资源树/表格演示。
 
 ## 文档（docs/）
 
@@ -26,7 +26,7 @@ pnpm lint           # ESLint
 # （启动 Extension Development Host，活动栏出现数据库图标）
 ```
 
-运行后：侧边栏“数据库”视图 → 展开“本地 Mock 数据源” → `demo` → `表` → 单击 `users` → 打开表格视图（演示完整 RPC 链路：Webview ↔ Host ↔ 驱动）。
+运行后：活动栏“数据库”图标 → 视图标题栏 ＋ 新建连接（按驱动 FormSchema 动态渲染表单，支持测试连接；密码存 SecretStorage）→ 展开连接 → `表` → 单击表名打开表格视图（演示完整 RPC 链路：Webview ↔ Host ↔ 驱动）。
 
 ## 工程结构
 
@@ -34,9 +34,10 @@ pnpm lint           # ESLint
 packages/
 ├── core/                 # 驱动接口契约、统一模型、DriverRegistry、DriverHost
 ├── protocol/             # Webview ↔ Host RPC 消息定义（zod 单一来源）
-├── extension/            # VSCode 插件主体（树/命令/连接管理/Webview 宿主）
-├── webview-ui/           # React + Vite 表格视图（M3 起引入 TanStack Table + shadcn/ui）
+├── extension/            # VSCode 插件主体（树/命令/连接管理/表单与表格 Webview 宿主）
+├── webview-ui/           # React + Vite（表格视图 + 连接表单；M3 起引入 TanStack Table + shadcn/ui）
 ├── driver-mock/          # M0 演示驱动（验证可插拔：核心 0 改动接入）
+├── driver-mysql/         # MySQL 驱动（mysql2，M1）
 └── driver-conformance/   # 驱动契约测试套件（随里程碑扩充）
 ```
 

@@ -46,6 +46,23 @@
         "icon": "$(add)"
       },
       {
+        "command": "dbExplorer.editConnection",
+        "title": "编辑连接",
+        "category": "数据库",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "dbExplorer.copyConnection",
+        "title": "复制连接",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.deleteConnection",
+        "title": "删除连接",
+        "category": "数据库",
+        "icon": "$(trash)"
+      },
+      {
         "command": "dbExplorer.refresh",
         "title": "刷新",
         "category": "数据库",
@@ -72,6 +89,21 @@
           "command": "dbExplorer.openTable",
           "when": "viewItem == table || viewItem == view",
           "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.editConnection",
+          "when": "viewItem == connection",
+          "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.deleteConnection",
+          "when": "viewItem == connection",
+          "group": "inline@2"
+        },
+        {
+          "command": "dbExplorer.copyConnection",
+          "when": "viewItem == connection",
+          "group": "9_cutcopypaste"
         }
       ]
     },
@@ -98,6 +130,7 @@
   "dependencies": {
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*",
+    "@db-explorer/driver-mysql": "workspace:*",
     "@db-explorer/protocol": "workspace:*"
   },
   "devDependencies": {

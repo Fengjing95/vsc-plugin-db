@@ -6,6 +6,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@db-explorer/core": "workspace:*"
+    "@db-explorer/core": "workspace:*",
+    "@db-explorer/driver-mock": "workspace:*"
   }
 }

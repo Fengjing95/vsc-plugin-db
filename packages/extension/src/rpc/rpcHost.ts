@@ -13,14 +13,16 @@ import type { ConnectionManager } from '../services/connectionManager';
 export interface RpcHostDeps {
   viewId: string;
   params: Record<string, string>;
-  connections: ConnectionManager;
-  host: InProcessDriverHost;
   output: vscode.OutputChannel;
+  connections?: ConnectionManager;
+  host?: InProcessDriverHost;
+  /** 页面自有方法（conn.* 等），命中后优先于内置分发 */
+  handlers?: Record<string, (params: unknown) => Promise<unknown>>;
 }
 
 /**
  * Webview ↔ Host RPC（概要设计 7.4）：
- * Host 侧用 zod 严格校验请求；失败返回结构化 RpcError，不崩溃、不静默。
+ * Host 侧 zod 严格校验请求；失败返回结构化 RpcError，不崩溃、不静默。
  */
 export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscode.Disposable {
   return webview.onDidReceiveMessage((data: unknown) => {
@@ -41,6 +43,11 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
     };
 
     try {
+      if (deps.handlers && req.method in deps.handlers) {
+        respond(true, { result: await deps.handlers[req.method](req.params) });
+        return;
+      }
+
       switch (req.method) {
         case RpcMethods.handshake: {
           HandshakeParamsSchema.parse(req.params ?? {});
@@ -56,6 +63,9 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
         }
 
         case RpcMethods.fetchRows: {
+          if (!deps.connections || !deps.host) {
+            throw new DriverError('E_UNKNOWN_METHOD', `当前视图不支持 "${req.method}"`);
+          }
           const p = FetchRowsParamsSchema.parse(req.params);
           const conn = await deps.connections.ensureConnected(p.connId);
           const rs = await deps.host.fetchRows(conn, {

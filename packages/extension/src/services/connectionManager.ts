@@ -1,54 +1,49 @@
 import * as vscode from 'vscode';
 import { DriverError, type ConnectionConfig, type DriverRegistry, type IConnection } from '@db-explorer/core';
+import type { ConnectionStore } from './connectionStore';
 
-export interface ManagedConnection {
-  readonly config: ConnectionConfig;
-  connection?: IConnection;
-}
-
-/** M0 内置演示连接；M1 起改为 globalState 持久化 + SecretStorage（概要设计 5.2） */
-const MOCK_CONNECTION: ConnectionConfig = {
-  id: 'mock-local',
-  name: '本地 Mock 数据源',
-  driverId: 'mock',
-  env: 'dev',
-  options: { host: '127.0.0.1', port: 3306 },
-  secretRef: 'dbExplorer.secrets.mock-local',
-};
-
+/** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
 export class ConnectionManager implements vscode.Disposable {
-  private readonly items = new Map<string, ManagedConnection>();
+  private readonly cache = new Map<string, IConnection>();
 
-  constructor(private readonly registry: DriverRegistry) {
-    this.items.set(MOCK_CONNECTION.id, { config: MOCK_CONNECTION });
+  constructor(
+    private readonly registry: DriverRegistry,
+    private readonly store: ConnectionStore,
+  ) {}
+
+  async listConfigs(): Promise<ConnectionConfig[]> {
+    return this.store.list();
   }
 
-  list(): ManagedConnection[] {
-    return [...this.items.values()];
-  }
-
-  get(id: string): ManagedConnection | undefined {
-    return this.items.get(id);
-  }
-
-  /** 懒连接（ADR D-10）：首次访问时建立并缓存 */
   async ensureConnected(connId: string): Promise<IConnection> {
-    const item = this.items.get(connId);
-    if (!item) {
+    const cached = this.cache.get(connId);
+    if (cached) {
+      return cached;
+    }
+    const cfg = this.store.get(connId);
+    if (!cfg) {
       throw new DriverError('E_NOT_FOUND', `连接 "${connId}" 不存在`);
     }
-    if (item.connection) {
-      return item.connection;
+    const driver = this.registry.require(cfg.driverId);
+    const secret = (await this.store.getSecret(connId)) ?? '';
+    const conn = await driver.connect(cfg, secret);
+    this.cache.set(connId, conn);
+    return conn;
+  }
+
+  /** 编辑/删除连接后失效缓存，下次操作按新配置重连 */
+  invalidate(connId: string): void {
+    const conn = this.cache.get(connId);
+    this.cache.delete(connId);
+    if (conn) {
+      void Promise.resolve(conn.dispose());
     }
-    const driver = this.registry.require(item.config.driverId);
-    item.connection = await driver.connect(item.config, '');
-    return item.connection;
   }
 
   dispose(): void {
-    for (const item of this.items.values()) {
-      item.connection?.dispose();
+    for (const conn of this.cache.values()) {
+      void Promise.resolve(conn.dispose());
     }
-    this.items.clear();
+    this.cache.clear();
   }
 }

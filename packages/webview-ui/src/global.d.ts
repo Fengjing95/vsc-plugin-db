@@ -1,9 +1,12 @@
 export {};
 
+type WebviewPage = 'table' | 'connectionForm';
+
 declare global {
   interface BootstrapData {
+    page: WebviewPage;
     viewId: string;
-    params: { connId: string; db: string; obj: string };
+    params: Record<string, string>;
   }
 
   interface Window {

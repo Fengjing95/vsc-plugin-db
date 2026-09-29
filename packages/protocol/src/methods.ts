@@ -3,10 +3,14 @@ import type { DriverErrorCode } from '@db-explorer/core';
 
 export const RPC_PROTOCOL_VERSION = 1;
 
-/** 方法名注册表（概要设计 7.4.2），M0 仅开放 handshake + fetchRows */
+/** 方法名注册表（概要设计 7.4.2） */
 export const RpcMethods = {
   handshake: 'sys.handshake',
   fetchRows: 'table.fetchRows',
+  connMeta: 'conn.getMeta',
+  connSchema: 'conn.getSchema',
+  connTest: 'conn.test',
+  connSave: 'conn.save',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -52,3 +56,101 @@ export const ResultSetSchema = z.object({
   truncated: z.boolean().optional(),
 });
 export type ResultSetPayload = z.infer<typeof ResultSetSchema>;
+
+// ── conn.getMeta / conn.getSchema ─────────────────────────────
+export const DriverSummarySchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+});
+export type DriverSummary = z.infer<typeof DriverSummarySchema>;
+
+export const FormFieldSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(['string', 'number', 'boolean', 'password', 'select', 'file', 'textarea']),
+  required: z.boolean().optional(),
+  default: z.unknown().optional(),
+  options: z.array(z.object({ label: z.string(), value: z.unknown() })).optional(),
+  placeholder: z.string().optional(),
+  group: z.string().optional(),
+  validator: z.enum(['port', 'host', 'path', 'regex']).optional(),
+  validationRegex: z.string().optional(),
+});
+export type FormFieldPayload = z.infer<typeof FormFieldSchema>;
+
+export const FormSchemaSchema = z.object({
+  fields: z.array(FormFieldSchema),
+});
+export type FormSchemaPayload = z.infer<typeof FormSchemaSchema>;
+
+/** 连接元数据：密码永不回传，仅 hasSecret 标记 */
+export const ConnectionMetaSchema = z.object({
+  connId: z.string(),
+  name: z.string(),
+  driverId: z.string(),
+  env: z.enum(['dev', 'test', 'prod']).nullable(),
+  group: z.string().nullable(),
+  color: z.string().nullable(),
+  readOnly: z.boolean(),
+  options: z.record(z.string(), z.unknown()),
+  hasSecret: z.boolean(),
+});
+export type ConnectionMeta = z.infer<typeof ConnectionMetaSchema>;
+
+export const ConnMetaParamsSchema = z.object({
+  connId: z.string().nullable().optional(),
+});
+
+export const ConnMetaResultSchema = z.object({
+  drivers: z.array(DriverSummarySchema),
+  config: ConnectionMetaSchema.nullable(),
+  schema: FormSchemaSchema,
+});
+export type ConnMetaResult = z.infer<typeof ConnMetaResultSchema>;
+
+export const ConnSchemaParamsSchema = z.object({
+  driverId: z.string().min(1),
+});
+export const ConnSchemaResultSchema = z.object({
+  schema: FormSchemaSchema,
+});
+export type ConnSchemaResult = z.infer<typeof ConnSchemaResultSchema>;
+
+// ── conn.test ──────────────────────────────────────────────────
+export const ConnTestParamsSchema = z.object({
+  driverId: z.string().min(1),
+  options: z.record(z.string(), z.unknown()),
+  /** null = 沿用已存密码（编辑态留空）；明文仅在请求瞬间经过，不落任何存储 */
+  password: z.string().nullable(),
+  connId: z.string().nullable().optional(),
+});
+export type ConnTestParams = z.infer<typeof ConnTestParamsSchema>;
+
+export const ConnTestResultSchema = z.object({
+  ok: z.boolean(),
+  latencyMs: z.number().optional(),
+  serverVersion: z.string().optional(),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+});
+export type ConnTestResult = z.infer<typeof ConnTestResultSchema>;
+
+// ── conn.save ──────────────────────────────────────────────────
+export const ConnSaveParamsSchema = z.object({
+  connId: z.string().optional(),
+  name: z.string().min(1),
+  driverId: z.string().min(1),
+  env: z.enum(['dev', 'test', 'prod']).nullable().optional(),
+  group: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  readOnly: z.boolean().optional(),
+  options: z.record(z.string(), z.unknown()),
+  /** null = 沿用已存密码；非空 = 设置/覆盖 */
+  password: z.string().nullable(),
+});
+export type ConnSaveParams = z.infer<typeof ConnSaveParamsSchema>;
+
+export const ConnSaveResultSchema = z.object({
+  connId: z.string(),
+});
+export type ConnSaveResult = z.infer<typeof ConnSaveResultSchema>;

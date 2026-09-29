@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConnSaveParamsSchema,
+  ConnTestParamsSchema,
   FetchRowsParamsSchema,
   RPC_PROTOCOL_VERSION,
   RpcRequestSchema,
@@ -17,7 +19,7 @@ describe('RPC 帧校验', () => {
     expect(() => RpcRequestSchema.parse({ kind: 'req', method: 'sys.handshake' })).toThrow();
   });
 
-  it('响应帧允许 result 与 error 互斥语义存在', () => {
+  it('响应帧允许 result 与 error 语义', () => {
     const ok = RpcResponseSchema.parse({ kind: 'res', id: 'wv-1', ok: true, result: { a: 1 } });
     const bad = RpcResponseSchema.parse({
       kind: 'res',
@@ -40,6 +42,20 @@ describe('方法参数校验', () => {
 
   it('fetchRows：缺少必填字段拒绝', () => {
     expect(() => FetchRowsParamsSchema.parse({ db: 'demo', obj: 'users', limit: 10 })).toThrow();
+  });
+
+  it('conn.test：password 必须显式 nullable（沿用已存密码语义）', () => {
+    const base = { driverId: 'mysql', options: { host: '127.0.0.1' } };
+    expect(ConnTestParamsSchema.parse({ ...base, password: null }).password).toBeNull();
+    expect(ConnTestParamsSchema.parse({ ...base, password: 's3cret' }).password).toBe('s3cret');
+    expect(() => ConnTestParamsSchema.parse({ ...base })).toThrow();
+  });
+
+  it('conn.save：name 必填非空', () => {
+    const base = { driverId: 'mysql', options: {}, password: null };
+    expect(ConnSaveParamsSchema.parse({ ...base, name: '本地 MySQL' }).name).toBe('本地 MySQL');
+    expect(() => ConnSaveParamsSchema.parse({ ...base, name: '' })).toThrow();
+    expect(() => ConnSaveParamsSchema.parse({ ...base })).toThrow();
   });
 
   it('协议版本常量为 1', () => {
