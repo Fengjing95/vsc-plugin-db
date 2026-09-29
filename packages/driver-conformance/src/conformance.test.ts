@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest';
 import { createMockDriver } from '@db-explorer/driver-mock';
-import { runConnectionChecks, runMetadataChecks } from './index';
+import {
+  runConnectionChecks,
+  runFilterPushdownChecks,
+  runMetadataChecks,
+  runPaginationChecks,
+} from './index';
 
 function mockConnection() {
   return createMockDriver().connect(
@@ -26,4 +31,17 @@ it('conformance: mock 驱动通过 metadata 组（M2）', async () => {
   const summary = await runMetadataChecks(mockConnection);
   expect(summary.failed).toBe(0);
   expect(summary.results.length).toBeGreaterThanOrEqual(5);
+});
+
+it('conformance: mock 驱动通过 pagination 组（M3）', async () => {
+  const summary = await runPaginationChecks(mockConnection);
+  expect(summary.failed).toBe(0);
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(4);
+});
+
+it('conformance: mock 驱动通过 filter-pushdown 组（M3）', async () => {
+  const summary = await runFilterPushdownChecks(mockConnection);
+  expect(summary.failed).toBe(0);
+  // 13 个 FilterOp + 组合 + search
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(15);
 });

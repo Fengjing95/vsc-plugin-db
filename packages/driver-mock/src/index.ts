@@ -152,16 +152,70 @@ const tableDefs: Record<string, TableDef> = {
         { page: `/p/${i + 1}`, ts: 1700000000000 + i * 1000 },
       ]),
   },
+  'demo.wide': {
+    kind: 'table',
+    comment: '宽表演示（1000 行 × 20 列，M3 DoD：打开 <1.5s）',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2),
+      col('email', 'varchar(128)', 'string', 3),
+      col('category', 'varchar(32)', 'string', 4),
+      col('price', 'decimal(10,2)', 'decimal', 5),
+      col('quantity', 'int', 'integer', 6),
+      col('active', 'boolean', 'boolean', 7),
+      col('score', 'double', 'float', 8),
+      col('created_at', 'datetime', 'datetime', 9),
+      col('birthday', 'date', 'date', 10),
+      col('wake_up', 'time', 'time', 11),
+      col('meta', 'json', 'json', 12),
+      col('avatar', 'blob', 'binary', 13),
+      col('note', 'text', 'string', 14),
+      col('tag_a', 'varchar(16)', 'string', 15),
+      col('tag_b', 'varchar(16)', 'string', 16),
+      col('lag01', 'bigint', 'integer', 17),
+      col('lag02', 'varchar(32)', 'string', 18),
+      col('lag03', 'decimal(8,3)', 'decimal', 19),
+      col('deleted_at', 'datetime', 'datetime', 20),
+    ],
+    rows: () =>
+      Array.from({ length: 1000 }, (_, i) => {
+        const id = i + 1;
+        return [
+          id,
+          `用户${id}`,
+          `user${id}@example.com`,
+          ['vip', 'normal', 'guest'][i % 3],
+          `${(id * 3.33).toFixed(2)}`,
+          id % 97,
+          id % 2 === 0,
+          (id % 100) / 7,
+          '2024-03-01 09:30:00',
+          '1990-06-15',
+          '08:30:00.000',
+          { idx: id, tags: ['a', 'b'] },
+          id % 5 === 0 ? null : Buffer.from(`bin-${id}`).toString('base64'),
+          id % 4 === 0 ? null : `备注文本 ${id}`,
+          `tag-${id % 7}`,
+          id % 3 === 0 ? null : `tag-${id % 11}`,
+          id * 1000,
+          id % 6 === 0 ? null : `x${id}`,
+          `${(id / 3).toFixed(3)}`,
+          id % 10 === 0 ? '2024-05-01 00:00:00' : null,
+        ];
+      }),
+  },
 };
 
 const databases: DatabaseMeta[] = [
   { name: 'demo', charset: 'utf8mb4', comment: '演示业务库' },
   { name: 'analytics', charset: 'utf8mb4', comment: '分析库' },
-  { name: 'big', charset: 'utf8mb4', comment: '规模演示库（100 表，M2 性能验收）' },
+  { name: 'big', charset: 'utf8mb4', comment: '规模演示库（100 表 × 5 万行，M3 性能验收）' },
 ];
 
-/** big 库：t001..t100，验证“展开 100 表库 <1s”（概要设计 §10 M2 DoD） */
+/** big 库：t001..t100，每表 5 万行（M3 DoD：5 万行虚拟滚动不卡顿） */
 const BIG_TABLE_COUNT = 100;
+const BIG_TABLE_ROWS = 50_000;
 
 function bigDef(_obj: string): TableDef {
   return {
@@ -174,7 +228,10 @@ function bigDef(_obj: string): TableDef {
       col('value', 'decimal(10,2)', 'decimal', 3),
     ],
     rows: () =>
-      Array.from({ length: 20 }, (_, i) => [i + 1, `row${i + 1}`, `${(i + 1) * 1.5}`]),
+      Array.from({ length: BIG_TABLE_ROWS }, (_, i) => {
+        const id = i + 1;
+        return [id, `row${id}`, `${(id * 1.5).toFixed(2)}`];
+      }),
   };
 }
 
@@ -205,6 +262,35 @@ function cellToString(v: unknown): string {
   return typeof v === 'string' ? v : JSON.stringify(v);
 }
 
+function toNum(v: unknown): number | undefined {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'boolean' || v === null || v === undefined) return undefined;
+  if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+  return undefined;
+}
+
+/** 值相等：严格相等优先，数值化后比较（SQL 语义：DECIMAL 字符串 '15.0' = 15） */
+function valEq(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  const na = toNum(a);
+  const nb = toNum(b);
+  if (na !== undefined && nb !== undefined) return na === nb;
+  return false;
+}
+
+function valCmp(a: unknown, b: unknown): number {
+  const na = toNum(a);
+  const nb = toNum(b);
+  if (na !== undefined && nb !== undefined) return na - nb;
+  const sa = cellToString(a);
+  const sb = cellToString(b);
+  return sa < sb ? -1 : sa > sb ? 1 : 0;
+}
+
+/**
+ * SQL 三值逻辑筛选：与 NULL 的任何比较均为 unknown → 行被排除，
+ * 仅 isNull / isNotNull 涉及 NULL（契约基准与 driver-conformance 一致）。
+ */
 function applyFilters(rows: unknown[][], columns: ColumnMeta[], filters: FilterCondition[]): unknown[][] {
   let out = rows;
   for (const f of filters) {
@@ -215,22 +301,39 @@ function applyFilters(rows: unknown[][], columns: ColumnMeta[], filters: FilterC
     out = out.filter((row) => {
       const v = row[idx];
       switch (f.op) {
-        case 'eq':
-          return v === f.value;
-        case 'ne':
-          return v !== f.value;
-        case 'like':
-          return cellToString(v).includes(String(f.value ?? ''));
-        case 'gt':
-          return Number(v) > Number(f.value);
-        case 'lt':
-          return Number(v) < Number(f.value);
-        case 'in':
-          return (f.values ?? []).some((x) => x === v);
         case 'isNull':
           return v === null;
         case 'isNotNull':
           return v !== null;
+        default:
+          break;
+      }
+      if (v === null || v === undefined) return false;
+      switch (f.op) {
+        case 'eq':
+          return valEq(v, f.value);
+        case 'ne':
+          return !valEq(v, f.value);
+        case 'gt':
+          return valCmp(v, f.value) > 0;
+        case 'ge':
+          return valCmp(v, f.value) >= 0;
+        case 'lt':
+          return valCmp(v, f.value) < 0;
+        case 'le':
+          return valCmp(v, f.value) <= 0;
+        case 'like':
+          return cellToString(v).includes(cellToString(f.value));
+        case 'notLike':
+          return !cellToString(v).includes(cellToString(f.value));
+        case 'in':
+          return (f.values ?? []).some((x) => valEq(v, x));
+        case 'notIn':
+          return !(f.values ?? []).some((x) => valEq(v, x));
+        case 'between': {
+          const [lo, hi] = f.values ?? [];
+          return valCmp(v, lo) >= 0 && valCmp(v, hi) <= 0;
+        }
         default:
           throw new DriverError('E_VALIDATION', `筛选操作符 "${f.op}" 暂不支持`);
       }
@@ -263,7 +366,7 @@ export class MockConnection implements IConnection {
             name,
             kind: 'table' as const,
             comment: 'big 表',
-            rowEstimate: 20,
+            rowEstimate: BIG_TABLE_ROWS,
           };
         }),
       );
@@ -314,12 +417,14 @@ export class MockConnection implements IConnection {
           if (idx < 0) continue;
           const av = a[idx];
           const bv = b[idx];
+          // MySQL NULL 序：ASC 最前、DESC 最后
+          const aNull = av === null || av === undefined;
+          const bNull = bv === null || bv === undefined;
           let cmp: number;
-          if (typeof av === 'number' && typeof bv === 'number') {
-            cmp = av - bv;
-          } else {
-            cmp = cellToString(av).localeCompare(cellToString(bv));
-          }
+          if (aNull && bNull) cmp = 0;
+          else if (aNull) cmp = -1;
+          else if (bNull) cmp = 1;
+          else cmp = valCmp(av, bv);
           if (cmp !== 0) return s.dir === 'asc' ? cmp : -cmp;
         }
         return 0;

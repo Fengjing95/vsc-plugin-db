@@ -97,7 +97,7 @@ export function registerCommands(
     }),
 
     vscode.commands.registerCommand('dbExplorer.openTable', async (node?: DbTreeNode) => {
-      const { connId, db, obj } = node?.payload ?? {};
+      const { connId, db, obj, rowEstimate } = node?.payload ?? {};
       if (!connId || !db || !obj) {
         return;
       }
@@ -107,6 +107,8 @@ export function registerCommands(
         obj,
         viewId: `${connId}/${db}/${obj}`,
         title: `${obj} @ ${db}`,
+        rowEstimate: typeof rowEstimate === 'number' ? rowEstimate : undefined,
+        readOnly: store.get(connId)?.readOnly ?? false,
       });
     }),
 

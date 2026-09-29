@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FilterCondition } from '@db-explorer/core';
 import {
   buildSelect,
   encodeValue,
@@ -103,6 +104,47 @@ describe('buildSelect', () => {
       limit: 10,
     });
     expect(built.sql).toContain('ORDER BY `id` DESC, `name` ASC');
+  });
+
+  it('契约 §12.2-4：每个 FilterOp 生成占位符，值不拼接进 SQL', () => {
+    const literals = ['v"lue', '100%', "o'x", '18'];
+    const filters: FilterCondition[] = [
+      { column: 'c', op: 'eq', value: literals[0] },
+      { column: 'c', op: 'ne', value: literals[0] },
+      { column: 'c', op: 'gt', value: 18 },
+      { column: 'c', op: 'ge', value: 18 },
+      { column: 'c', op: 'lt', value: 18 },
+      { column: 'c', op: 'le', value: 18 },
+      { column: 'c', op: 'like', value: literals[1] },
+      { column: 'c', op: 'notLike', value: literals[1] },
+      { column: 'c', op: 'in', values: ['a', literals[2]] },
+      { column: 'c', op: 'notIn', values: ['a', 'b'] },
+      { column: 'c', op: 'between', values: [1, literals[3]] },
+    ];
+    for (const f of filters) {
+      const built = buildSelect({ db: 'd', obj: 't', filters: [f], searchColumns: [], limit: 10 });
+      const valuesInSql = [literals[0], literals[1], literals[2], literals[3], 'a']
+        .filter((v) => v !== '18')
+        .filter((v) => built.sql.includes(v));
+      expect(valuesInSql, `op=${f.op} 的值被拼接进 SQL: ${built.sql}`).toEqual([]);
+      expect(built.sql).toContain('?');
+    }
+    // isNull / isNotNull 无值参数
+    for (const op of ['isNull', 'isNotNull'] as const) {
+      const built = buildSelect({ db: 'd', obj: 't', filters: [{ column: 'c', op }], searchColumns: [], limit: 10 });
+      expect(built.sql).toContain(`\`c\` IS ${op === 'isNull' ? 'NULL' : 'NOT NULL'}`);
+    }
+  });
+
+  it('契约 §12.2-3：未指定排序时由调用方补主键排序（fetchRows 默认 ORDER BY）', () => {
+    const built = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      sorts: [{ column: 'id', dir: 'asc' }],
+      searchColumns: [],
+      limit: 10,
+    });
+    expect(built.sql).toContain('ORDER BY `id` ASC');
   });
 });
 

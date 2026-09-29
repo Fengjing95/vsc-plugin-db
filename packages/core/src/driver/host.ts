@@ -15,22 +15,38 @@ export interface QueryHostRequest extends Omit<QueryRequest, 'timeoutMs' | 'sign
  * 未来切换 vscode.UtilityProcess 隔离时仅替换实现，驱动代码零改动。
  */
 export interface DriverHost {
-  fetchRows(conn: IConnection, req: FetchRowsHostRequest): Promise<ResultSet>;
-  query(conn: IConnection, req: QueryHostRequest): Promise<ResultSet[]>;
+  fetchRows(
+    conn: IConnection,
+    req: FetchRowsHostRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ResultSet>;
+  query(
+    conn: IConnection,
+    req: QueryHostRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ResultSet[]>;
   applyChanges(conn: IConnection, db: string, obj: string, cs: ChangeSet): Promise<ApplyResult>;
 }
 
 export class InProcessDriverHost implements DriverHost {
   constructor(private readonly defaultTimeoutMs = 15_000) {}
 
-  fetchRows(conn: IConnection, req: FetchRowsHostRequest): Promise<ResultSet> {
+  fetchRows(
+    conn: IConnection,
+    req: FetchRowsHostRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ResultSet> {
     const { timeoutMs = this.defaultTimeoutMs, ...rest } = req;
-    return runWithTimeout((signal) => conn.fetchRows({ ...rest, timeoutMs, signal }), timeoutMs);
+    return runWithTimeout((signal) => conn.fetchRows({ ...rest, timeoutMs, signal }), timeoutMs, options?.signal);
   }
 
-  query(conn: IConnection, req: QueryHostRequest): Promise<ResultSet[]> {
+  query(
+    conn: IConnection,
+    req: QueryHostRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ResultSet[]> {
     const { timeoutMs = this.defaultTimeoutMs, ...rest } = req;
-    return runWithTimeout((signal) => conn.query({ ...rest, timeoutMs, signal }), timeoutMs);
+    return runWithTimeout((signal) => conn.query({ ...rest, timeoutMs, signal }), timeoutMs, options?.signal);
   }
 
   applyChanges(

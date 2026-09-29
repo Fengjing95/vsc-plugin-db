@@ -7,10 +7,17 @@ export const RPC_PROTOCOL_VERSION = 1;
 export const RpcMethods = {
   handshake: 'sys.handshake',
   fetchRows: 'table.fetchRows',
+  exportRun: 'export.run',
+  exportCancel: 'export.cancel',
   connMeta: 'conn.getMeta',
   connSchema: 'conn.getSchema',
   connTest: 'conn.test',
   connSave: 'conn.save',
+} as const;
+
+/** Host → Webview 单向推送事件（概要设计 7.4.2） */
+export const RpcEvents = {
+  exportProgress: 'evt:export.progress',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -37,12 +44,41 @@ export const HandshakeResultSchema = z.object({
 export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
 
 // ── table.fetchRows ────────────────────────────────────────────
+/** 与 core FilterOp 对齐（驱动开发规范 §4）；regex 不支持（跨库不可移植） */
+export const FilterOpSchema = z.enum([
+  'eq', 'ne', 'gt', 'ge', 'lt', 'le',
+  'like', 'notLike', 'in', 'notIn',
+  'isNull', 'isNotNull', 'between',
+]);
+export type FilterOpPayload = z.infer<typeof FilterOpSchema>;
+
+/** 多条件 AND 语义；单值 op 用 value，in/notIn/between 用 values（between: [low, high]） */
+export const FilterConditionSchema = z.object({
+  column: z.string().min(1),
+  op: FilterOpSchema,
+  value: z.unknown().optional(),
+  values: z.array(z.unknown()).optional(),
+});
+export type FilterConditionPayload = z.infer<typeof FilterConditionSchema>;
+
+export const SortSpecSchema = z.object({
+  column: z.string().min(1),
+  dir: z.enum(['asc', 'desc']),
+});
+export type SortSpecPayload = z.infer<typeof SortSpecSchema>;
+
 export const FetchRowsParamsSchema = z.object({
   connId: z.string().min(1),
   db: z.string().min(1),
   obj: z.string().min(1),
   limit: z.number().int().positive().max(5000),
   offset: z.number().int().min(0).optional(),
+  /** 列投影（列显示/隐藏），缺省 = 全部列 */
+  columns: z.array(z.string().min(1)).optional(),
+  filters: z.array(FilterConditionSchema).max(20).optional(),
+  sorts: z.array(SortSpecSchema).max(5).optional(),
+  /** 全局关键字，Host 侧经驱动下推（LIKE/全文由驱动决定，须转义） */
+  search: z.string().max(256).optional(),
 });
 export type FetchRowsParams = z.infer<typeof FetchRowsParamsSchema>;
 
@@ -56,6 +92,50 @@ export const ResultSetSchema = z.object({
   truncated: z.boolean().optional(),
 });
 export type ResultSetPayload = z.infer<typeof ResultSetSchema>;
+
+// ── export.run / export.cancel（概要设计 5.7：Host 流式写，不进 Webview）──
+export const ExportFormatSchema = z.enum(['csv', 'json']);
+export type ExportFormat = z.infer<typeof ExportFormatSchema>;
+
+export const ExportScopeSchema = z.enum(['page', 'result']);
+export type ExportScope = z.infer<typeof ExportScopeSchema>;
+
+export const ExportRunParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  format: ExportFormatSchema,
+  scope: ExportScopeSchema,
+  /** scope=page 时的页参数（与 table.fetchRows 一致的取数形状） */
+  limit: z.number().int().positive().max(5000).optional(),
+  offset: z.number().int().min(0).optional(),
+  columns: z.array(z.string().min(1)).optional(),
+  filters: z.array(FilterConditionSchema).max(20).optional(),
+  sorts: z.array(SortSpecSchema).max(5).optional(),
+  search: z.string().max(256).optional(),
+});
+export type ExportRunParams = z.infer<typeof ExportRunParamsSchema>;
+
+export const ExportRunResultSchema = z.object({
+  filePath: z.string(),
+  rows: z.number().int(),
+  bytes: z.number().int(),
+  canceled: z.boolean().optional(),
+});
+export type ExportRunResult = z.infer<typeof ExportRunResultSchema>;
+
+export const ExportCancelParamsSchema = z.object({
+  exportId: z.string().min(1),
+});
+export type ExportCancelParams = z.infer<typeof ExportCancelParamsSchema>;
+
+/** evt:export.progress 负载 */
+export const ExportProgressEventSchema = z.object({
+  exportId: z.string(),
+  rows: z.number().int(),
+  bytes: z.number().int(),
+});
+export type ExportProgressEvent = z.infer<typeof ExportProgressEventSchema>;
 
 // ── conn.getMeta / conn.getSchema ─────────────────────────────
 export const DriverSummarySchema = z.object({

@@ -232,12 +232,17 @@ export class MysqlConnection implements IConnection {
   async fetchRows(req: FetchRowsRequest): Promise<ResultSet> {
     try {
       const cols = await this.listColumns(req.db, req.obj);
+      // 翻页稳定性契约（概要设计 §12.2-3）：未指定排序时默认按主键升序
+      const pkCols = cols.filter((c) => c.isPrimaryKey).map((c) => c.name);
+      const sorts = req.sorts?.length
+        ? req.sorts
+        : pkCols.map((c) => ({ column: c, dir: 'asc' as const }));
       const built = buildSelect({
         db: req.db,
         obj: req.obj,
         columns: req.columns,
         filters: req.filters,
-        sorts: req.sorts,
+        sorts,
         search: req.search,
         searchColumns: cols.map((c) => c.name),
         limit: req.limit,

@@ -30,10 +30,11 @@ describe('driver-mock：M0 可插拔契约演示', () => {
     expect(dbs.map((d) => d.name)).toEqual(['demo', 'analytics', 'big']);
 
     const objs = await conn.listObjects('demo');
-    expect(objs).toHaveLength(3);
+    expect(objs).toHaveLength(4);
     expect(objs.filter((o) => o.kind === 'table').map((o) => o.name).sort()).toEqual([
       'orders',
       'users',
+      'wide',
     ]);
     expect(objs.find((o) => o.kind === 'view')?.name).toBe('v_active_users');
   });
@@ -102,6 +103,17 @@ describe('driver-mock：M0 可插拔契约演示', () => {
     });
     expect(filtered.rowCount).toBe(1);
     expect(filtered.rows[0][0]).toBe(5);
+  });
+
+  it('M3 DoD 数据集：demo.wide 1000×20、big 库单表 5 万行', async () => {
+    const conn = await connection();
+    const wide = await conn.fetchRows({ db: 'demo', obj: 'wide', limit: 1, timeoutMs: 1000 });
+    expect(wide.columns).toHaveLength(20);
+    expect(wide.rows[0]).toHaveLength(20);
+    expect(wide.totalCount).toBe(1000);
+
+    const big = await conn.fetchRows({ db: 'big', obj: 't001', limit: 1, timeoutMs: 1000 });
+    expect(big.totalCount).toBe(50_000);
   });
 
   it('不存在的表 → E_NOT_FOUND', async () => {

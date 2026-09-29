@@ -174,6 +174,17 @@
           "type": "number",
           "default": 15000,
           "description": "驱动调用默认超时（毫秒）"
+        },
+        "dbExplorer.export.chunkRows": {
+          "type": "number",
+          "default": 1000,
+          "description": "导出分页批量（行）"
+        },
+        "dbExplorer.export.defaultFormat": {
+          "type": "string",
+          "default": "csv",
+          "enum": ["csv", "json"],
+          "description": "导出默认格式"
         }
       }
     }

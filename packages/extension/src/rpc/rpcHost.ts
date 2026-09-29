@@ -8,6 +8,7 @@ import {
   RpcRequestSchema,
   type RpcError,
 } from '@db-explorer/protocol';
+import type { ResultExporter } from '../services/resultExporter';
 import type { ConnectionManager } from '../services/connectionManager';
 
 export interface RpcHostDeps {
@@ -16,6 +17,8 @@ export interface RpcHostDeps {
   output: vscode.OutputChannel;
   connections?: ConnectionManager;
   host?: InProcessDriverHost;
+  /** 表格导出（export.run / export.cancel），仅表格视图注入 */
+  exporter?: ResultExporter;
   /** 页面自有方法（conn.* 等），命中后优先于内置分发 */
   handlers?: Record<string, (params: unknown) => Promise<unknown>>;
 }
@@ -73,14 +76,45 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             return;
           }
           const p = FetchRowsParamsSchema.parse(req.params);
+          // core 保证 limit ≤ maxRows 配置（驱动开发规范 §4）
+          const maxRows = vscode.workspace
+            .getConfiguration('dbExplorer.query')
+            .get<number>('maxRows', 1000);
           const conn = await deps.connections.ensureConnected(p.connId);
           const rs = await deps.host.fetchRows(conn, {
             db: p.db,
             obj: p.obj,
-            limit: p.limit,
+            limit: Math.min(p.limit, maxRows),
             offset: p.offset,
+            columns: p.columns,
+            filters: p.filters,
+            sorts: p.sorts,
+            search: p.search,
           });
           respond(true, { result: rs });
+          return;
+        }
+
+        case RpcMethods.exportRun: {
+          if (!deps.exporter) {
+            respond(false, {
+              error: { code: 'E_UNKNOWN_METHOD', message: `当前视图不支持 "${req.method}"` },
+            });
+            return;
+          }
+          respond(true, { result: await deps.exporter.run(req.params) });
+          return;
+        }
+
+        case RpcMethods.exportCancel: {
+          if (!deps.exporter) {
+            respond(false, {
+              error: { code: 'E_UNKNOWN_METHOD', message: `当前视图不支持 "${req.method}"` },
+            });
+            return;
+          }
+          deps.exporter.cancel(req.params);
+          respond(true, { result: {} });
           return;
         }
 

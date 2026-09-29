@@ -28,6 +28,7 @@ export interface DbTreeNode {
     obj?: string;
     kind?: FolderKind;
     column?: string;
+    rowEstimate?: number;
   };
 }
 
@@ -157,7 +158,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           collapsibleState: kind === 'table' ? Collapsed : None,
           contextValue: kind,
           iconId: kind === 'table' ? 'table' : 'eye',
-          payload: { connId, db, obj: o.name },
+          payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
         }));
     }
 

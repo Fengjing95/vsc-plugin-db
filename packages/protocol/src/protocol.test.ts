@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
+  ExportCancelParamsSchema,
+  ExportRunParamsSchema,
   FetchRowsParamsSchema,
   RPC_PROTOCOL_VERSION,
   RpcRequestSchema,
@@ -42,6 +44,52 @@ describe('方法参数校验', () => {
 
   it('fetchRows：缺少必填字段拒绝', () => {
     expect(() => FetchRowsParamsSchema.parse({ db: 'demo', obj: 'users', limit: 10 })).toThrow();
+  });
+
+  it('fetchRows：filters/sorts/search 合法形状可通过', () => {
+    const base = { connId: 'c1', db: 'demo', obj: 'users' };
+    const parsed = FetchRowsParamsSchema.parse({
+      ...base,
+      limit: 50,
+      columns: ['id', 'name'],
+      filters: [
+        { column: 'status', op: 'eq', value: 'active' },
+        { column: 'age', op: 'between', values: [1, 9] },
+        { column: 'note', op: 'isNull' },
+      ],
+      sorts: [{ column: 'id', dir: 'desc' }],
+      search: '张',
+    });
+    expect(parsed.filters).toHaveLength(3);
+    expect(parsed.sorts?.[0]?.dir).toBe('desc');
+  });
+
+  it('fetchRows：非法 FilterOp / 缺少 dir / 超量 filters 拒绝', () => {
+    const base = { connId: 'c1', db: 'demo', obj: 'users', limit: 50 };
+    expect(() =>
+      FetchRowsParamsSchema.parse({ ...base, filters: [{ column: 'a', op: 'regex', value: 'x' }] }),
+    ).toThrow();
+    expect(() =>
+      FetchRowsParamsSchema.parse({ ...base, sorts: [{ column: 'a', dir: 'up' }] }),
+    ).toThrow();
+    expect(() =>
+      FetchRowsParamsSchema.parse({
+        ...base,
+        filters: Array.from({ length: 21 }, (_, i) => ({ column: `c${i}`, op: 'eq', value: 1 })),
+      }),
+    ).toThrow();
+  });
+
+  it('export.run：format/scope 枚举校验', () => {
+    const base = { connId: 'c1', db: 'demo', obj: 'users' };
+    expect(ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'result' }).format).toBe('csv');
+    expect(() => ExportRunParamsSchema.parse({ ...base, format: 'xlsx', scope: 'result' })).toThrow();
+    expect(() => ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'all' })).toThrow();
+  });
+
+  it('export.cancel：exportId 必填', () => {
+    expect(ExportCancelParamsSchema.parse({ exportId: 'e1' }).exportId).toBe('e1');
+    expect(() => ExportCancelParamsSchema.parse({})).toThrow();
   });
 
   it('conn.test：password 必须显式 nullable（沿用已存密码语义）', () => {
