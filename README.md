@@ -58,7 +58,7 @@ packages/
 
 ## 里程碑
 
-M0 骨架 ✅ → M1 连接管理 ✅ → M2 元数据树 ✅ → M3 表格视图-只读 ✅（代码完成，待人工验证 UI）→ **M4 表格编辑（下一步）** → M5 SQL Console → M6 Redis 驱动（验证可插拔）→ M7 增强。规划与 DoD 见[概要设计 第 10 章](docs/概要设计.md)。
+M0 骨架 ✅ → M1 连接管理 ✅ → M2 元数据树 ✅ → M3 表格视图-只读 ✅ → **M4 表格编辑（下一步）** → M5 SQL Console → M6 Redis 驱动（验证可插拔）→ M7 增强。规划与 DoD 见[概要设计 第 10 章](docs/概要设计.md)。
 
 ### M4 开工清单（交接备忘）
 
@@ -68,5 +68,12 @@ M0 骨架 ✅ → M1 连接管理 ✅ → M2 元数据树 ✅ → M3 表格视�
 4. 驱动侧：MySQL `applyChanges`（主键+变更列原值乐观锁、`IS NULL` 匹配、事务回滚）
 5. 契约测试“变更集”组（insert 回填主键、冲突 → E_CONFLICT、混合原子性）
 6. Webview 崩溃恢复（sys.handshake 回放快照，概要 §5.4.5）
+7. **Redis 语义预演（防 M6 返工）**：设计 `applyChanges` 时同步考虑 Redis 场景——Hash/List/Set/ZSet 的编辑映射（SET/HSET 等）、`primaryKey` 恒为 `['key']` 的 RowKey、虚拟列（field/value、`__ttl`）只读约束，见驱动规范 §5.3
+
+### M6 前置债（Redis 接入前必须处理，M2/M3 的已知简化）
+
+- **树层级硬编码**：`packages/extension/src/tree/treeDataProvider.ts` 目前无条件渲染“表/视图 → 列/键/索引”目录（MySQL 形状），尚未消费 `capabilities.hierarchy`。M6 前改造为能力感知渲染（概要设计 5.1.3），否则 Redis 连接会错误渲染出表/视图层级
+- **cursor 分页链路**：core 契约已有 `FetchRowsRequest.cursor` / `ResultSet.nextCursor`，但 `packages/protocol/src/methods.ts` 的 `FetchRowsParamsSchema` 尚无 cursor 字段——接 Redis SCAN（禁止 KEYS，驱动规范 §5.3）前补齐
+- **类型化展示验证**：key 类型图标、按前缀分组的 Keys 目录、`__ttl` 虚拟列——M6 交付物，以真实 Redis 验证收口
 
 纪律：四道门禁（typecheck/test/lint/build）全绿再提交；陷阱备忘见 `packages/extension/src/views/webviewHtmlInject.ts` 头注释（Webview CSP nonce）。
