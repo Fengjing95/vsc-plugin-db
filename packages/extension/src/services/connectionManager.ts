@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
-import { DriverError, type ConnectionConfig, type DriverRegistry, type IConnection } from '@db-explorer/core';
+import {
+  DriverError,
+  type ConnectionConfig,
+  type DriverRegistry,
+  type IConnection,
+  type IDatabaseDriver,
+} from '@db-explorer/core';
 import type { ConnectionStore } from './connectionStore';
 
 /** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
@@ -13,6 +19,17 @@ export class ConnectionManager implements vscode.Disposable {
 
   async listConfigs(): Promise<ConnectionConfig[]> {
     return this.store.list();
+  }
+
+  /** 连接配置（不触发建连；密码不出现在此结构） */
+  getConfig(connId: string): ConnectionConfig | undefined {
+    return this.store.get(connId);
+  }
+
+  /** 连接的驱动实例（capabilities 判定用，如 M4 编辑权限） */
+  getDriver(connId: string): IDatabaseDriver | undefined {
+    const cfg = this.getConfig(connId);
+    return cfg ? this.registry.get(cfg.driverId) : undefined;
   }
 
   async ensureConnected(connId: string): Promise<IConnection> {

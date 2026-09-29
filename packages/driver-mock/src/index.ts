@@ -1,5 +1,6 @@
 import {
   DriverError,
+  type ApplyResult,
   type ChangeSet,
   type ColumnMeta,
   type CompletionSource,
@@ -17,6 +18,7 @@ import {
   type PreviewItem,
   type QueryRequest,
   type ResultSet,
+  type RowKey,
   type TestResult,
 } from '@db-explorer/core';
 
@@ -24,19 +26,22 @@ import {
  * M0 演示驱动：纯内存数据源。
  * 用途：验证“实现 IDatabaseDriver + 注册即接入”的可插拔契约（核心代码 0 改动），
  * 并为资源树 / 表格视图开发提供稳定数据。
+ * M4：实现内存版 previewChanges/applyChanges（驱动规范 §8 语义：字段级乐观锁、
+ * IS NULL 匹配、失败整体回滚），数据为**共享物化存储**——跨连接一致（模拟真实
+ * 服务端），冲突场景可经两个视图人为构造；测试用 resetMockStore() 复位。
  */
 export const MOCK_DRIVER_ID = 'mock';
 
 const capabilities: DriverCapabilities = {
   supportsSQL: false, // M5 由真实驱动实现
-  supportsTransaction: false,
+  supportsTransaction: true, // applyChanges 整体回滚（内存快照恢复）
   supportsInteractiveTransaction: false,
   supportsMultipleDatabases: true,
   supportsMultiStatement: false,
   supportsCancel: false,
   supportsDdl: false,
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
-  editable: false, // M4 接入 ChangeSet 后开启
+  editable: true,
   pagination: 'offset',
 };
 
@@ -257,6 +262,44 @@ function defOf(db: string, obj: string): TableDef {
   return def;
 }
 
+// ── 共享物化存储（跨连接一致，冲突可构造；测试用 resetMockStore 复位）──
+
+const store = new Map<string, unknown[][]>();
+const nextIds = new Map<string, number>();
+
+function storeKey(db: string, obj: string): string {
+  return `${db}.${obj}`;
+}
+
+function materialize(db: string, obj: string): unknown[][] {
+  const key = storeKey(db, obj);
+  let rows = store.get(key);
+  if (!rows) {
+    const def = defOf(db, obj);
+    rows = def.rows();
+    store.set(key, rows);
+    // 自增主键水位：物化时一次性扫描
+    const aiIdx = def.columns.findIndex((c) => c.autoIncrement);
+    if (aiIdx >= 0) {
+      let max = 0;
+      for (const row of rows) {
+        const n = Number(row[aiIdx]);
+        if (Number.isFinite(n) && n > max) {
+          max = n;
+        }
+      }
+      nextIds.set(key, max + 1);
+    }
+  }
+  return rows;
+}
+
+/** 测试复位：清空物化存储（下次访问按初始数据重新物化） */
+export function resetMockStore(): void {
+  store.clear();
+  nextIds.clear();
+}
+
 function cellToString(v: unknown): string {
   if (v === null || v === undefined) return '';
   return typeof v === 'string' ? v : JSON.stringify(v);
@@ -342,6 +385,132 @@ function applyFilters(rows: unknown[][], columns: ColumnMeta[], filters: FilterC
   return out;
 }
 
+// ── 变更语句构建（previewChanges / applyChanges 同源，驱动规范 §8-6）──
+
+/** 乐观锁原值匹配：键值全等 + 变更列原值全等；null 语义 = IS NULL（当前值必须也是 NULL） */
+function cellMatches(current: unknown, expected: unknown): boolean {
+  if (expected === null || expected === undefined) {
+    return current === null || current === undefined;
+  }
+  if (current === null || current === undefined) {
+    return false;
+  }
+  return valEq(current, expected);
+}
+
+function rowMatches(
+  row: unknown[],
+  idxOf: (name: string) => number,
+  rowKey: RowKey,
+  changes: Record<string, { old: unknown; new: unknown }> | undefined,
+): boolean {
+  for (const [colName, expected] of Object.entries(rowKey)) {
+    const i = idxOf(colName);
+    if (i < 0 || !cellMatches(row[i], expected)) {
+      return false;
+    }
+  }
+  for (const [colName, ch] of Object.entries(changes ?? {})) {
+    if (colName in rowKey) continue; // 全列匹配模式下 RowKey 已覆盖
+    const i = idxOf(colName);
+    if (i < 0 || !cellMatches(row[i], ch.old)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+interface MockStatement {
+  kind: 'insert' | 'update' | 'delete';
+  tempId?: string;
+  rowKey?: RowKey;
+  changes?: Record<string, { old: unknown; new: unknown }>;
+  values?: Record<string, unknown>;
+  sql: string;
+}
+
+function quoteMockIdentifier(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * ChangeSet → mock 语句（与 applyChanges 共用同一函数，预览即执行）。
+ * 形状对齐 SQL 驱动：标识符引用 + 值以"参数"形式在 statement 上随行。
+ */
+export function buildMockStatements(db: string, obj: string, cs: ChangeSet): MockStatement[] {
+  const table = `${quoteMockIdentifier(db)}.${quoteMockIdentifier(obj)}`;
+  const statements: MockStatement[] = [];
+
+  for (const ins of cs.inserts) {
+    const cols = Object.keys(ins.values);
+    if (cols.length === 0) {
+      throw new DriverError('E_VALIDATION', '新增行没有任何列值', {
+        meta: { kind: 'insert', tempId: ins.tempId },
+      });
+    }
+    statements.push({
+      kind: 'insert',
+      tempId: ins.tempId,
+      values: ins.values,
+      sql: `INSERT INTO ${table} (${cols.map(quoteMockIdentifier).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+    });
+  }
+
+  for (const upd of cs.updates) {
+    const setCols = Object.keys(upd.changes);
+    if (setCols.length === 0) {
+      continue;
+    }
+    const where: string[] = [];
+    const pushCond = (colName: string, expected: unknown): void => {
+      const c = quoteMockIdentifier(colName);
+      if (expected === null || expected === undefined) {
+        where.push(`${c} IS NULL`);
+      } else {
+        where.push(`${c} = ?`);
+      }
+    };
+    for (const [colName, expected] of Object.entries(upd.rowKey)) {
+      pushCond(colName, expected);
+    }
+    for (const colName of setCols) {
+      if (colName in upd.rowKey) continue;
+      pushCond(colName, upd.changes[colName].old);
+    }
+    if (where.length === 0) {
+      throw new DriverError('E_VALIDATION', 'UPDATE 缺少定位条件（无主键且无原值）', {
+        meta: { kind: 'update', rowKey: upd.rowKey },
+      });
+    }
+    statements.push({
+      kind: 'update',
+      rowKey: upd.rowKey,
+      changes: upd.changes,
+      sql: `UPDATE ${table} SET ${setCols.map((c) => `${quoteMockIdentifier(c)} = ?`).join(', ')} WHERE ${where.join(' AND ')}`,
+    });
+  }
+
+  for (const del of cs.deletes) {
+    const where = Object.entries(del.rowKey).map(([colName, expected]) =>
+      expected === null || expected === undefined
+        ? `${quoteMockIdentifier(colName)} IS NULL`
+        : `${quoteMockIdentifier(colName)} = ?`,
+    );
+    if (where.length === 0) {
+      throw new DriverError('E_VALIDATION', 'DELETE 缺少主键定位条件', {
+        meta: { kind: 'delete', rowKey: del.rowKey },
+      });
+    }
+    statements.push({
+      kind: 'delete',
+      rowKey: del.rowKey,
+      sql: `DELETE FROM ${table} WHERE ${where.join(' AND ')}`,
+    });
+  }
+
+  return statements;
+}
+
 export class MockConnection implements IConnection {
   readonly connectionId: string;
 
@@ -379,7 +548,7 @@ export class MockConnection implements IConnection {
           name: key.slice(prefix.length),
           kind: def.kind,
           comment: def.comment,
-          rowEstimate: def.rows().length,
+          rowEstimate: materialize(db, key.slice(prefix.length)).length,
         })),
     );
   }
@@ -399,7 +568,7 @@ export class MockConnection implements IConnection {
   async fetchRows(req: FetchRowsRequest): Promise<ResultSet> {
     const def = defOf(req.db, req.obj);
     const columns = def.columns;
-    let rows = def.rows();
+    let rows = materialize(req.db, req.obj);
 
     if (req.search) {
       const kw = req.search;
@@ -456,16 +625,98 @@ export class MockConnection implements IConnection {
     );
   }
 
-  previewChanges(_db: string, _obj: string, _cs: ChangeSet): Promise<PreviewItem[]> {
-    return Promise.reject(
-      new DriverError('E_UNSUPPORTED', 'M0 演示驱动未实现变更提交（M4 表格编辑接入）'),
-    );
+  previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
+    try {
+      const def = defOf(db, obj);
+      if (def.kind === 'view') {
+        throw new DriverError('E_UNSUPPORTED', '视图不可编辑');
+      }
+      const items: PreviewItem[] = buildMockStatements(db, obj, cs).map((s) => ({
+        kind: s.kind,
+        tempId: s.tempId,
+        rowKey: s.rowKey,
+        sql: s.sql,
+      }));
+      return Promise.resolve(items);
+    } catch (err) {
+      return Promise.reject(err instanceof DriverError ? err : new DriverError('E_INTERNAL', String(err)));
+    }
   }
 
-  applyChanges(_db: string, _obj: string, _cs: ChangeSet) {
-    return Promise.reject(
-      new DriverError('E_UNSUPPORTED', 'M0 演示驱动未实现变更提交（M4 表格编辑接入）'),
-    );
+  /** 内存短事务：逐条执行 + 失败整体回滚（快照恢复），任一 update/delete 匹配行数 ≠ 1 → E_CONFLICT */
+  async applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult> {
+    const def = defOf(db, obj);
+    if (def.kind === 'view') {
+      throw new DriverError('E_UNSUPPORTED', '视图不可编辑');
+    }
+    const started = Date.now();
+    const statements = buildMockStatements(db, obj, cs);
+    if (statements.length === 0) {
+      return { items: [], executionMs: 0 };
+    }
+    const key = storeKey(db, obj);
+    const rows = materialize(db, obj);
+    // 回滚快照（深拷贝受影响表的行数据）
+    const rollback = JSON.parse(JSON.stringify(rows)) as unknown[][];
+    const columns = def.columns;
+    const idxOf = (name: string) => columns.findIndex((c) => c.name === name);
+    const items: ApplyResult['items'] = [];
+
+    try {
+      for (const stmt of statements) {
+        if (stmt.kind === 'insert') {
+          const values = stmt.values ?? {};
+          const row = columns.map((c) => (c.name in values ? values[c.name] : null));
+          for (let i = 0; i < columns.length; i++) {
+            const c = columns[i];
+            if (c.autoIncrement && (row[i] === null || row[i] === undefined)) {
+              const next = nextIds.get(key) ?? 1;
+              row[i] = next;
+              nextIds.set(key, next + 1);
+            }
+          }
+          rows.push(row);
+          const rowKey: RowKey = {};
+          for (const pk of def.primaryKey) {
+            const i = idxOf(pk);
+            if (i >= 0) {
+              rowKey[pk] = row[i];
+            }
+          }
+          items.push({ kind: 'insert', tempId: stmt.tempId, rowKey, sql: stmt.sql, affectedRows: 1 });
+          continue;
+        }
+
+        // update / delete：乐观锁匹配；匹配行数 ≠ 1 → E_CONFLICT（驱动规范 §8-2）
+        let matched = -1;
+        let matchCount = 0;
+        for (let r = 0; r < rows.length; r++) {
+          if (rowMatches(rows[r], idxOf, stmt.rowKey ?? {}, stmt.changes)) {
+            matchCount++;
+            if (matchCount > 1) break;
+            matched = r;
+          }
+        }
+        if (matchCount !== 1) {
+          throw new DriverError('E_CONFLICT', '数据已被他人修改，本次提交已回滚', {
+            meta: { kind: stmt.kind, tempId: stmt.tempId, rowKey: stmt.rowKey },
+          });
+        }
+        if (stmt.kind === 'update') {
+          for (const [colName, ch] of Object.entries(stmt.changes ?? {})) {
+            rows[matched][idxOf(colName)] = ch.new;
+          }
+        } else {
+          rows.splice(matched, 1);
+        }
+        items.push({ kind: stmt.kind, rowKey: stmt.rowKey, sql: stmt.sql, affectedRows: 1 });
+      }
+      return { items, executionMs: Date.now() - started };
+    } catch (err) {
+      // 整体回滚：恢复快照（规范 §8-1 不得半提交）
+      store.set(key, rollback);
+      throw err;
+    }
   }
 
   getCompletionSource(db?: string): Promise<CompletionSource> {
@@ -486,7 +737,7 @@ export class MockConnection implements IConnection {
   }
 
   quoteIdentifier(name: string): string {
-    return `"${name.replace(/"/g, '""')}"`;
+    return quoteMockIdentifier(name);
   }
 
   getDdl(db: string, obj: string): Promise<string> {

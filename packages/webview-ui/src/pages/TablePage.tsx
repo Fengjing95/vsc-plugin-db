@@ -1,14 +1,19 @@
 import type { HandshakeResult } from '@db-explorer/protocol';
 import {
+  ChangesetUpdatedEventSchema,
   ExportProgressEventSchema,
+  RowErrorEventSchema,
   RPC_PROTOCOL_VERSION,
   RpcEvents,
 } from '@db-explorer/protocol';
 import { useEffect } from 'react';
 import { Button } from '../components/ui/button';
+import { Toast } from '../components/ui/toast';
 import { errorCodeToMessage } from '../lib/errors';
+import { rowKeyString } from '../lib/editOverlay';
 import { request, subscribeEvents } from '../rpc/client';
 import { useTableStore } from '../store/tableStore';
+import { ChangePreviewModal } from './table/ChangePreviewModal';
 import { DataGrid } from './table/DataGrid';
 import { FilterBar } from './table/FilterBar';
 import { PaginationBar } from './table/PaginationBar';
@@ -23,8 +28,8 @@ interface TablePageProps {
 }
 
 /**
- * 表格视图（M3 只读）：工具栏 / 筛选栏 / 虚拟网格 / 分页栏。
- * 生命周期：sys.handshake（协议版本校验）→ 初始化 store → 首屏取数。
+ * 表格视图：工具栏 / 筛选栏 / 虚拟网格 / 分页栏 + 编辑（M4）。
+ * 生命周期：sys.handshake（协议版本 + 快照回放 + 编辑权限）→ 初始化 → 首屏取数。
  */
 export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageProps) {
   const phase = useTableStore((s) => s.phase);
@@ -38,6 +43,8 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   const setExportProgress = useTableStore((s) => s.setExportProgress);
   const page = useTableStore((s) => s.page);
   const pageSize = useTableStore((s) => s.pageSize);
+  const applyHandshake = useTableStore((s) => s.applyHandshake);
+  const insertsLen = useTableStore((s) => s.inserts.length);
 
   useEffect(() => {
     let disposed = false;
@@ -47,12 +54,52 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
         if (parsed.success) {
           setExportProgress({ rows: parsed.data.rows, bytes: parsed.data.bytes });
         }
+        return;
+      }
+      if (evt.event === RpcEvents.changesetUpdated) {
+        const parsed = ChangesetUpdatedEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          const c = parsed.data.counts;
+          // Host 权威副本清空（提交成功/撤销）→ 本地覆盖层同步清空
+          if (c.inserts + c.updates + c.deletes === 0) {
+            const s = useTableStore.getState();
+            if (Object.keys(s.updates).length + Object.keys(s.deletes).length + s.inserts.length > 0) {
+              useTableStore.setState({ updates: {}, deletes: {}, inserts: [] });
+            }
+          }
+        }
+        return;
+      }
+      if (evt.event === RpcEvents.rowError) {
+        const parsed = RowErrorEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          const e = parsed.data;
+          const s = useTableStore.getState();
+          if (e.rowKey) {
+            const key = rowKeyString(e.rowKey);
+            useTableStore.setState({
+              rowErrors: { ...s.rowErrors, [key]: { code: e.code, message: e.message, kind: e.kind, tempId: e.tempId, rowKey: e.rowKey } },
+            });
+          }
+          useTableStore.getState().showToast({
+            kind: 'error',
+            text: `${errorCodeToMessage(e.code, e.message)}（第 ${Object.keys(useTableStore.getState().rowErrors).length} 处）`,
+            actions:
+              e.code === 'E_CONFLICT'
+                ? [
+                    { label: '刷新并放弃', onSelect: () => void useTableStore.getState().discardAndRefresh() },
+                    { label: '保留我的修改', onSelect: () => void useTableStore.getState().retainMyChanges() },
+                  ]
+                : undefined,
+          }, 9000);
+        }
+        return;
       }
     });
 
     void (async () => {
       try {
-        // 1) 握手：协议版本协商（概要设计 7.4.3）
+        // 1) 握手：协议版本协商 + 快照回放（概要设计 §5.4.5 崩溃恢复）
         const hs = await request<HandshakeResult>('sys.handshake', { stateId: null });
         if (disposed) return;
         if (hs.protocolVersion !== RPC_PROTOCOL_VERSION) {
@@ -63,8 +110,12 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
           return;
         }
 
-        // 2) 初始化并取数（M4 起握手同时恢复 ChangeSet 快照）
-        useTableStore.getState().init({ connId, db, obj, rowEstimate, readOnly });
+        // 2) 应用握手结果（编辑权限 + ChangeSet 快照 + 视图状态回放）
+        applyHandshake(hs);
+        useTableStore.setState({ connId, db, obj, rowEstimate, readOnly });
+
+        // 3) 首屏取数
+        await useTableStore.getState().refresh();
       } catch (err) {
         if (!disposed) {
           useTableStore.setState({
@@ -95,12 +146,13 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   }
 
   const hasQuery = appliedDrafts.length > 0 || searchApplied !== '';
+  const env = (window.__BOOTSTRAP__?.params.env ?? '') as 'dev' | 'test' | 'prod' | '';
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <Toolbar db={db} obj={obj} />
+      <Toolbar db={db} obj={obj} env={env === '' ? null : env} />
       <FilterBar />
-      {phase === 'ready' && rows.length === 0 ? (
+      {phase === 'ready' && rows.length === 0 && insertsLen === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
           <span>无匹配数据</span>
           {hasQuery && (
@@ -113,6 +165,8 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
         <DataGrid pageOffset={page * pageSize} />
       )}
       <PaginationBar />
+      <ChangePreviewModal env={env === '' ? null : env} />
+      <Toast />
     </div>
   );
 }

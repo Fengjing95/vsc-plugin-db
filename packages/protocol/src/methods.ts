@@ -7,6 +7,10 @@ export const RPC_PROTOCOL_VERSION = 1;
 export const RpcMethods = {
   handshake: 'sys.handshake',
   fetchRows: 'table.fetchRows',
+  editChanges: 'table.editChanges',
+  previewChanges: 'table.previewChanges',
+  applyChanges: 'table.applyChanges',
+  revertChanges: 'table.revertChanges',
   exportRun: 'export.run',
   exportCancel: 'export.cancel',
   connMeta: 'conn.getMeta',
@@ -18,6 +22,8 @@ export const RpcMethods = {
 /** Host → Webview 单向推送事件（概要设计 7.4.2） */
 export const RpcEvents = {
   exportProgress: 'evt:export.progress',
+  changesetUpdated: 'evt:changeset.updated',
+  rowError: 'evt:row.error',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -29,19 +35,31 @@ export const HandshakeParamsSchema = z.object({
 });
 export type HandshakeParams = z.infer<typeof HandshakeParamsSchema>;
 
-export const ChangeSetSnapshotSchema = z.object({
-  inserts: z.array(z.unknown()),
-  updates: z.array(z.unknown()),
-  deletes: z.array(z.unknown()),
-});
+export const RowKeySchema = z.record(z.string(), z.unknown());
+export type RowKeyPayload = z.infer<typeof RowKeySchema>;
 
-export const HandshakeResultSchema = z.object({
-  protocolVersion: z.number(),
-  viewId: z.string(),
-  params: z.record(z.string(), z.string()),
-  changeSet: ChangeSetSnapshotSchema,
+/** 值编码契约（概要设计 §4.4）下的结构化 ChangeSet 快照 */
+export const ChangeSetSnapshotSchema = z.object({
+  inserts: z.array(z.object({ tempId: z.string(), values: z.record(z.string(), z.unknown()) })),
+  updates: z.array(
+    z.object({
+      rowKey: RowKeySchema,
+      original: z.record(z.string(), z.unknown()),
+      changes: z.record(z.string(), z.object({ old: z.unknown(), new: z.unknown() })),
+    }),
+  ),
+  deletes: z.array(z.object({ rowKey: RowKeySchema, original: z.record(z.string(), z.unknown()) })),
 });
-export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
+export type ChangeSetSnapshot = z.infer<typeof ChangeSetSnapshotSchema>;
+
+/** Host 计算的编辑权限（UI 置灰只是第一道防线，Host 层仍 fail-closed） */
+export const EditPermissionSchema = z.object({
+  enabled: z.boolean(),
+  reason: z.string().optional(),
+});
+export type EditPermission = z.infer<typeof EditPermissionSchema>;
+
+
 
 // ── table.fetchRows ────────────────────────────────────────────
 /** 与 core FilterOp 对齐（驱动开发规范 §4）；regex 不支持（跨库不可移植） */
@@ -66,6 +84,36 @@ export const SortSpecSchema = z.object({
   dir: z.enum(['asc', 'desc']),
 });
 export type SortSpecPayload = z.infer<typeof SortSpecSchema>;
+
+/** 筛选构造器草稿（UI 形状，回放需保留原始输入而非下推条件） */
+export const FilterDraftSchema = z.object({
+  id: z.string(),
+  column: z.string().min(1),
+  op: FilterOpSchema,
+  value: z.string(),
+  value2: z.string(),
+});
+export type FilterDraftPayload = z.infer<typeof FilterDraftSchema>;
+
+/** Webview 上行的视图状态（崩溃恢复时随快照回放，概要设计 §5.4.5） */
+export const ViewUiStateSchema = z.object({
+  page: z.number().int().min(0),
+  pageSize: z.number().int().positive(),
+  sorts: z.array(SortSpecSchema),
+  search: z.string(),
+  drafts: z.array(FilterDraftSchema),
+});
+export type ViewUiState = z.infer<typeof ViewUiStateSchema>;
+
+export const HandshakeResultSchema = z.object({
+  protocolVersion: z.number(),
+  viewId: z.string(),
+  params: z.record(z.string(), z.string()),
+  changeSet: ChangeSetSnapshotSchema,
+  uiState: ViewUiStateSchema.optional(),
+  edit: EditPermissionSchema,
+});
+export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
 
 export const FetchRowsParamsSchema = z.object({
   connId: z.string().min(1),
@@ -92,6 +140,132 @@ export const ResultSetSchema = z.object({
   truncated: z.boolean().optional(),
 });
 export type ResultSetPayload = z.infer<typeof ResultSetSchema>;
+
+// ── table.editChanges / previewChanges / applyChanges / revertChanges ──
+// ChangeSet 权威副本在 Host（ADR D-06）：Webview 以编辑操作上行合并，
+// 预览/提交不传 ChangeSet，由 Host 按视图取权威副本下发驱动。
+
+/** 编辑操作（与 core EditOp 对齐） */
+export const EditOpSchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('setCell'),
+    rowKey: RowKeySchema,
+    column: z.string().min(1),
+    old: z.unknown(),
+    new: z.unknown(),
+  }),
+  z.object({
+    op: z.literal('addRow'),
+    tempId: z.string().min(1),
+    values: z.record(z.string(), z.unknown()),
+  }),
+  z.object({
+    op: z.literal('setInsertCell'),
+    tempId: z.string().min(1),
+    column: z.string().min(1),
+    value: z.unknown(),
+  }),
+  z.object({ op: z.literal('removeRow'), tempId: z.string().min(1) }),
+  z.object({ op: z.literal('markDelete'), rowKey: RowKeySchema }),
+  z.object({ op: z.literal('unmarkDelete'), rowKey: RowKeySchema }),
+  z.object({ op: z.literal('revertRow'), rowKey: RowKeySchema }),
+]);
+export type EditOpPayload = z.infer<typeof EditOpSchema>;
+
+export const EditChangesParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  ops: z.array(EditOpSchema).max(2000),
+  uiState: ViewUiStateSchema.optional(),
+});
+export type EditChangesParams = z.infer<typeof EditChangesParamsSchema>;
+
+export const EditChangesResultSchema = z.object({
+  counts: z.object({
+    inserts: z.number().int().min(0),
+    updates: z.number().int().min(0),
+    deletes: z.number().int().min(0),
+  }),
+});
+export type EditChangesResult = z.infer<typeof EditChangesResultSchema>;
+
+/** 预览项（驱动 PreviewItem：与 applyChanges 同源生成，预览即执行） */
+export const PreviewItemSchema = z.object({
+  kind: z.enum(['insert', 'update', 'delete']),
+  tempId: z.string().optional(),
+  rowKey: RowKeySchema.optional(),
+  sql: z.string(),
+  params: z.array(z.unknown()).optional(),
+});
+export type PreviewItemPayload = z.infer<typeof PreviewItemSchema>;
+
+export const PreviewChangesParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+});
+export type PreviewChangesParams = z.infer<typeof PreviewChangesParamsSchema>;
+
+export const PreviewChangesResultSchema = z.object({
+  items: z.array(PreviewItemSchema),
+});
+export type PreviewChangesResult = z.infer<typeof PreviewChangesResultSchema>;
+
+export const ApplyChangesParamsSchema = PreviewChangesParamsSchema;
+export type ApplyChangesParams = z.infer<typeof ApplyChangesParamsSchema>;
+
+export const ApplyChangesResultSchema = z.object({
+  items: z.array(
+    z.object({
+      kind: z.enum(['insert', 'update', 'delete']),
+      tempId: z.string().optional(),
+      rowKey: RowKeySchema.optional(),
+      sql: z.string(),
+      affectedRows: z.number().int(),
+    }),
+  ),
+  executionMs: z.number(),
+});
+export type ApplyChangesResult = z.infer<typeof ApplyChangesResultSchema>;
+
+export const RevertScopeSchema = z.discriminatedUnion('scope', [
+  z.object({ scope: z.literal('all') }),
+  z.object({ scope: z.literal('row'), rowKey: RowKeySchema }),
+  z.object({ scope: z.literal('insert'), tempId: z.string().min(1) }),
+]);
+export type RevertScope = z.infer<typeof RevertScopeSchema>;
+
+export const RevertChangesParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  target: RevertScopeSchema,
+});
+export type RevertChangesParams = z.infer<typeof RevertChangesParamsSchema>;
+
+export const RevertChangesResultSchema = EditChangesResultSchema;
+export type RevertChangesResult = EditChangesResult;
+
+/** evt:changeset.updated 负载（工具栏计数与跨端一致） */
+export const ChangesetUpdatedEventSchema = z.object({
+  counts: z.object({
+    inserts: z.number().int().min(0),
+    updates: z.number().int().min(0),
+    deletes: z.number().int().min(0),
+  }),
+});
+export type ChangesetUpdatedEvent = z.infer<typeof ChangesetUpdatedEventSchema>;
+
+/** evt:row.error 负载（提交失败的错误行定位，交互稿 §4.1 error 态） */
+export const RowErrorEventSchema = z.object({
+  kind: z.enum(['insert', 'update', 'delete']).optional(),
+  tempId: z.string().optional(),
+  rowKey: RowKeySchema.optional(),
+  code: z.string(),
+  message: z.string(),
+});
+export type RowErrorEvent = z.infer<typeof RowErrorEventSchema>;
 
 // ── export.run / export.cancel（概要设计 5.7：Host 流式写，不进 Webview）──
 export const ExportFormatSchema = z.enum(['csv', 'json']);

@@ -1,4 +1,4 @@
-import type { FilterCondition, FilterOp, IConnection, NormalizedType } from '@db-explorer/core';
+import type { ChangeSet, ColumnMeta, FilterCondition, FilterOp, IConnection, NormalizedType, RowKey } from '@db-explorer/core';
 
 /**
  * 驱动契约测试套件（概要设计 §12.2）。
@@ -539,4 +539,298 @@ export async function runMetadataChecks(create: () => Promise<IConnection>): Pro
 
   const failed = results.filter((r) => !r.ok).length;
   return { passed: results.length - failed, failed, results };
+}
+
+// ───────────────────────── M4：变更集 ─────────────────────────
+
+const CT: Record<string, unknown> = {
+  string: 'cf-str',
+  integer: 999_991,
+  decimal: '42.42',
+  float: 1.5,
+  boolean: true,
+  date: '2024-06-01',
+  time: '08:30:00.000',
+  datetime: '2024-06-01 08:30:00.000',
+  json: { cf: 1 },
+  binary: 'Y2Y=',
+  uuid: '00000000-0000-0000-0000-000000000000',
+  unknown: 'cf-unknown',
+};
+
+/** 按列类型构造契约测试值（值编码契约 §5） */
+function sampleValueFor(c: ColumnMeta, salt: string): unknown {
+  const base = CT[c.normalizedType] ?? CT.unknown;
+  const isTimestampLike = c.normalizedType === 'date' || c.normalizedType === 'time' || c.normalizedType === 'datetime' || c.normalizedType === 'uuid';
+  if (typeof base === 'string' && !isTimestampLike) {
+    return salt ? `${base}-${salt}` : base;
+  }
+  return base;
+}
+
+/** 变更用新值：与原值可区分且类型合法 */
+function mutateValue(v: unknown, type: NormalizedType, salt: string): unknown {
+  if (v === null || v === undefined) {
+    return sampleValueFor({ name: 'x', dataType: 'x', nullable: true, isPrimaryKey: false, ordinal: 1, normalizedType: type } as ColumnMeta, salt);
+  }
+  switch (type) {
+    case 'integer':
+      return (typeof v === 'number' ? v : Number(v)) + 100_000;
+    case 'float':
+      return (typeof v === 'number' ? v : Number(v)) + 1.5;
+    case 'decimal':
+      return '77.77';
+    case 'boolean':
+      return typeof v === 'boolean' ? !v : true;
+    default:
+      return `cf-${salt}`;
+  }
+}
+
+function idxOfName(cols: Array<{ name: string }>, name: string): number {
+  return cols.findIndex((c) => c.name === name);
+}
+
+/** 从结果行抽取主键映射（RowKey，禁止行号——概要设计 §4.5） */
+function rowKeyOf(row: unknown[], cols: Array<{ name: string }>, primaryKey: string[]): RowKey {
+  const key: RowKey = {};
+  for (const name of primaryKey) {
+    key[name] = row[idxOfName(cols, name)];
+  }
+  return key;
+}
+
+function pkFilters(pkMap: RowKey): FilterCondition[] {
+  return Object.entries(pkMap).map(([column, value]) => ({ column, op: 'eq' as const, value }));
+}
+
+/** 挑一个可编辑的非主键列：首行该列非 NULL、类型可构造值 */
+function pickMutableColumn(
+  cols: Array<{ name: string; type: NormalizedType }>,
+  row: unknown[],
+  primaryKey: string[],
+): { name: string; type: NormalizedType } | undefined {
+  return cols.find(
+    (c) =>
+      !primaryKey.includes(c.name) &&
+      ['string', 'integer', 'float', 'decimal'].includes(c.type) &&
+      row[idxOfName(cols, c.name)] !== null,
+  );
+}
+
+function toChangeSet(cs: Partial<ChangeSet>): ChangeSet {
+  return { inserts: cs.inserts ?? [], updates: cs.updates ?? [], deletes: cs.deletes ?? [] };
+}
+
+function isConflict(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'E_CONFLICT';
+}
+
+function isCode(err: unknown, code: string): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
+}
+
+function describeError(err: unknown): string {
+  return typeof err === 'object' && err !== null
+    ? `${(err as { code?: string }).code ?? ''} ${(err as { message?: string }).message ?? ''}`.trim()
+    : String(err);
+}
+
+/** 值一致（数值化比较，兼容 DECIMAL 字符串与 number） */
+function cellSame(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  const num = (v: unknown) => (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : undefined);
+  const na = typeof a === 'number' ? a : num(a);
+  const nb = typeof b === 'number' ? b : num(b);
+  if (na !== undefined && nb !== undefined) return na === nb;
+  return String(a) === String(b);
+}
+
+/**
+ * 变更集组（M4，概要设计 §12.2-5 / 驱动规范 §8）：
+ * insert 回填主键；update 冲突 → E_CONFLICT 且库中数据未变（无半提交）；
+ * 混合事务原子性；NULL 原值按 IS NULL 匹配。
+ * 语句形状（参数化/无值拼接）由各驱动 SQL 构建层单测覆盖（同 M3 筛选下推的处理，P-9）。
+ */
+export async function runChangesetChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    // 能力探测：编辑未实现（E_UNSUPPORTED）→ 整组跳过；其余错误（如探测用表不存在）
+    // 恰说明编辑已实现，继续跑组（契约测试按能力裁剪，规范 §11）
+    try {
+      await conn.applyChanges('cf', 'cf', toChangeSet({}));
+      const preview = await conn.previewChanges('cf', 'cf', toChangeSet({}));
+      assert(Array.isArray(preview), 'previewChanges 应返回数组');
+    } catch (err) {
+      if (isCode(err, 'E_UNSUPPORTED')) {
+        await skip(results, 'changeset', '变更集组（驱动未实现编辑，跳过）', describeError(err));
+        return summarize(results);
+      }
+    }
+
+    const sample = await findSampleTable(conn, 5);
+    if (!sample || sample.primaryKey.length === 0) {
+      await skip(results, 'changeset', '变更集组（无带主键的样例表，跳过）', '样例不足');
+      return summarize(results);
+    }
+    const { db, obj, primaryKey } = sample;
+    const columns = await conn.listColumns(db, obj);
+
+    await check(results, 'changeset', 'insert 回填生成主键且按其可查回', async () => {
+      const values: Record<string, unknown> = {};
+      for (const c of columns) {
+        if (c.isPrimaryKey && c.autoIncrement) continue;
+        values[c.name] = sampleValueFor(c, c.isPrimaryKey ? `cfk${Date.now() % 100000}` : 'ins');
+      }
+      const apply = await conn.applyChanges(db, obj, toChangeSet({
+        inserts: [{ tempId: 'cf-ins', values }],
+      }));
+      const item = apply.items.find((i) => i.kind === 'insert' && i.tempId === 'cf-ins');
+      assert(item !== undefined, 'ApplyResult 缺少 insert 项');
+      assert(item.rowKey !== undefined && Object.keys(item.rowKey!).length > 0, 'insert 未回填生成主键');
+      const after = await conn.fetchRows({ db, obj, filters: pkFilters(item.rowKey!), limit: 5, timeoutMs: SAMPLE_TIMEOUT_MS });
+      assert(after.rowCount === 1, `按回填主键应查回 1 行，实际 ${after.rowCount}`);
+      // 清理
+      await conn.applyChanges(db, obj, toChangeSet({ deletes: [{ rowKey: item.rowKey!, original: {} }] }));
+    });
+
+    await check(results, 'changeset', 'update 冲突 → E_CONFLICT 且库中数据未变（无半提交）', async () => {
+      const rs = await conn.fetchRows({
+        db, obj, limit: 1,
+        sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),
+        timeoutMs: SAMPLE_TIMEOUT_MS,
+      });
+      const row = rs.rows[0];
+      assert(row !== undefined, '表为空');
+      const cols = rs.columns;
+      const target = pickMutableColumn(cols, row, primaryKey);
+      if (!target) {
+        await skip(results, 'changeset', 'update 冲突（无可变更列，跳过）', '样例不足');
+        return;
+      }
+      const pkMap = rowKeyOf(row, cols, primaryKey);
+      const current = row[idxOfName(cols, target.name)];
+      const otherValue = mutateValue(current, target.type, 'other');
+
+      // 他人先改：目标行变更列变为 otherValue
+      await conn.applyChanges(db, obj, toChangeSet({
+        updates: [{ rowKey: pkMap, original: pkMap, changes: { [target.name]: { old: current, new: otherValue } } }],
+      }));
+
+      // 陈旧 changeset（基于 old=current）+ 混入 insert：update 冲突必须整体回滚
+      let thrown: unknown;
+      try {
+        await conn.applyChanges(db, obj, toChangeSet({
+          inserts: [{ tempId: 'cf-stale', values: Object.fromEntries(columns.map((c) => [c.name, sampleValueFor(c, 'stale')])) }],
+          updates: [{ rowKey: pkMap, original: pkMap, changes: { [target.name]: { old: current, new: 'cf-stale-value' } } }],
+        }));
+      } catch (err) {
+        thrown = err;
+      }
+      assert(thrown !== undefined, '陈旧 update 未抛错');
+      assert(isConflict(thrown), `应抛 E_CONFLICT，实际 ${describeError(thrown)}`);
+
+      // 库中数据未变：变更列仍是 otherValue
+      const after = await conn.fetchRows({ db, obj, filters: pkFilters(pkMap), limit: 5, timeoutMs: SAMPLE_TIMEOUT_MS });
+      assert(after.rowCount === 1, '冲突后原行丢失');
+      const nowValue = after.rows[0][idxOfName(after.columns, target.name)];
+      assert(cellSame(nowValue, otherValue), `冲突后变更列被意外改写：${String(nowValue)} ≠ ${String(otherValue)}`);
+      // insert 未半提交：按 salt 特征值查应无行
+      const probe = await conn.fetchRows({ db, obj, limit: 5, timeoutMs: SAMPLE_TIMEOUT_MS, search: 'cf-str-stale' });
+      assert(probe.rowCount === 0, '冲突事务中的 insert 半提交（违反原子性）');
+
+      // 清理：恢复原值
+      await conn.applyChanges(db, obj, toChangeSet({
+        updates: [{ rowKey: pkMap, original: pkMap, changes: { [target.name]: { old: otherValue, new: current } } }],
+      }));
+    });
+
+    await check(results, 'changeset', 'insert/update/delete 混合事务原子性', async () => {
+      const rs = await conn.fetchRows({
+        db, obj, limit: 2,
+        sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),
+        timeoutMs: SAMPLE_TIMEOUT_MS,
+      });
+      assert(rs.rows.length >= 2, '样例行不足 2 行');
+      const cols = rs.columns;
+      const rowA = rs.rows[0];
+      const target = pickMutableColumn(cols, rowA, primaryKey);
+      if (!target) {
+        await skip(results, 'changeset', '混合原子性（无可变更列，跳过）', '样例不足');
+        return;
+      }
+      const keyA = rowKeyOf(rowA, cols, primaryKey);
+      const keyB = rowKeyOf(rs.rows[1], cols, primaryKey);
+      const oldA = rowA[idxOfName(cols, target.name)];
+      const newA = mutateValue(oldA, target.type, 'mix');
+
+      // delete 指向不存在的主键 → 最后一条失败，前面已执行的必须全部回滚
+      const ghostKey: RowKey = {};
+      for (const [k, v] of Object.entries(keyB)) {
+        ghostKey[k] = typeof v === 'number' ? -999_999_999 : 'cf-ghost-key';
+      }
+      let thrown: unknown;
+      try {
+        await conn.applyChanges(db, obj, toChangeSet({
+          inserts: [{ tempId: 'cf-mix', values: Object.fromEntries(columns.map((c) => [c.name, sampleValueFor(c, 'mix')])) }],
+          updates: [{ rowKey: keyA, original: keyA, changes: { [target.name]: { old: oldA, new: newA } } }],
+          deletes: [{ rowKey: ghostKey, original: {} }],
+        }));
+      } catch (err) {
+        thrown = err;
+      }
+      assert(thrown !== undefined, '幽灵主键 DELETE 未抛错');
+      assert(isConflict(thrown), `应抛 E_CONFLICT，实际 ${describeError(thrown)}`);
+
+      const checkA = await conn.fetchRows({ db, obj, filters: pkFilters(keyA), limit: 2, timeoutMs: SAMPLE_TIMEOUT_MS });
+      assert(cellSame(checkA.rows[0][idxOfName(checkA.columns, target.name)], oldA), '混合事务中 update 半提交');
+      const checkB = await conn.fetchRows({ db, obj, filters: pkFilters(keyB), limit: 2, timeoutMs: SAMPLE_TIMEOUT_MS });
+      assert(checkB.rowCount === 1, '混合事务中 delete 半提交（幽灵键不应删除任何行）');
+      const probe = await conn.fetchRows({ db, obj, limit: 5, timeoutMs: SAMPLE_TIMEOUT_MS, search: 'cf-str-mix' });
+      assert(probe.rowCount === 0, '混合事务中 insert 半提交');
+    });
+
+    await check(results, 'changeset', '含 NULL 原值的变更列按 IS NULL 匹配', async () => {
+      const nullableCol = sample.columns.find(
+        (c) => !primaryKey.includes(c.name) && ['string', 'integer', 'float', 'decimal'].includes(c.type)
+          && sample.rows.some((r) => r[idxOfName(sample.columns, c.name)] === null),
+      );
+      if (!nullableCol) {
+        await skip(results, 'changeset', 'NULL 原值匹配（样例无 NULL 可变更列，跳过）', '样例不足');
+        return;
+      }
+      const colIdx = idxOfName(sample.columns, nullableCol.name);
+      const nullRow = sample.rows.find((r) => r[colIdx] === null)!;
+      const pkMap = rowKeyOf(nullRow, sample.columns, primaryKey);
+
+      // 原值 NULL → 新值：若驱动生成 col = NULL 则永不匹配，apply 将以 E_CONFLICT 失败
+      const filled = mutateValue(null, nullableCol.type, 'nullfill');
+      await conn.applyChanges(db, obj, toChangeSet({
+        updates: [{ rowKey: pkMap, original: pkMap, changes: { [nullableCol.name]: { old: null, new: filled } } }],
+      }));
+      const after = await conn.fetchRows({ db, obj, filters: pkFilters(pkMap), limit: 2, timeoutMs: SAMPLE_TIMEOUT_MS });
+      const now = after.rows[0][idxOfName(after.columns, nullableCol.name)];
+      assert(cellSame(now, filled), `NULL 原值列未被更新（IS NULL 匹配失效）：${String(now)}`);
+
+      // 反向：再用原值 NULL 的陈旧 changeset 提交 → 当前已非 NULL，必须冲突
+      let thrown: unknown;
+      try {
+        await conn.applyChanges(db, obj, toChangeSet({
+          updates: [{ rowKey: pkMap, original: pkMap, changes: { [nullableCol.name]: { old: null, new: 'cf-stale-null' } } }],
+        }));
+      } catch (err) {
+        thrown = err;
+      }
+      assert(thrown !== undefined && isConflict(thrown), 'IS NULL 匹配失效：陈旧 NULL 原值未引发冲突');
+
+      // 清理：恢复 NULL
+      await conn.applyChanges(db, obj, toChangeSet({
+        updates: [{ rowKey: pkMap, original: pkMap, changes: { [nullableCol.name]: { old: filled, new: null } } }],
+      }));
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
 }

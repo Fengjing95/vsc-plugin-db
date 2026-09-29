@@ -17,21 +17,31 @@ export type DriverErrorCode =
 
 const RETRYABLE_CODES = new Set<DriverErrorCode>(['E_CONN', 'E_TIMEOUT']);
 
+/** 变更集失败定位（驱动规范 §8-1：抛出首个错误须含 kind/tempId/rowKey） */
+export interface ChangeErrorMeta {
+  kind?: 'insert' | 'update' | 'delete';
+  tempId?: string;
+  rowKey?: Record<string, unknown>;
+}
+
 export class DriverError extends Error {
   readonly code: DriverErrorCode;
   /** 原始错误摘要（已脱敏） */
   readonly detail?: string;
   readonly retryable: boolean;
+  /** 变更集失败定位（Host 转 evt:row.error 高亮错误行） */
+  readonly meta?: ChangeErrorMeta;
 
   constructor(
     code: DriverErrorCode,
     message: string,
-    opts?: { detail?: string; cause?: unknown },
+    opts?: { detail?: string; cause?: unknown; meta?: ChangeErrorMeta },
   ) {
     super(message, opts?.cause !== undefined ? { cause: opts.cause } : undefined);
     this.name = 'DriverError';
     this.code = code;
     this.detail = opts?.detail;
+    this.meta = opts?.meta;
     this.retryable = RETRYABLE_CODES.has(code);
   }
 

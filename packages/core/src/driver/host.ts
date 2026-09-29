@@ -1,6 +1,6 @@
 import { DriverError } from './errors';
 import type { Disposable, IConnection } from './types';
-import type { ApplyResult, ChangeSet, FetchRowsRequest, QueryRequest, ResultSet } from '../model/rows';
+import type { ApplyResult, ChangeSet, FetchRowsRequest, PreviewItem, QueryRequest, ResultSet } from '../model/rows';
 
 export interface FetchRowsHostRequest extends Omit<FetchRowsRequest, 'timeoutMs' | 'signal'> {
   timeoutMs?: number;
@@ -25,6 +25,7 @@ export interface DriverHost {
     req: QueryHostRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ResultSet[]>;
+  previewChanges(conn: IConnection, db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]>;
   applyChanges(conn: IConnection, db: string, obj: string, cs: ChangeSet): Promise<ApplyResult>;
 }
 
@@ -47,6 +48,17 @@ export class InProcessDriverHost implements DriverHost {
   ): Promise<ResultSet[]> {
     const { timeoutMs = this.defaultTimeoutMs, ...rest } = req;
     return runWithTimeout((signal) => conn.query({ ...rest, timeoutMs, signal }), timeoutMs, options?.signal);
+  }
+
+  previewChanges(
+    conn: IConnection,
+    db: string,
+    obj: string,
+    cs: ChangeSet,
+    options?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<PreviewItem[]> {
+    const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+    return runWithTimeout(() => conn.previewChanges(db, obj, cs), timeoutMs, options?.signal);
   }
 
   applyChanges(

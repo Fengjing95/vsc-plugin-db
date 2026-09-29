@@ -1,6 +1,8 @@
-import { createPool, type Pool } from 'mysql2/promise';
+import { createPool, type Pool, type PoolConnection } from 'mysql2/promise';
 import {
   DriverError,
+  type ApplyResult,
+  type ChangeSet,
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
@@ -17,14 +19,16 @@ import {
   type PreviewItem,
   type QueryRequest,
   type ResultSet,
+  type RowKey,
   type TestResult,
 } from '@db-explorer/core';
+import { buildChangeStatements } from './changes';
 import { buildSelect, encodeValue, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
 
 /**
  * MySQL 驱动（mysql2/promise）。
  * M1 交付范围：连接/测试、元数据自省、分页取数、只读查询。
- * applyChanges 在 M4 接入 ChangeSet 后实现（capabilities.editable 保持 false 直至该时点）。
+ * M4 交付范围：previewChanges/applyChanges（短事务 + 字段级乐观锁，驱动规范 §8）。
  */
 export const MYSQL_DRIVER_ID = 'mysql';
 
@@ -37,7 +41,7 @@ const capabilities: DriverCapabilities = {
   supportsCancel: false, // mysql2 无法可靠中止已下发语句，契约如实声明
   supportsDdl: true,
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
-  editable: false,
+  editable: true,
   pagination: 'offset',
 };
 
@@ -312,16 +316,85 @@ export class MysqlConnection implements IConnection {
     }
   }
 
-  previewChanges(): Promise<PreviewItem[]> {
-    return Promise.reject(
-      new DriverError('E_UNSUPPORTED', '表格编辑在 M4 交付（ChangeSet 接入后开放）'),
-    );
+  previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
+    return Promise.resolve(buildChangeStatements(db, obj, cs));
   }
 
-  applyChanges(): Promise<never> {
-    return Promise.reject(
-      new DriverError('E_UNSUPPORTED', '表格编辑在 M4 交付（ChangeSet 接入后开放）'),
-    );
+  /** 短事务提交（驱动规范 §8）：单连接 BEGIN…COMMIT/ROLLBACK，任一 affectedRows ≠ 1 → E_CONFLICT 回滚，禁止半提交 */
+  async applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult> {
+    const started = Date.now();
+    const statements = buildChangeStatements(db, obj, cs);
+    if (statements.length === 0) {
+      return { items: [], executionMs: 0 };
+    }
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const pkCols = (await this.listColumns(db, obj))
+        .filter((c) => c.isPrimaryKey)
+        .map((c) => c.name);
+      const items: ApplyResult['items'] = [];
+      for (const stmt of statements) {
+        const [res] = await conn.query(stmt.sql, stmt.params);
+        const affectedRows = (res as { affectedRows?: number }).affectedRows ?? 0;
+        if (affectedRows !== 1) {
+          throw new DriverError('E_CONFLICT', '数据已被他人修改，本次提交已回滚', {
+            meta: { kind: stmt.kind, tempId: stmt.tempId, rowKey: stmt.rowKey },
+          });
+        }
+        items.push({
+          kind: stmt.kind,
+          tempId: stmt.tempId,
+          rowKey:
+            stmt.kind === 'insert'
+              ? await this.backfillInsertKey(
+                  pkCols,
+                  stmt.tempId ? cs.inserts.find((i) => i.tempId === stmt.tempId) : undefined,
+                  conn,
+                )
+              : stmt.rowKey,
+          sql: stmt.sql,
+          affectedRows,
+        });
+      }
+      await conn.commit();
+      return { items, executionMs: Date.now() - started };
+    } catch (err) {
+      await conn.rollback().catch(() => undefined);
+      throw DriverError.is(err) ? err : toDriverError(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  /** insert 主键回填（规范 §8-3）：值里带了主键用原值，缺省的自增主键经 LAST_INSERT_ID() 取回 */
+  private async backfillInsertKey(
+    pkCols: string[],
+    insert: ChangeSet['inserts'][number] | undefined,
+    conn: PoolConnection,
+  ): Promise<RowKey | undefined> {
+    if (pkCols.length === 0) {
+      return undefined;
+    }
+    const rowKey: RowKey = {};
+    let missing: string | undefined;
+    for (const pk of pkCols) {
+      const provided = insert?.values[pk];
+      if (provided !== undefined && provided !== null) {
+        rowKey[pk] = provided;
+      } else {
+        missing = pk;
+      }
+    }
+    if (missing !== undefined) {
+      const rows = await conn.query('SELECT LAST_INSERT_ID() AS lid');
+      const lid = (rows[0] as Array<Record<string, unknown>>)[0]?.lid;
+      if (lid === undefined || lid === null) {
+        return Object.keys(rowKey).length > 0 ? rowKey : undefined;
+      }
+      rowKey[missing] = Number(lid);
+    }
+    return rowKey;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

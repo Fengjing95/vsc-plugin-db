@@ -47,6 +47,11 @@
   --color-warning: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
   --color-link: var(--vscode-textLink-foreground);
 
+  /* 编辑态（交互稿 §4.2：已修改黄底 / 新增行浅绿底 / 已删除行红） */
+  --color-dirty-bg: color-mix(in srgb, var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)) 20%, transparent);
+  --color-insert-bg: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-charts-green)) 14%, transparent);
+  --color-delete-bg: color-mix(in srgb, var(--vscode-errorForeground, var(--vscode-charts-red)) 12%, transparent);
+
   /* 焦点 */
   --color-ring: var(--vscode-focusBorder);
 

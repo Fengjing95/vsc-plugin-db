@@ -59,3 +59,26 @@ it('筛选/排序/搜索组合下推返回一致结果', async () => {
   }
   await conn.dispose();
 });
+
+it('M4 DoD：提交 100 条变更 <2s（不含网络）', async () => {
+  const conn = await createMockDriver().connect({ ...cfg }, '');
+  const base = await conn.fetchRows({ db: 'big', obj: 't001', limit: 100, timeoutMs: 15000 });
+  expect(base.rowCount).toBe(100);
+  const cs = {
+    inserts: [{ tempId: 'perf-ins', values: { name: 'perf', value: '1.00' } }],
+    updates: base.rows.map((row) => ({
+      rowKey: { id: row[0] },
+      original: { id: row[0], name: row[1] },
+      changes: { name: { old: row[1], new: `perf-${String(row[1])}` } },
+    })),
+    deletes: [],
+  };
+  const t0 = Date.now();
+  const apply = await conn.applyChanges('big', 't001', cs);
+  const ms = Date.now() - t0;
+  expect(apply.items).toHaveLength(101);
+  expect(apply.items[0].kind).toBe('insert');
+  expect(apply.items[0].rowKey).toBeDefined(); // insert 回填主键
+  expect(ms).toBeLessThan(2000);
+  await conn.dispose();
+});

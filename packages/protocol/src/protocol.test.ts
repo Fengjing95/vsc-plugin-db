@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ApplyChangesResultSchema,
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
+  EditChangesParamsSchema,
   ExportCancelParamsSchema,
   ExportRunParamsSchema,
   FetchRowsParamsSchema,
+  HandshakeResultSchema,
+  PreviewChangesResultSchema,
   RPC_PROTOCOL_VERSION,
+  RevertChangesParamsSchema,
   RpcRequestSchema,
   RpcResponseSchema,
 } from './index';
@@ -44,6 +49,99 @@ describe('方法参数校验', () => {
 
   it('fetchRows：缺少必填字段拒绝', () => {
     expect(() => FetchRowsParamsSchema.parse({ db: 'demo', obj: 'users', limit: 10 })).toThrow();
+  });
+
+  it('handshake：快照类型化（inserts/updates/deletes 结构校验）', () => {
+    const result = HandshakeResultSchema.parse({
+      protocolVersion: RPC_PROTOCOL_VERSION,
+      viewId: 'c/db/t',
+      params: { connId: 'c' },
+      changeSet: {
+        inserts: [{ tempId: 't1', values: { name: 'n' } }],
+        updates: [{ rowKey: { id: 1 }, original: { id: 1 }, changes: { name: { old: 'a', new: 'b' } } }],
+        deletes: [],
+      },
+      edit: { enabled: true },
+    });
+    expect(result.changeSet.updates[0].changes.name.new).toBe('b');
+    expect(result.uiState).toBeUndefined();
+    // 缺 edit 权限 → 拒绝（M4 起握手必带）
+    expect(() =>
+      HandshakeResultSchema.parse({
+        protocolVersion: 1,
+        viewId: 'v',
+        params: {},
+        changeSet: { inserts: [], updates: [], deletes: [] },
+      }),
+    ).toThrow();
+  });
+
+  it('editChanges：EditOp 判别联合（未知 op 拒绝）', () => {
+    const base = { connId: 'c', db: 'demo', obj: 'users' };
+    const p = EditChangesParamsSchema.parse({
+      ...base,
+      ops: [
+        { op: 'setCell', rowKey: { id: 1 }, column: 'name', old: 'a', new: 'b' },
+        { op: 'addRow', tempId: 't1', values: {} },
+        { op: 'setInsertCell', tempId: 't1', column: 'name', value: 'x' },
+        { op: 'removeRow', tempId: 't1' },
+        { op: 'markDelete', rowKey: { id: 2 } },
+        { op: 'unmarkDelete', rowKey: { id: 2 } },
+        { op: 'revertRow', rowKey: { id: 3 } },
+      ],
+    });
+    expect(p.ops).toHaveLength(7);
+    expect(() => EditChangesParamsSchema.parse({ ...base, ops: [{ op: 'destroyAll' }] })).toThrow();
+    expect(() =>
+      EditChangesParamsSchema.parse({ ...base, ops: [{ op: 'setCell', rowKey: { id: 1 } }] }),
+    ).toThrow();
+  });
+
+  it('editChanges：随行 uiState（drafts 形状）', () => {
+    const p = EditChangesParamsSchema.parse({
+      connId: 'c',
+      db: 'demo',
+      obj: 'users',
+      ops: [],
+      uiState: { page: 2, pageSize: 100, sorts: [{ column: 'id', dir: 'desc' }], search: 'k', drafts: [{ id: 'd1', column: 'name', op: 'eq', value: 'a', value2: '' }] },
+    });
+    expect(p.uiState?.page).toBe(2);
+    expect(() =>
+      EditChangesParamsSchema.parse({
+        connId: 'c',
+        db: 'demo',
+        obj: 'users',
+        ops: [],
+        uiState: { page: -1, pageSize: 10, sorts: [], search: '', drafts: [] },
+      }),
+    ).toThrow();
+  });
+
+  it('previewChanges/applyChanges：语句项形状与回填主键', () => {
+    const preview = PreviewChangesResultSchema.parse({
+      items: [{ kind: 'update', rowKey: { id: 1 }, sql: 'UPDATE t SET a = ? WHERE id = ?', params: [1] }],
+    });
+    expect(preview.items[0].kind).toBe('update');
+    expect(() =>
+      PreviewChangesResultSchema.parse({ items: [{ kind: 'drop', sql: 'x' }] }),
+    ).toThrow();
+    const apply = ApplyChangesResultSchema.parse({
+      items: [{ kind: 'insert', tempId: 't1', rowKey: { id: 61 }, sql: 'INSERT INTO t (a) VALUES (?)', affectedRows: 1 }],
+      executionMs: 12,
+    });
+    expect(apply.items[0].rowKey).toEqual({ id: 61 });
+  });
+
+  it('revertChanges：scope 判别联合', () => {
+    const base = { connId: 'c', db: 'demo', obj: 'users' };
+    expect(RevertChangesParamsSchema.parse({ ...base, target: { scope: 'all' } }).target.scope).toBe('all');
+    expect(
+      RevertChangesParamsSchema.parse({ ...base, target: { scope: 'row', rowKey: { id: 1 } } }).target,
+    ).toEqual({ scope: 'row', rowKey: { id: 1 } });
+    expect(
+      RevertChangesParamsSchema.parse({ ...base, target: { scope: 'insert', tempId: 't1' } }).target,
+    ).toEqual({ scope: 'insert', tempId: 't1' });
+    expect(() => RevertChangesParamsSchema.parse({ ...base, target: { scope: 'nope' } })).toThrow();
   });
 
   it('fetchRows：filters/sorts/search 合法形状可通过', () => {

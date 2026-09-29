@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import type { DriverRegistry } from '@db-explorer/core';
 import type { ConnectionManager } from './services/connectionManager';
+import type { EditGuard, ViewStateStore } from './services/editGuard';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
 import { openConnectionForm } from './views/connectionFormPanel';
@@ -12,6 +13,10 @@ export interface AppServices {
   store: ConnectionStore;
   connections: ConnectionManager;
   output: vscode.OutputChannel;
+  /** M4 表格编辑：变更集权威副本 + 视图状态快照 + 编辑护栏 */
+  changesets: import('@db-explorer/core').ChangeSetService;
+  viewStates: ViewStateStore;
+  editGuard: EditGuard;
 }
 
 function copy(text: string, hint: string): void {
@@ -24,7 +29,7 @@ export function registerCommands(
   services: AppServices,
   tree: ConnectionsTreeProvider,
 ): vscode.Disposable[] {
-  const { store, connections, output } = services;
+  const { store, connections } = services;
 
   return [
     vscode.commands.registerCommand('dbExplorer.focus', async () => {
@@ -101,7 +106,7 @@ export function registerCommands(
       if (!connId || !db || !obj) {
         return;
       }
-      await openTablePanel(context, connections, output, {
+      await openTablePanel(context, services, {
         connId,
         db,
         obj,
@@ -109,6 +114,7 @@ export function registerCommands(
         title: `${obj} @ ${db}`,
         rowEstimate: typeof rowEstimate === 'number' ? rowEstimate : undefined,
         readOnly: store.get(connId)?.readOnly ?? false,
+        env: store.get(connId)?.env ?? null,
       });
     }),
 

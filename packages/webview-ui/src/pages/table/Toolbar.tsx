@@ -7,8 +7,8 @@ import { Popover } from '../../components/ui/popover';
 import { Button } from '../../components/ui/button';
 import { useTableStore } from '../../store/tableStore';
 
-/** 工具栏（交互稿 §4.1/概要设计 5.4.2，M3 只读范围）：标题、搜索、列设置、导出、刷新 */
-export function Toolbar({ db, obj }: { db: string; obj: string }) {
+/** 工具栏（交互稿 §4.1/概要设计 5.4.2）：标题、编辑操作、搜索、列设置、导出、刷新 */
+export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' | 'test' | 'prod' | null }) {
   const readOnly = useTableStore((s) => s.readOnly);
   const applySearch = useTableStore((s) => s.applySearch);
   const refresh = useTableStore((s) => s.refresh);
@@ -17,6 +17,14 @@ export function Toolbar({ db, obj }: { db: string; obj: string }) {
   const visibleColumns = useTableStore((s) => s.visibleColumns);
   const setVisibleColumns = useTableStore((s) => s.setVisibleColumns);
   const allColumns = useTableStore((s) => s.allColumns);
+  const editEnabled = useTableStore((s) => s.editEnabled);
+  const editReason = useTableStore((s) => s.editReason);
+  const editCount = useTableStore((s) => s.editCount);
+  const addInsertRow = useTableStore((s) => s.addInsertRow);
+  const openPreview = useTableStore((s) => s.openPreview);
+  const revertAll = useTableStore((s) => s.revertAll);
+  const previewing = useTableStore((s) => s.previewing);
+  const committing = useTableStore((s) => s.committing);
 
   const [searchText, setSearchText] = useState('');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -54,18 +62,63 @@ export function Toolbar({ db, obj }: { db: string; obj: string }) {
     void setVisibleColumns(ordered.length === allColumns.length ? null : ordered);
   };
 
+  const counts = editCount();
+  const editBusy = previewing || committing;
+
   return (
     <div className="flex items-center gap-2 border-b border-border bg-panel px-2 py-1.5">
       <h1 className="shrink-0 text-[13px] font-semibold">
         {obj} <span className="font-normal text-muted-foreground">@ {db}</span>
       </h1>
-      {readOnly && (
+      {env && (
+        <span
+          className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[11px] ${
+            env === 'prod' ? 'border-destructive/40 text-destructive' : 'border-border text-muted-foreground'
+          }`}
+          title={env === 'prod' ? '生产环境：提交需输入表名确认（DangerGuard）' : `环境：${env}`}
+        >
+          {env === 'prod' ? '生产' : env === 'test' ? '测试' : '开发'}
+        </span>
+      )}
+      {(readOnly || !editEnabled) && (
         <span
           className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
-          title="连接已开启只读保护（ConnectionManager 层拦截写操作）"
+          title={editReason ?? '连接已开启只读保护（ConnectionManager 层拦截写操作）'}
         >
           只读
         </span>
+      )}
+      {editEnabled && counts.total > 0 && (
+        <span className="shrink-0 text-[11px] text-warning" title="存在未提交变更">
+          ● 表名有未提交变更
+        </span>
+      )}
+
+      {editEnabled && (
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button variant="secondary" size="md" disabled={editBusy} onClick={addInsertRow} aria-label="新增行">
+            ＋ 新增行
+          </Button>
+          <Button
+            variant={counts.total > 0 ? 'primary' : 'secondary'}
+            size="md"
+            disabled={counts.total === 0 || editBusy}
+            onClick={() => void openPreview()}
+            className={counts.total > 0 ? 'animate-pulse' : undefined}
+            aria-label={`提交变更（${counts.total}）`}
+          >
+            {previewing ? '生成预览…' : committing ? '提交中…' : `提交变更 (${counts.total})`}
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            disabled={counts.total === 0 || editBusy}
+            onClick={() => void revertAll()}
+            aria-label="撤销全部变更"
+          >
+            撤销
+          </Button>
+        </div>
       )}
 
       <div className="ml-auto flex min-w-0 items-center gap-1.5">

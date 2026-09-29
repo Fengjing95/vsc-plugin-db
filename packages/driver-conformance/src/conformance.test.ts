@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import {
+  runChangesetChecks,
   runConnectionChecks,
   runFilterPushdownChecks,
   runMetadataChecks,
@@ -44,4 +45,13 @@ it('conformance: mock 驱动通过 filter-pushdown 组（M3）', async () => {
   expect(summary.failed).toBe(0);
   // 13 个 FilterOp + 组合 + search
   expect(summary.results.filter((r) => !r.skipped)).toHaveLength(15);
+});
+
+it('conformance: mock 驱动通过 changeset 组（M4）', async () => {
+  const summary = await runChangesetChecks(mockConnection);
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(4);
 });

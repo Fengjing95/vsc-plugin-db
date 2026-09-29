@@ -46,15 +46,18 @@
 ### 状态层（zustand）
 - **P-6 快速操作时响应错乱** → 连续触发的 fetch 响应乱序回包。→ store 内以 `reqSeq` 自增做竞态防护，旧响应直接丢弃（tableStore.refresh 已实现，新异步 action 照此模式）。
 - **P-7 列显隐后隐藏列从设置里消失** → 投影响应的 `rs.columns` 是子集，若直接覆盖全量列基线则无法恢复。→ store 的 `allColumns` 只在未投影（visibleColumns=null）取数时更新；列设置/筛选构造器选项一律取 `allColumns`；**M4 乐观锁 original 取全列原值时也用 allColumns**。
+- **P-17 组件经 action 间接读 store 不触发重渲染**（M4 踩）→ `rowEditState()` 这类 action 内部用 `get()` 取状态，组件调用它只是普通函数调用，zustand 不会订阅其内部依赖。→ 组件必须显式订阅底层切片（DataGrid 里 `useTableStore(s => s.updates)` / `s.deletes`），否则编辑后脏视觉不刷新。
 
 ### 驱动与契约
 - **P-8 筛选内存基准与驱动结果对不上** → SQL 三值逻辑：与 NULL 的比较一律 unknown（行被排除），仅 isNull/isNotNull 涉及 NULL；且基线样本若被 limit 截断，内存过滤就不完整。→ 内存过滤必须按 SQL 语义实现（conformance `sqlMatch` 是基准实现）；基线取数上限要 ≥ 表行数（conformance 用 SAMPLE_LIMIT=100k）。
-- **P-9 “语句必须参数化”无法在契约套件断言** → `IConnection` 接口观测不到生成 SQL。→ 该契约由各驱动 SQL 构建层的单测覆盖（driver-mysql `sql.test.ts` 逐 FilterOp 断言占位符、无值拼接）。
+- **P-9 “语句必须参数化”无法在契约套件断言** → `IConnection` 接口观测不到生成 SQL。→ 该契约由各驱动 SQL 构建层的单测覆盖（driver-mysql `sql.test.ts` 逐 FilterOp、`changes.test.ts` 对变更语句断言占位符与 IS NULL）。
 - **P-10 offset 翻页不稳定** → 无 ORDER BY 的 LIMIT/OFFSET 顺序无保证。→ 驱动在 `req.sorts` 为空时默认按主键升序（mysql fetchRows 已实现；翻页稳定契约有测试）。
-- **P-11 DoD 数据集**：mock 驱动 `big` 库 t001~t100 每表 5 万行、`demo.wide` 1000 行×20 列，配套 `dod.perf.test.ts`（阈值：wide <1.5s、5 万行分页取尽 <5s）。改数据集规模必须同步改该测试与 rowEstimate。
+- **P-11 DoD 数据集**：mock 驱动 `big` 库 t001~t100 每表 5 万行、`demo.wide` 1000 行×20 列，配套 `dod.perf.test.ts`（阈值：wide <1.5s、5 万行分页取尽 <5s、100 条变更提交 <2s）。改数据集规模必须同步改该测试与 rowEstimate。
+- **P-18 mock 数据是共享物化存储**（M4 起）→ `MockConnection` 的数据在模块级 `store` 首次访问时物化，**跨连接一致**（模拟真实服务端，冲突场景可两视图构造）；同一测试文件内先跑只读契约组再跑 changeset 组（会改 `demo.*` 数据），测试需要干净数据时调用导出的 `resetMockStore()`。
+- **P-19 契约组按能力跳过的判定**（M4 踩）→ `runChangesetChecks` 的能力探测里，驱动对探测表抛 `E_NOT_FOUND` 恰说明编辑**已实现**（表不存在才报错），只有 `E_UNSUPPORTED` 才整组跳过；写成"任何错误都跳过"会让组静默全跳、测试假绿。
 
 ### 环境（Windows + Git Bash）
-- **P-12 python heredoc 在本机 shell 不可靠**（exit 49）→ 不要用 `python - <<EOF` 改文件；用文件编辑工具（Edit/Write）或 `node -e`。
+- **P-12 heredoc 在本机 shell 不可靠** → `python - <<EOF` 直接失败（exit 49）；**bash heredoc 内容较长时会被截断**（报 "here-document delimited by end-of-file"，文件写一半）。→ 改文件一律用文件编辑工具（Edit/Write）；追加大段内容用 Edit 锚定文件尾部，不要用 `cat >> file <<EOF`。
 - **P-13 grep 实为 ugrep** → 转义/正则行为与 GNU grep 略有差异；复杂模式加 `-F` 或改用 `node -e` 脚本。
 - **P-14 pnpm store 被外部改动**（`pnpm store status` 报 mutated，常见于磁盘清理/杀软）→ `pnpm install --force` 恢复；当前仓库无原生编译依赖，影响有限。
 - **P-15 F5 卡"扩展未在 10 秒内启动"** → 日志含 `debugBrk: true` / "STOPPED on first line" 表示宿主被首行断点暂停（非代码错误）。→ launch.json 已显式 `"stopOnEntry": false`；检查用户设置 `debug.javascript.breakOnStart`、NODE_OPTIONS 是否含 `--inspect-brk`；应急用 Ctrl+F5（不调试运行）。
@@ -71,7 +74,12 @@
 | UI 状态机/键盘/文案 | `docs/交互设计稿.md`（§4 表格视图、§9.2 错误文案） |
 | RPC 消息定义 | `packages/protocol/src/methods.ts`（zod 单一来源） |
 | 单元格渲染契约 | `webview-ui/src/lib/cellDisplay.ts` |
+| 编辑覆盖层/RowKey/取数列保障 | `webview-ui/src/lib/editOverlay.ts`（纯函数，有单测） |
+| 编辑输入→值编码 | `webview-ui/src/lib/editValues.ts`（C-7 落地点） |
 | 查询参数/分页文案 | `webview-ui/src/lib/queryState.ts`（纯函数，有单测） |
+| ChangeSet 权威副本 | `packages/core/src/services/changeSetService.ts`（合并语义单测覆盖） |
+| MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
+| 编辑权限 + prod 护栏 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts` |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |

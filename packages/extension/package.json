@@ -108,8 +108,14 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "dbExplorer.newConnection", "group": "navigation@1" },
-        { "command": "dbExplorer.refresh", "group": "navigation@2" }
+        {
+          "command": "dbExplorer.newConnection",
+          "group": "navigation@1"
+        },
+        {
+          "command": "dbExplorer.refresh",
+          "group": "navigation@2"
+        }
       ],
       "view/item/context": [
         {
@@ -160,8 +166,14 @@
       ]
     },
     "keybindings": [
-      { "command": "dbExplorer.focus", "key": "ctrl+alt+d" },
-      { "command": "dbExplorer.newQuery", "key": "ctrl+alt+q" }
+      {
+        "command": "dbExplorer.focus",
+        "key": "ctrl+alt+d"
+      },
+      {
+        "command": "dbExplorer.newQuery",
+        "key": "ctrl+alt+q"
+      }
     ],
     "configuration": {
       "title": "DB Explorer",
@@ -184,8 +196,16 @@
         "dbExplorer.export.defaultFormat": {
           "type": "string",
           "default": "csv",
-          "enum": ["csv", "json"],
+          "enum": [
+            "csv",
+            "json"
+          ],
           "description": "导出默认格式"
+        },
+        "dbExplorer.edit.allowNoPrimaryKey": {
+          "type": "boolean",
+          "default": false,
+          "description": "无主键表开启\"全列匹配\"编辑模式（WHERE 含全部列原值，含二进制列的表仍不可编辑，D-03）"
         }
       }
     }
