@@ -4,7 +4,7 @@ import type { PreviewItemPayload } from '@db-explorer/protocol';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { IconInfo } from '../../components/ui/icons';
-import { highlightSql } from '../../lib/sqlHighlight';
+import { highlightSql, interpolateSqlParams } from '../../lib/sqlHighlight';
 import { useTableStore } from '../../store/tableStore';
 
 const COLLAPSE_THRESHOLD = 50;
@@ -53,6 +53,8 @@ function SqlList({
         {virtualizer.getVirtualItems().map((v) => {
           const item = visible[v.index];
           const isOpen = Boolean(expanded[v.index]);
+          // 展示用回填：? → 参数字面量（实际执行仍为参数化语句，参数在展开详情中）
+          const shownSql = interpolateSqlParams(item.sql, item.params);
           return (
             <div
               key={v.key}
@@ -77,13 +79,13 @@ function SqlList({
                 </button>
                 <span
                   className="sql-hl min-w-0 flex-1 truncate font-mono text-muted-foreground"
-                  title={item.sql}
-                  dangerouslySetInnerHTML={{ __html: highlightSql(item.sql) }}
+                  title={shownSql}
+                  dangerouslySetInnerHTML={{ __html: highlightSql(shownSql) }}
                 />
               </div>
               {isOpen && (
                 <div className="sql-hl mb-1 rounded-sm border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-relaxed">
-                  <div className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: highlightSql(item.sql) }} />
+                  <div className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: highlightSql(shownSql) }} />
                   {item.params && item.params.length > 0 && (
                     <div className="mt-1 text-muted-foreground">参数: {JSON.stringify(item.params)}</div>
                   )}

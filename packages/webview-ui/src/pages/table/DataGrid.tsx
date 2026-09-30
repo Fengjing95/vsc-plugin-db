@@ -407,7 +407,9 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                           autoFocus
                           value={editText}
                           aria-label={`编辑 ${colName}`}
-                          className="h-full w-full bg-input-bg px-1 font-mono text-[12px] text-input-fg outline-none ring-1 ring-ring"
+                          /* 铺满单元格（absolute 覆盖含父级 px-2 的内边距区），
+                             字号/内边距与展示态一致——避免进入编辑时文本跳动"闪烁" */
+                          className="absolute inset-0 bg-input-bg px-2 text-[13px] text-input-fg caret-ring outline-none"
                           onChange={(e) => setEditText(e.target.value)}
                           onBlur={() => {
                             // 失焦即记录（评审反馈：输入后不必按 Enter）；
