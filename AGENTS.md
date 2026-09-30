@@ -86,5 +86,6 @@
 | MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
 | 编辑权限 + prod 护栏 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts` |
+| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），坑与排查见其 `references/pitfalls.md`（P-21 等） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |
