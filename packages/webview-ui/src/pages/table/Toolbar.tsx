@@ -40,6 +40,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const insertCount = useTableStore((s) => s.inserts.length);
   const addInsertRow = useTableStore((s) => s.addInsertRow);
   const openPreview = useTableStore((s) => s.openPreview);
+  const submitChanges = useTableStore((s) => s.submitChanges);
   const revertAll = useTableStore((s) => s.revertAll);
   const openDdl = useTableStore((s) => s.openDdl);
   const previewing = useTableStore((s) => s.previewing);
@@ -176,10 +177,10 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             variant="secondary"
             size="md"
             disabled={counts.total === 0 || editBusy}
-            onClick={() => void openPreview()}
+            onClick={() => void submitChanges()}
             className={counts.total > 0 ? `${iconBtn} animate-pulse` : iconBtn}
             aria-label={`提交变更（${counts.total}）`}
-            title={`提交变更（${counts.total}）：预览确认后单事务落库`}
+            title={`提交变更（${counts.total}）：单事务直接落库，可用 ◉ 预览语句`}
           >
             <IconCheck size={15} />
           </Button>

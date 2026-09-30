@@ -666,7 +666,10 @@ export const useTableStore = create<TableState>((set, get) => ({
     if (s.committing || s.previewing) {
       return;
     }
-    flushPending(set, get); // 提交前把未同步的编辑立即上行
+    const synced = await flushPending(set, get);
+    if (!synced) {
+      return; // 上行失败已提示，中止预览
+    }
     if (get().editCount().total === 0) {
       get().showToast({ kind: 'info', text: '没有可提交的变更' });
       return;
@@ -691,19 +694,27 @@ export const useTableStore = create<TableState>((set, get) => ({
 
   async submitChanges() {
     const s = get();
-    if (s.committing || !s.previewItems) {
+    if (s.committing || s.previewing) {
       return;
     }
-    const total = get().editCount().total;
+    // 未同步的编辑立即上行并等待完成（postMessage 消息按序处理，
+    // 等待可保证 Host 处理 applyChanges 时权威副本已含全部编辑）
+    if (!(await flushPending(set, get))) {
+      return; // 上行失败已提示；带着缺失的权威副本提交会静默漏改，必须中止
+    }
+    if (get().editCount().total === 0) {
+      get().showToast({ kind: 'info', text: '没有可提交的变更' });
+      return;
+    }
     set({ committing: true, previewItems: null });
     try {
-      await request<ApplyChangesResult>('table.applyChanges', {
+      const result = await request<ApplyChangesResult>('table.applyChanges', {
         connId: s.connId,
         db: s.db,
         obj: s.obj,
       });
       set({ committing: false, updates: {}, deletes: {}, inserts: [], rowErrors: {} });
-      get().showToast({ kind: 'info', text: `已提交 ${total} 条变更` });
+      get().showToast({ kind: 'info', text: `已提交 ${result.items.length} 条变更` });
       await get().refresh();
     } catch (err) {
       set({ committing: false });
@@ -909,11 +920,12 @@ function scheduleSync(
   }, 300);
 }
 
-/** 立即上行待同步编辑（300ms debounce 的 flush；概要设计 §4.5） */
+/** 立即上行待同步编辑（300ms debounce 的 flush；概要设计 §4.5）。
+ *  返回是否全部上行成功（无待同步时视为成功），调用方可 await 保证 Host 端时序。 */
 function flushPending(
   set: (partial: Partial<TableState>) => void,
   get: () => TableState,
-): void {
+): Promise<boolean> {
   if (syncTimer !== undefined) {
     clearTimeout(syncTimer);
     syncTimer = undefined;
@@ -922,10 +934,10 @@ function flushPending(
   const ops = pendingOps;
   pendingOps = [];
   if (ops.length === 0) {
-    return;
+    return Promise.resolve(true);
   }
   const seq = ++syncSeq;
-  void request('table.editChanges', {
+  return request('table.editChanges', {
     connId: s.connId,
     db: s.db,
     obj: s.obj,
@@ -937,13 +949,17 @@ function flushPending(
       search: s.searchApplied,
       drafts: s.appliedDrafts,
     },
-  }).catch((err) => {
-    if (seq !== syncSeq) {
-      return;
-    }
-    get().showToast({ kind: 'error', text: `变更同步失败：${err instanceof Error ? err.message : String(err)}` });
-    set({}); // 触发一次渲染
-  });
+  }).then(
+    () => true,
+    (err) => {
+      if (seq !== syncSeq) {
+        return false;
+      }
+      get().showToast({ kind: 'error', text: `变更同步失败：${err instanceof Error ? err.message : String(err)}` });
+      set({}); // 触发一次渲染
+      return false;
+    },
+  );
 }
 
 function confirmParsed(

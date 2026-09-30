@@ -64,4 +64,14 @@
   --radius-md: 3px;
 
   --font-mono: var(--vscode-editor-font-family, monospace);
+
+  /* SQL 语法高亮（sqlHighlight 输出的 token 类；交互稿 §11：一律映射 --vscode-*，charts 兜底） */
+  --color-code-keyword: var(--vscode-symbolIcon-keywordForeground, var(--vscode-charts-purple));
+  --color-code-string: var(--vscode-symbolIcon-stringForeground, var(--vscode-charts-orange));
+  --color-code-number: var(--vscode-symbolIcon-numberForeground, var(--vscode-charts-blue));
+  --color-code-comment: var(--vscode-descriptionForeground);
+  --color-code-function: var(--vscode-symbolIcon-methodForeground, var(--vscode-charts-yellow));
+  --color-code-operator: var(--vscode-symbolIcon-operatorForeground, var(--vscode-editor-foreground));
+  --color-code-punctuation: var(--vscode-descriptionForeground);
+  --color-code-parameter: var(--vscode-symbolIcon-variableForeground, var(--vscode-charts-red));
 }

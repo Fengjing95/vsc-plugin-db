@@ -253,3 +253,41 @@ td:has(.null) {
   opacity: 0.6;
   cursor: default;
 }
+
+/* SQL 语法高亮（sqlHighlight 输出经 dangerouslySetInnerHTML 渲染；
+   token 类映射 tokens.css 的 --color-code-*，C-12：此处不出现具体色值） */
+.sql-hl .token.keyword {
+  color: var(--color-code-keyword);
+}
+
+.sql-hl .token.string,
+.sql-hl .token.quoted-ident {
+  color: var(--color-code-string);
+}
+
+.sql-hl .token.number,
+.sql-hl .token.boolean {
+  color: var(--color-code-number);
+}
+
+.sql-hl .token.comment {
+  color: var(--color-code-comment);
+  font-style: italic;
+}
+
+.sql-hl .token.function {
+  color: var(--color-code-function);
+}
+
+.sql-hl .token.operator {
+  color: var(--color-code-operator);
+}
+
+.sql-hl .token.punctuation {
+  color: var(--color-code-punctuation);
+}
+
+.sql-hl .token.parameter,
+.sql-hl .token.variable {
+  color: var(--color-code-parameter);
+}

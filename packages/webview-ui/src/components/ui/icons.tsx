@@ -24,7 +24,13 @@ function Icon({ size = 14, children, ...props }: SVGProps<SVGSVGElement> & { siz
   );
 }
 
-export function IconPlus(props: { size?: number }) {
+/** 图标通用属性：size（px）+ className（对齐/颜色微调） */
+export interface IconProps {
+  size?: number;
+  className?: string;
+}
+
+export function IconPlus(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M5 12h14" />
@@ -33,7 +39,7 @@ export function IconPlus(props: { size?: number }) {
   );
 }
 
-export function IconMinus(props: { size?: number }) {
+export function IconMinus(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M5 12h14" />
@@ -41,7 +47,7 @@ export function IconMinus(props: { size?: number }) {
   );
 }
 
-export function IconCheck(props: { size?: number }) {
+export function IconCheck(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M20 6 9 17l-5-5" />
@@ -49,7 +55,7 @@ export function IconCheck(props: { size?: number }) {
   );
 }
 
-export function IconUndo(props: { size?: number }) {
+export function IconUndo(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M9 14 4 9l5-5" />
@@ -58,7 +64,7 @@ export function IconUndo(props: { size?: number }) {
   );
 }
 
-export function IconRefresh(props: { size?: number }) {
+export function IconRefresh(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
@@ -67,7 +73,7 @@ export function IconRefresh(props: { size?: number }) {
   );
 }
 
-export function IconEye(props: { size?: number }) {
+export function IconEye(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
@@ -76,7 +82,17 @@ export function IconEye(props: { size?: number }) {
   );
 }
 
-export function IconColumns(props: { size?: number }) {
+export function IconInfo(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </Icon>
+  );
+}
+
+export function IconColumns(props: IconProps) {
   return (
     <Icon {...props}>
       <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -85,7 +101,7 @@ export function IconColumns(props: { size?: number }) {
   );
 }
 
-export function IconDownload(props: { size?: number }) {
+export function IconDownload(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

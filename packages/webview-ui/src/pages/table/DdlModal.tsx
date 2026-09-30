@@ -1,5 +1,6 @@
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
+import { highlightSql } from '../../lib/sqlHighlight';
 import { useTableStore } from '../../store/tableStore';
 
 /**
@@ -46,9 +47,10 @@ export function DdlModal() {
       {ddlLoading || ddl === null ? (
         <div className="flex h-32 items-center justify-center text-[12px] text-muted-foreground">加载中…</div>
       ) : (
-        <pre className="h-full max-h-[60vh] overflow-auto border-t border-border bg-background px-4 py-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all">
-          {ddl}
-        </pre>
+        <pre
+          className="sql-hl h-full max-h-[60vh] overflow-auto border-t border-border bg-background px-4 py-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all"
+          dangerouslySetInnerHTML={{ __html: highlightSql(ddl) }}
+        />
       )}
     </Dialog>
   );

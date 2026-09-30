@@ -39,6 +39,7 @@
 - **P-2 弹层被数据网格表头遮盖** → `z-50` 写在 Popup 上无效；真正参与定位/层叠的是外层 **Positioner**（无 z-index），被 sticky 表头（z-30）压制。→ z-index 必须加在 Popover/Menu/Select 的 `Positioner` 上（已加 `z-50`）。
 - **P-3 Select 下拉覆盖触发器** → Base UI Select 的 `Positioner` 默认 `alignItemWithTrigger=true`（原生 macOS 式对齐覆盖）。→ 已设 `alignItemWithTrigger={false}` + `align="start"`，固定从下方展开。
 - **P-4 下拉选中项看不清** → `text-primary`（按钮蓝）配面板底色对比不足。→ 选中项用 `--vscode-list-activeSelection*` 前景/背景对 + `font-medium`；悬停高亮用 `not-data-[selected]:` 与选中态隔离，避免两状态叠色。
+- **P-21 Dialog 弹层内 useVirtualizer 列表空白**（M4 预览弹窗踩，真实环境必现）→ Base UI Dialog 的 portal 内容比持有 useVirtualizer 的组件**晚一个 commit 挂载**；useVirtualizer 的无依赖 layout effect（virtual-core `_willUpdate`）在滚动容器 ref 尚未挂载时执行，且组件自身此后未再渲染 → `scrollElement` 恒为 null、永不订阅 RO，`getVirtualItems()` 恒空（容器高度正常、内容全空）。→ **虚拟列表必须与其滚动容器抽成同一子组件**（同 commit 挂载，ref 就绪先于子组件 layout effect）；凡在 Dialog/Popover 等弹层内用 useVirtualizer 一律照此模式。排查：从滚动容器沿 fiber 链找 Virtualizer 实例看 `scrollElement` 是否 null。
 
 ### 布局
 - **P-5 数据量少也出现整页滚动条** → 表格页根节点 `h-screen`（100vh）+ 任何 body padding 都会溢出视口。→ `body` 必须保持 `padding: 0`（legacy.css 有注释）；留白只加在页面内容容器上（如连接表单 `.form-wrap`）。表格页根节点带 `overflow-hidden` 兜底，滚动只发生在网格内部。
@@ -57,7 +58,7 @@
 - **P-19 契约组按能力跳过的判定**（M4 踩）→ `runChangesetChecks` 的能力探测里，驱动对探测表抛 `E_NOT_FOUND` 恰说明编辑**已实现**（表不存在才报错），只有 `E_UNSUPPORTED` 才整组跳过；写成"任何错误都跳过"会让组静默全跳、测试假绿。
 
 ### 可视化验证（脱离 VSCode 宿主）
-- **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。注意 ChangePreviewModal 的虚拟列表在该无头环境不渲染条目（HEAD 构建复测同样），疑似挂载时序差异，判回归先对照 HEAD 构建。
+- **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
 
 ### 环境（Windows + Git Bash）
 - **P-12 heredoc 在本机 shell 不可靠** → `python - <<EOF` 直接失败（exit 49）；**bash heredoc 内容较长时会被截断**（报 "here-document delimited by end-of-file"，文件写一半）。→ 改文件一律用文件编辑工具（Edit/Write）；追加大段内容用 Edit 锚定文件尾部，不要用 `cat >> file <<EOF`。
