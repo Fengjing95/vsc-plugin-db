@@ -427,6 +427,8 @@ interface MockStatement {
   changes?: Record<string, { old: unknown; new: unknown }>;
   values?: Record<string, unknown>;
   sql: string;
+  /** 与 sql 中 ? 按序对应的参数（PreviewItem.params 同源透传，预览回填依赖） */
+  params: unknown[];
 }
 
 function quoteMockIdentifier(name: string): string {
@@ -453,6 +455,7 @@ export function buildMockStatements(db: string, obj: string, cs: ChangeSet): Moc
       tempId: ins.tempId,
       values: ins.values,
       sql: `INSERT INTO ${table} (${cols.map(quoteMockIdentifier).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      params: cols.map((c) => ins.values[c]),
     });
   }
 
@@ -462,12 +465,14 @@ export function buildMockStatements(db: string, obj: string, cs: ChangeSet): Moc
       continue;
     }
     const where: string[] = [];
+    const whereParams: unknown[] = [];
     const pushCond = (colName: string, expected: unknown): void => {
       const c = quoteMockIdentifier(colName);
       if (expected === null || expected === undefined) {
         where.push(`${c} IS NULL`);
       } else {
         where.push(`${c} = ?`);
+        whereParams.push(expected);
       }
     };
     for (const [colName, expected] of Object.entries(upd.rowKey)) {
@@ -487,15 +492,21 @@ export function buildMockStatements(db: string, obj: string, cs: ChangeSet): Moc
       rowKey: upd.rowKey,
       changes: upd.changes,
       sql: `UPDATE ${table} SET ${setCols.map((c) => `${quoteMockIdentifier(c)} = ?`).join(', ')} WHERE ${where.join(' AND ')}`,
+      params: [...setCols.map((c) => upd.changes[c].new), ...whereParams],
     });
   }
 
   for (const del of cs.deletes) {
-    const where = Object.entries(del.rowKey).map(([colName, expected]) =>
-      expected === null || expected === undefined
-        ? `${quoteMockIdentifier(colName)} IS NULL`
-        : `${quoteMockIdentifier(colName)} = ?`,
-    );
+    const where: string[] = [];
+    const params: unknown[] = [];
+    for (const [colName, expected] of Object.entries(del.rowKey)) {
+      if (expected === null || expected === undefined) {
+        where.push(`${quoteMockIdentifier(colName)} IS NULL`);
+      } else {
+        where.push(`${quoteMockIdentifier(colName)} = ?`);
+        params.push(expected);
+      }
+    }
     if (where.length === 0) {
       throw new DriverError('E_VALIDATION', 'DELETE 缺少主键定位条件', {
         meta: { kind: 'delete', rowKey: del.rowKey },
@@ -505,6 +516,7 @@ export function buildMockStatements(db: string, obj: string, cs: ChangeSet): Moc
       kind: 'delete',
       rowKey: del.rowKey,
       sql: `DELETE FROM ${table} WHERE ${where.join(' AND ')}`,
+      params,
     });
   }
 
@@ -636,6 +648,7 @@ export class MockConnection implements IConnection {
         tempId: s.tempId,
         rowKey: s.rowKey,
         sql: s.sql,
+        params: s.params,
       }));
       return Promise.resolve(items);
     } catch (err) {

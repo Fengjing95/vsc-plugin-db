@@ -53,5 +53,5 @@ it('conformance: mock 驱动通过 changeset 组（M4）', async () => {
     console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
   }
   expect(summary.failed).toBe(0);
-  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(4);
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
 });

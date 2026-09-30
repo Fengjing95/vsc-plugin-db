@@ -695,6 +695,44 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
       await conn.applyChanges(db, obj, toChangeSet({ deletes: [{ rowKey: item.rowKey!, original: {} }] }));
     });
 
+    await check(results, 'changeset', 'preview 语句带参数化 params（? 数量 = params 长度）', async () => {
+      // PreviewItem.params 是 IConnection 层可观测的（区别于 P-9 的 SQL 形状）：
+      // Webview 预览回填实际值依赖它，占位符语句缺失 params 会让预览只剩 ?
+      const rs = await conn.fetchRows({
+        db, obj, limit: 1,
+        sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),
+        timeoutMs: SAMPLE_TIMEOUT_MS,
+      });
+      const row = rs.rows[0];
+      assert(row !== undefined, '表为空');
+      const cols = rs.columns;
+      const target = pickMutableColumn(cols, row, primaryKey);
+      if (!target) {
+        await skip(results, 'changeset', 'preview 参数化（无可变更列，跳过）', '样例不足');
+        return;
+      }
+      const pkMap = rowKeyOf(row, cols, primaryKey);
+      const current = row[idxOfName(cols, target.name)];
+      const nextValue = mutateValue(current, target.type, 'other');
+      const values: Record<string, unknown> = {};
+      for (const c of columns) {
+        if (c.isPrimaryKey && c.autoIncrement) continue;
+        values[c.name] = sampleValueFor(c, 'prev');
+      }
+      const preview = await conn.previewChanges(db, obj, toChangeSet({
+        inserts: [{ tempId: 'cf-prev', values }],
+        updates: [{ rowKey: pkMap, original: pkMap, changes: { [target.name]: { old: current, new: nextValue } } }],
+        deletes: [{ rowKey: pkMap, original: pkMap }],
+      }));
+      assert(preview.length >= 3, `预览应覆盖 insert/update/delete，实际 ${preview.length} 条`);
+      for (const item of preview) {
+        const marks = (item.sql.match(/\?/g) ?? []).length;
+        if (marks === 0) continue; // 以字面量内联的语句无占位符，不约束
+        assert(item.params !== undefined, `${item.kind} 语句含 ${marks} 个 ? 但未携带 params`);
+        assert(item.params!.length === marks, `${item.kind} ? 数量 ${marks} ≠ params 长度 ${item.params!.length}`);
+      }
+    });
+
     await check(results, 'changeset', 'update 冲突 → E_CONFLICT 且库中数据未变（无半提交）', async () => {
       const rs = await conn.fetchRows({
         db, obj, limit: 1,
