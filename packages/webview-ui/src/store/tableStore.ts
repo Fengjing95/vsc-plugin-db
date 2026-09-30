@@ -136,8 +136,9 @@ interface TableState {
   removeInsertRow(tempId: string): void;
   markDeleteRow(rowIndex: number): void;
   unmarkDeleteRow(rowIndex: number): void;
-  /** 行选择：点击切换 / Shift+点击或拖拽范围选择（交互稿 §4.3 选中行的入口） */
-  toggleSelectRow(rowIndex: number, extend: boolean): void;
+  /** 行选择（交互稿 §4.3 v0.1.2）：replace=点击任意单元格选中该行（覆盖已有选择）；
+   *  extend=拖拽/Shift+点击自锚点范围选择；toggle=Ctrl+点击增删 */
+  selectRow(rowIndex: number, mode: 'replace' | 'extend' | 'toggle'): void;
   clearSelection(): void;
   markDeleteSelected(): void;
   revertRowByIndex(rowIndex: number): void;
@@ -555,13 +556,13 @@ export const useTableStore = create<TableState>((set, get) => ({
     scheduleSync(set, get);
   },
 
-  toggleSelectRow(rowIndex, extend) {
+  selectRow(rowIndex, mode) {
     const s = get();
     if (rowIndex >= s.rows.length) {
       return; // 仅服务端行可选中（插入行经工具栏管理）
     }
     const keyOf = (idx: number): string => rowKeyString(rowKeyOfRow(s.rows[idx], s.columns, s.primaryKey));
-    if (extend && s.selectionAnchor !== null) {
+    if (mode === 'extend' && s.selectionAnchor !== null) {
       const [from, to] = [Math.min(s.selectionAnchor, rowIndex), Math.max(s.selectionAnchor, rowIndex)];
       const selectedRows: Record<string, true> = {};
       for (let i = from; i <= to; i++) {
@@ -572,14 +573,19 @@ export const useTableStore = create<TableState>((set, get) => ({
       set({ selectedRows });
       return;
     }
-    const key = keyOf(rowIndex);
-    const selectedRows = { ...s.selectedRows };
-    if (selectedRows[key]) {
-      delete selectedRows[key];
-    } else {
-      selectedRows[key] = true;
+    if (mode === 'toggle') {
+      const key = keyOf(rowIndex);
+      const selectedRows = { ...s.selectedRows };
+      if (selectedRows[key]) {
+        delete selectedRows[key];
+      } else {
+        selectedRows[key] = true;
+      }
+      set({ selectedRows, selectionAnchor: rowIndex });
+      return;
     }
-    set({ selectedRows, selectionAnchor: rowIndex });
+    // replace：任何新的单击选中都覆盖已有选择（评审反馈）
+    set({ selectedRows: { [keyOf(rowIndex)]: true }, selectionAnchor: rowIndex });
   },
 
   clearSelection() {

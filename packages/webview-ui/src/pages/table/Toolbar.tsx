@@ -19,7 +19,10 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const allColumns = useTableStore((s) => s.allColumns);
   const editEnabled = useTableStore((s) => s.editEnabled);
   const editReason = useTableStore((s) => s.editReason);
-  const editCount = useTableStore((s) => s.editCount);
+  // P-17：计数必须订阅底层切片（editCount() 是 get() 型 action，不触发重渲染）
+  const updateCount = useTableStore((s) => Object.keys(s.updates).length);
+  const deleteCount = useTableStore((s) => Object.keys(s.deletes).length);
+  const insertCount = useTableStore((s) => s.inserts.length);
   const addInsertRow = useTableStore((s) => s.addInsertRow);
   const openPreview = useTableStore((s) => s.openPreview);
   const revertAll = useTableStore((s) => s.revertAll);
@@ -64,7 +67,12 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
     void setVisibleColumns(ordered.length === allColumns.length ? null : ordered);
   };
 
-  const counts = editCount();
+  const counts = {
+    total: updateCount + deleteCount + insertCount,
+    updates: updateCount,
+    deletes: deleteCount,
+    inserts: insertCount,
+  };
   const editBusy = previewing || committing;
 
   return (

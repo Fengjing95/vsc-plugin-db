@@ -27,13 +27,21 @@ export function ChangePreviewModal({ env }: { env: 'dev' | 'test' | 'prod' | nul
   const committing = useTableStore((s) => s.committing);
   const obj = useTableStore((s) => s.obj);
   const db = useTableStore((s) => s.db);
-  const editCount = useTableStore((s) => s.editCount);
+  // P-17：计数订阅底层切片（editCount() 是 get() 型 action，不触发重渲染）
+  const updateCount = useTableStore((s) => Object.keys(s.updates).length);
+  const deleteCount = useTableStore((s) => Object.keys(s.deletes).length);
+  const insertCount = useTableStore((s) => s.inserts.length);
 
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [listOpen, setListOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const counts = editCount();
+  const counts = {
+    total: updateCount + deleteCount + insertCount,
+    updates: updateCount,
+    deletes: deleteCount,
+    inserts: insertCount,
+  };
   const list = useMemo<PreviewItemPayload[]>(() => items ?? [], [items]);
   const needsCollapse = list.length > COLLAPSE_THRESHOLD;
   const showFullList = !needsCollapse || listOpen;

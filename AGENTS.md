@@ -46,7 +46,7 @@
 ### 状态层（zustand）
 - **P-6 快速操作时响应错乱** → 连续触发的 fetch 响应乱序回包。→ store 内以 `reqSeq` 自增做竞态防护，旧响应直接丢弃（tableStore.refresh 已实现，新异步 action 照此模式）。
 - **P-7 列显隐后隐藏列从设置里消失** → 投影响应的 `rs.columns` 是子集，若直接覆盖全量列基线则无法恢复。→ store 的 `allColumns` 只在未投影（visibleColumns=null）取数时更新；列设置/筛选构造器选项一律取 `allColumns`；**M4 乐观锁 original 取全列原值时也用 allColumns**。
-- **P-17 组件经 action 间接读 store 不触发重渲染**（M4 踩）→ `rowEditState()` 这类 action 内部用 `get()` 取状态，组件调用它只是普通函数调用，zustand 不会订阅其内部依赖。→ 组件必须显式订阅底层切片（DataGrid 里 `useTableStore(s => s.updates)` / `s.deletes`），否则编辑后脏视觉不刷新。
+- **P-17 组件经 action 间接读 store 不触发重渲染**（M4 踩了两次）→ `rowEditState()` / `editCount()` 这类 action 内部用 `get()` 取状态，组件调用它只是普通函数调用，zustand 不会订阅其内部依赖。→ 组件必须显式订阅底层切片。已踩实例：DataGrid 脏视觉（订阅 `updates/deletes`）、Toolbar 提交变更(N)按钮（订阅三个计数切片——曾表现为"选中行后才刷新"，因为只有 selectedRows 订阅顺带触发了重渲染）、预览 Modal 统计行。新组件凡是渲染聚合计数/行状态，一律订阅底层切片再本地聚合。
 
 ### 驱动与契约
 - **P-8 筛选内存基准与驱动结果对不上** → SQL 三值逻辑：与 NULL 的比较一律 unknown（行被排除），仅 isNull/isNotNull 涉及 NULL；且基线样本若被 limit 截断，内存过滤就不完整。→ 内存过滤必须按 SQL 语义实现（conformance `sqlMatch` 是基准实现）；基线取数上限要 ≥ 表行数（conformance 用 SAMPLE_LIMIT=100k）。

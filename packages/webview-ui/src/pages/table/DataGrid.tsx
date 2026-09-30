@@ -119,11 +119,11 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const [sizing, setSizing] = useState<Record<string, number>>({});
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [editText, setEditText] = useState('');
-  // 订阅覆盖层与选中集（rowEditState/toggleSelectRow 经 get() 读取，不自动触发重渲染）
+  // 订阅覆盖层与选中集（rowEditState/selectRow 经 get() 读取，不自动触发重渲染）
   useTableStore((s) => s.updates);
   useTableStore((s) => s.deletes);
   const selectedRows = useTableStore((s) => s.selectedRows);
-  const toggleSelectRow = useTableStore((s) => s.toggleSelectRow);
+  const selectRow = useTableStore((s) => s.selectRow);
   const clearSelection = useTableStore((s) => s.clearSelection);
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
   const dragSelectingRef = useRef(false);
@@ -327,25 +327,26 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                   height: ROW_HEIGHT,
                   width: bodyWidth,
                 }}
+                // 行选择（交互稿 §4.3 v0.1.2）：任意单元格可选中；新单击覆盖已有选择
+                onMouseDown={(e) => {
+                  if (isInsert || e.button !== 0 || (e.target as HTMLElement).closest('button, input')) {
+                    return; // ↺ 等按钮与编辑输入框不触发选择
+                  }
+                  dragSelectingRef.current = true;
+                  selectRow(rowIndex, e.shiftKey ? 'extend' : e.ctrlKey || e.metaKey ? 'toggle' : 'replace');
+                }}
+                onMouseEnter={() => {
+                  if (dragSelectingRef.current && !isInsert) {
+                    selectRow(rowIndex, 'extend');
+                  }
+                }}
               >
                 <div
                   role="gridcell"
                   aria-selected={isSelected}
                   className={`sticky left-0 z-10 flex shrink-0 items-center justify-end gap-1 border-r border-border px-2 text-[12px] text-muted-foreground ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : isSelected ? 'bg-row-selected' : 'bg-background'} ${!isInsert ? 'cursor-pointer select-none' : ''}`}
                   style={{ width: ROW_NUM_WIDTH }}
-                  title={!isInsert ? '点击选择（Shift/拖拽范围选）· 右键行操作' : undefined}
-                  onMouseDown={(e) => {
-                    if (isInsert || e.button !== 0 || (e.target as HTMLElement).closest('button')) {
-                      return; // ↺ 等按钮不触发选择
-                    }
-                    dragSelectingRef.current = true;
-                    toggleSelectRow(rowIndex, e.shiftKey);
-                  }}
-                  onMouseEnter={() => {
-                    if (dragSelectingRef.current && !isInsert) {
-                      toggleSelectRow(rowIndex, true);
-                    }
-                  }}
+                  title={!isInsert ? '点击选择行（拖拽/Shift 范围选 · Ctrl 增删 · Esc 取消）' : undefined}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setMenu({ x: e.clientX, y: e.clientY, items: rowNumMenuItems(rowIndex) });
