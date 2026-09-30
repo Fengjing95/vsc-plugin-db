@@ -9,6 +9,8 @@ import {
   FetchRowsParamsSchema,
   HandshakeResultSchema,
   PreviewChangesResultSchema,
+  GetDdlParamsSchema,
+  GetDdlResultSchema,
   RPC_PROTOCOL_VERSION,
   RevertChangesParamsSchema,
   RpcRequestSchema,
@@ -130,6 +132,14 @@ describe('方法参数校验', () => {
       executionMs: 12,
     });
     expect(apply.items[0].rowKey).toEqual({ id: 61 });
+  });
+
+  it('getDdl：参数与结果形状', () => {
+    const base = { connId: 'c', db: 'demo', obj: 'users' };
+    expect(GetDdlParamsSchema.parse(base).obj).toBe('users');
+    expect(() => GetDdlParamsSchema.parse({ connId: 'c', db: 'demo' })).toThrow();
+    expect(GetDdlResultSchema.parse({ ddl: 'CREATE TABLE ...' }).ddl).toContain('CREATE');
+    expect(() => GetDdlResultSchema.parse({})).toThrow();
   });
 
   it('revertChanges：scope 判别联合', () => {

@@ -4,6 +4,7 @@ import {
   ApplyChangesParamsSchema,
   EditChangesParamsSchema,
   FetchRowsParamsSchema,
+  GetDdlParamsSchema,
   HandshakeParamsSchema,
   PreviewChangesParamsSchema,
   RevertChangesParamsSchema,
@@ -235,6 +236,19 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
               deps.changesets.applyOp(deps.viewId, { op: 'removeRow', tempId: p.target.tempId });
             }
             respond(true, { result: { counts: deps.changesets.counts(deps.viewId) } });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.getDdl: {
+          if (deps.connections) {
+            const p = GetDdlParamsSchema.parse(req.params);
+            const conn = await deps.connections.ensureConnected(p.connId);
+            if (typeof conn.getDdl !== 'function') {
+              throw new DriverError('E_UNSUPPORTED', '当前驱动未实现 DDL 查看');
+            }
+            respond(true, { result: { ddl: await conn.getDdl(p.db, p.obj) } });
             return;
           }
           break;

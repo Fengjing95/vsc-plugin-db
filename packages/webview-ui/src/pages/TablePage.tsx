@@ -15,6 +15,7 @@ import { request, subscribeEvents } from '../rpc/client';
 import { useTableStore } from '../store/tableStore';
 import { ChangePreviewModal } from './table/ChangePreviewModal';
 import { DataGrid } from './table/DataGrid';
+import { DdlModal } from './table/DdlModal';
 import { FilterBar } from './table/FilterBar';
 import { PaginationBar } from './table/PaginationBar';
 import { Toolbar } from './table/Toolbar';
@@ -166,6 +167,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       )}
       <PaginationBar />
       <ChangePreviewModal env={env === '' ? null : env} />
+      <DdlModal />
       <Toast />
     </div>
   );

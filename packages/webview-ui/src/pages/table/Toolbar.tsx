@@ -5,13 +5,27 @@ import { Input } from '../../components/ui/input';
 import { Menu } from '../../components/ui/menu';
 import { Popover } from '../../components/ui/popover';
 import { Button } from '../../components/ui/button';
+import {
+  IconCheck,
+  IconColumns,
+  IconDownload,
+  IconEye,
+  IconMinus,
+  IconPlus,
+  IconRefresh,
+  IconUndo,
+} from '../../components/ui/icons';
 import { useTableStore } from '../../store/tableStore';
 
-/** 工具栏（交互稿 §4.1/概要设计 5.4.2）：标题、编辑操作、搜索、列设置、导出、刷新 */
+/**
+ * 工具栏（交互稿 §4.1/概要设计 5.4.2）：标题、编辑操作、搜索、列设置、DDL、导出。
+ * 去文本化：操作一律图标按钮，hover 经 title 提示（aria-label 兜底读屏）。
+ */
 export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' | 'test' | 'prod' | null }) {
   const readOnly = useTableStore((s) => s.readOnly);
   const applySearch = useTableStore((s) => s.applySearch);
   const refresh = useTableStore((s) => s.refresh);
+  const fetching = useTableStore((s) => s.fetching);
   const runExport = useTableStore((s) => s.runExport);
   const exportProgress = useTableStore((s) => s.exportProgress);
   const visibleColumns = useTableStore((s) => s.visibleColumns);
@@ -26,6 +40,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const addInsertRow = useTableStore((s) => s.addInsertRow);
   const openPreview = useTableStore((s) => s.openPreview);
   const revertAll = useTableStore((s) => s.revertAll);
+  const openDdl = useTableStore((s) => s.openDdl);
   const previewing = useTableStore((s) => s.previewing);
   const committing = useTableStore((s) => s.committing);
   const selectedCount = useTableStore((s) => Object.keys(s.selectedRows).length);
@@ -75,6 +90,9 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   };
   const editBusy = previewing || committing;
 
+  // 图标按钮统一规格：h-7 方形（w-7），图标居中；与文本按钮同高对齐
+  const iconBtn = 'w-7 px-0';
+
   return (
     <div className="flex items-center gap-2 border-b border-border bg-panel px-2 py-1.5">
       <h1 className="shrink-0 text-[13px] font-semibold">
@@ -104,41 +122,77 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
         </span>
       )}
 
+      {/* 刷新：移至左侧（标题区之后），图标放大一档 */}
+      <Button
+        variant="ghost"
+        size="md"
+        className="w-8 px-0"
+        aria-label="刷新"
+        title="刷新当前页"
+        disabled={fetching}
+        onClick={() => void refresh()}
+      >
+        <IconRefresh size={17} />
+      </Button>
+
       {editEnabled && (
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="secondary" size="md" disabled={editBusy} onClick={addInsertRow} aria-label="新增行">
-            ＋ 新增行
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="secondary"
+            size="md"
+            className={iconBtn}
+            disabled={editBusy}
+            onClick={addInsertRow}
+            aria-label="新增行"
+            title="新增行"
+          >
+            <IconPlus size={15} />
           </Button>
           {selectedCount > 0 && (
             <Button
               variant="secondary"
               size="md"
+              className={iconBtn}
               disabled={editBusy}
               onClick={markDeleteSelected}
-              title="标记删除选中行（进入变更集，提交时落库）"
+              title={`删除选中行（${selectedCount}）：进入变更集，提交时落库`}
               aria-label={`删除选中行（${selectedCount}）`}
             >
-              🗑 删除选中行 ({selectedCount})
+              <IconMinus size={15} />
             </Button>
           )}
+          <Button
+            variant="secondary"
+            size="md"
+            className={iconBtn}
+            disabled={counts.total === 0 || editBusy}
+            onClick={() => void openPreview()}
+            aria-label="预览提交 SQL"
+            title={`预览提交 SQL（${counts.total} 条语句）`}
+          >
+            <IconEye size={15} />
+          </Button>
           <Button
             variant={counts.total > 0 ? 'primary' : 'secondary'}
             size="md"
             disabled={counts.total === 0 || editBusy}
             onClick={() => void openPreview()}
-            className={counts.total > 0 ? 'animate-pulse' : undefined}
+            className={counts.total > 0 ? `${iconBtn} animate-pulse` : iconBtn}
             aria-label={`提交变更（${counts.total}）`}
+            title={`提交变更（${counts.total}）：预览确认后单事务落库`}
           >
-            {previewing ? '生成预览…' : committing ? '提交中…' : `提交变更 (${counts.total})`}
+            <IconCheck size={15} />
           </Button>
           <Button
             variant="ghost"
             size="md"
+            className={iconBtn}
             disabled={counts.total === 0 || editBusy}
             onClick={() => void revertAll()}
             aria-label="撤销全部变更"
+            title="撤销全部未提交变更"
           >
-            撤销
+            <IconUndo size={15} />
           </Button>
         </div>
       )}
@@ -170,10 +224,22 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           />
         </div>
 
+        <Button
+          variant="secondary"
+          size="md"
+          className={iconBtn}
+          aria-label="查看表 DDL"
+          title="查看当前表 DDL"
+          onClick={() => void openDdl()}
+        >
+          <span className="text-[11px] font-medium tracking-tight">DDL</span>
+        </Button>
+
         <Popover
           trigger={
-            <Button variant="secondary" size="md" aria-label="列设置">
-              列设置 ▾
+            <Button variant="secondary" size="md" className={`${iconBtn} gap-0.5`} aria-label="列设置" title="列设置（显示/隐藏列）">
+              <IconColumns size={14} />
+              <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
             </Button>
           }
           open={columnSettingsOpen}
@@ -197,8 +263,16 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
 
         <Menu
           trigger={
-            <Button variant="secondary" size="md" disabled={exportProgress !== null}>
-              导出 ▾
+            <Button
+              variant="secondary"
+              size="md"
+              className={`${iconBtn} gap-0.5`}
+              disabled={exportProgress !== null}
+              aria-label="导出"
+              title="导出（CSV/JSON）"
+            >
+              <IconDownload size={14} />
+              <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
             </Button>
           }
           items={[
@@ -208,16 +282,6 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             { key: 'json-result', label: 'JSON · 全部结果', onSelect: () => onExport('json', 'result') },
           ]}
         />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="刷新"
-          title="刷新当前页"
-          onClick={() => void refresh()}
-        >
-          ⟳
-        </Button>
       </div>
     </div>
   );

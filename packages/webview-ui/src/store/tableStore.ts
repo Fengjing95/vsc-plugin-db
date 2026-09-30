@@ -2,6 +2,7 @@ import type {
   ApplyChangesResult,
   EditOpPayload,
   FilterDraftPayload,
+  GetDdlResult,
   HandshakeResult,
   PreviewChangesResult,
   PreviewItemPayload,
@@ -10,6 +11,7 @@ import type {
 } from '@db-explorer/protocol';
 import { create } from 'zustand';
 import { request, RpcError } from '../rpc/client';
+import { errorCodeToMessage } from '../lib/errors';
 import { cellInputText, parseCellInput } from '../lib/editValues';
 import {
   applyOverlay,
@@ -107,6 +109,9 @@ interface TableState {
   previewItems: PreviewItemPayload[] | null;
   previewing: boolean;
   committing: boolean;
+  /** DDL 查看 Modal；null = 关闭 */
+  ddl: string | null;
+  ddlLoading: boolean;
   toast: ToastState | null;
   /** 选中行（rowKeyString → true，仅当前页服务端行；拖拽/点击/Shift 范围） */
   selectedRows: Record<string, true>;
@@ -146,6 +151,9 @@ interface TableState {
   openPreview(): Promise<void>;
   closePreview(): void;
   submitChanges(): Promise<void>;
+  /** 查看当前表 DDL（驱动未实现时报 E_UNSUPPORTED） */
+  openDdl(): Promise<void>;
+  closeDdl(): void;
   /** E_CONFLICT 动作：重取该行 → 校验变更列 → 基于新基线重新预览（不静默覆写） */
   retainMyChanges(): Promise<void>;
   /** E_CONFLICT 动作：放弃全部变更并刷新 */
@@ -202,6 +210,8 @@ export const useTableStore = create<TableState>((set, get) => ({
   previewItems: null,
   previewing: false,
   committing: false,
+  ddl: null,
+  ddlLoading: false,
   toast: null,
   selectedRows: {},
   selectionAnchor: null,
@@ -718,6 +728,30 @@ export const useTableStore = create<TableState>((set, get) => ({
         get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) }, 6000);
       }
     }
+  },
+
+  async openDdl() {
+    const s = get();
+    if (s.ddlLoading) {
+      return;
+    }
+    set({ ddlLoading: true, ddl: null });
+    try {
+      const result = await request<GetDdlResult>('table.getDdl', {
+        connId: s.connId,
+        db: s.db,
+        obj: s.obj,
+      });
+      set({ ddl: result.ddl, ddlLoading: false });
+    } catch (err) {
+      set({ ddlLoading: false });
+      const rpc = err instanceof RpcError ? err : undefined;
+      get().showToast({ kind: 'error', text: errorCodeToMessage(rpc?.code, err instanceof Error ? err.message : String(err)) });
+    }
+  },
+
+  closeDdl() {
+    set({ ddl: null });
   },
 
   async retainMyChanges() {

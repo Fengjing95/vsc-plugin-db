@@ -11,6 +11,7 @@ export const RpcMethods = {
   previewChanges: 'table.previewChanges',
   applyChanges: 'table.applyChanges',
   revertChanges: 'table.revertChanges',
+  getDdl: 'table.getDdl',
   exportRun: 'export.run',
   exportCancel: 'export.cancel',
   connMeta: 'conn.getMeta',
@@ -246,6 +247,15 @@ export type RevertChangesParams = z.infer<typeof RevertChangesParamsSchema>;
 
 export const RevertChangesResultSchema = EditChangesResultSchema;
 export type RevertChangesResult = EditChangesResult;
+
+// ── table.getDdl（表格视图查看当前表 DDL；驱动 getDdl 未实现时报 E_UNSUPPORTED）──
+export const GetDdlParamsSchema = PreviewChangesParamsSchema;
+export type GetDdlParams = z.infer<typeof GetDdlParamsSchema>;
+
+export const GetDdlResultSchema = z.object({
+  ddl: z.string(),
+});
+export type GetDdlResult = z.infer<typeof GetDdlResultSchema>;
 
 /** evt:changeset.updated 负载（工具栏计数与跨端一致） */
 export const ChangesetUpdatedEventSchema = z.object({

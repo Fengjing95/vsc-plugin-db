@@ -56,6 +56,9 @@
 - **P-18 mock 数据是共享物化存储**（M4 起）→ `MockConnection` 的数据在模块级 `store` 首次访问时物化，**跨连接一致**（模拟真实服务端，冲突场景可两视图构造）；同一测试文件内先跑只读契约组再跑 changeset 组（会改 `demo.*` 数据），测试需要干净数据时调用导出的 `resetMockStore()`。
 - **P-19 契约组按能力跳过的判定**（M4 踩）→ `runChangesetChecks` 的能力探测里，驱动对探测表抛 `E_NOT_FOUND` 恰说明编辑**已实现**（表不存在才报错），只有 `E_UNSUPPORTED` 才整组跳过；写成"任何错误都跳过"会让组静默全跳、测试假绿。
 
+### 可视化验证（脱离 VSCode 宿主）
+- **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。注意 ChangePreviewModal 的虚拟列表在该无头环境不渲染条目（HEAD 构建复测同样），疑似挂载时序差异，判回归先对照 HEAD 构建。
+
 ### 环境（Windows + Git Bash）
 - **P-12 heredoc 在本机 shell 不可靠** → `python - <<EOF` 直接失败（exit 49）；**bash heredoc 内容较长时会被截断**（报 "here-document delimited by end-of-file"，文件写一半）。→ 改文件一律用文件编辑工具（Edit/Write）；追加大段内容用 Edit 锚定文件尾部，不要用 `cat >> file <<EOF`。
 - **P-13 grep 实为 ugrep** → 转义/正则行为与 GNU grep 略有差异；复杂模式加 `-F` 或改用 `node -e` 脚本。
