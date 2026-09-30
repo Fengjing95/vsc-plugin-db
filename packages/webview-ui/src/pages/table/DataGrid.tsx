@@ -344,8 +344,19 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                 <div
                   role="gridcell"
                   aria-selected={isSelected}
-                  className={`sticky left-0 z-10 flex shrink-0 items-center justify-end gap-1 border-r border-border px-2 text-[12px] text-muted-foreground ${isInsert ? 'bg-insert-bg' : editState.kind === 'deleted' ? 'bg-delete-bg' : isSelected ? 'bg-row-selected' : 'bg-background'} ${!isInsert ? 'cursor-pointer select-none' : ''}`}
-                  style={{ width: ROW_NUM_WIDTH }}
+                  /* 粘性行号必须不透明遮挡横向滚过的列：以 bg-background 打底，
+                     状态染色（半透明 token）经第二层叠加，避免选中/新增/删除行时透出下层列 */
+                  className={`sticky left-0 z-10 flex shrink-0 items-center justify-end gap-1 border-r border-border px-2 text-[12px] text-muted-foreground bg-background ${!isInsert ? 'cursor-pointer select-none' : ''}`}
+                  style={{
+                    width: ROW_NUM_WIDTH,
+                    backgroundImage: isInsert
+                      ? 'linear-gradient(var(--color-insert-bg), var(--color-insert-bg))'
+                      : editState.kind === 'deleted'
+                        ? 'linear-gradient(var(--color-delete-bg), var(--color-delete-bg))'
+                        : isSelected
+                          ? 'linear-gradient(var(--color-row-selected), var(--color-row-selected))'
+                          : undefined,
+                  }}
                   title={!isInsert ? '点击选择行（拖拽/Shift 范围选 · Ctrl 增删 · Esc 取消）' : undefined}
                   onContextMenu={(e) => {
                     e.preventDefault();

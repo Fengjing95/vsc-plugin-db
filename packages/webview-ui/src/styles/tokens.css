@@ -58,7 +58,7 @@
   /* 表格行悬停 / 斑马纹 */
   --color-row-hover: var(--vscode-list-hoverBackground);
   --color-row-stripe: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
-  --color-row-selected: var(--vscode-list-inactiveSelectionBackground);
+  --color-row-selected: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground)));
 
   --radius-sm: 2px;
   --radius-md: 3px;
