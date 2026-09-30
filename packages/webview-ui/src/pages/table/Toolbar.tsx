@@ -19,7 +19,8 @@ import { useTableStore } from '../../store/tableStore';
 
 /**
  * 工具栏（交互稿 §4.1/概要设计 5.4.2）：标题、编辑操作、搜索、列设置、DDL、导出。
- * 去文本化：操作一律图标按钮，hover 经 title 提示（aria-label 兜底读屏）。
+ * 去文本化：操作一律图标按钮，hover 经 title 提示（aria-label 兜底读屏）；
+ * 全部统一 secondary 带边框风格，按钮常驻显示，不可用时置灰禁用（不隐藏）。
  */
 export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' | 'test' | 'prod' | null }) {
   const readOnly = useTableStore((s) => s.readOnly);
@@ -122,9 +123,9 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
         </span>
       )}
 
-      {/* 刷新：移至左侧（标题区之后），图标放大一档 */}
+      {/* 刷新：常驻左侧（标题区之后），图标放大一档；与编辑操作统一 secondary 带边框风格 */}
       <Button
-        variant="ghost"
+        variant="secondary"
         size="md"
         className="w-8 px-0"
         aria-label="刷新"
@@ -148,19 +149,18 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           >
             <IconPlus size={15} />
           </Button>
-          {selectedCount > 0 && (
-            <Button
-              variant="secondary"
-              size="md"
-              className={iconBtn}
-              disabled={editBusy}
-              onClick={markDeleteSelected}
-              title={`删除选中行（${selectedCount}）：进入变更集，提交时落库`}
-              aria-label={`删除选中行（${selectedCount}）`}
-            >
-              <IconMinus size={15} />
-            </Button>
-          )}
+          {/* 常驻显示，未选中行时置灰（评审：按钮不隐藏，统一禁用语义） */}
+          <Button
+            variant="secondary"
+            size="md"
+            className={iconBtn}
+            disabled={selectedCount === 0 || editBusy}
+            onClick={markDeleteSelected}
+            title={selectedCount > 0 ? `删除选中行（${selectedCount}）：进入变更集，提交时落库` : '删除选中行（先点击行选中）'}
+            aria-label={`删除选中行（${selectedCount}）`}
+          >
+            <IconMinus size={15} />
+          </Button>
           <Button
             variant="secondary"
             size="md"
@@ -173,7 +173,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             <IconEye size={15} />
           </Button>
           <Button
-            variant={counts.total > 0 ? 'primary' : 'secondary'}
+            variant="secondary"
             size="md"
             disabled={counts.total === 0 || editBusy}
             onClick={() => void openPreview()}
@@ -184,7 +184,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             <IconCheck size={15} />
           </Button>
           <Button
-            variant="ghost"
+            variant="secondary"
             size="md"
             className={iconBtn}
             disabled={counts.total === 0 || editBusy}
