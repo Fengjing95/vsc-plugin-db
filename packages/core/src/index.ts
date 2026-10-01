@@ -9,4 +9,5 @@ export * from './services/metadataCache';
 export * from './services/changeSetService';
 export * from './services/sqlScript';
 export * from './services/sqlDanger';
+export * from './services/redisCommands';
 export * from './services/completionContext';

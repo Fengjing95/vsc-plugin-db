@@ -53,8 +53,12 @@ function assert(condition: unknown, message: string): asserts condition {
 async function firstTable(conn: IConnection): Promise<{ db: string; obj: string }> {
   const dbs = await conn.listDatabases();
   assert(dbs.length > 0, 'listDatabases 返回空数组');
-  const table = (await conn.listObjects(dbs[0].name)).find((o) => o.kind === 'table');
-  assert(table !== undefined, '首个库没有表');
+  const objs = await conn.listObjects(dbs[0].name);
+  // 优先 table/view（SQL 数据源）；键值数据源退回 collection（M6）
+  const table =
+    objs.find((o) => o.kind === 'table' || o.kind === 'view') ??
+    objs.find((o) => o.kind === 'collection');
+  assert(table !== undefined, '首个库没有可取样的对象');
   return { db: dbs[0].name, obj: table.name };
 }
 
@@ -101,13 +105,17 @@ interface SampleTable {
   columns: Array<{ name: string; type: NormalizedType }>;
 }
 
-/** 在首个满足条件的库中取样例表：优先含 NULL 值的表（覆盖 isNull/isNotNull），退而求其次取 ≥minRows 行表 */
+/** 在首个满足条件的库中取样例表：优先含 NULL 值的表（覆盖 isNull/isNotNull），退而求其次取 ≥minRows 行表。
+ *  键值数据源（kind=collection）在无 table/view 时兜底参与（M6）。 */
 async function findSampleTable(conn: IConnection, minRows: number): Promise<SampleTable | undefined> {
   const dbs = await conn.listDatabases();
   for (const db of dbs) {
     let fallback: SampleTable | undefined;
     const objs = await conn.listObjects(db.name);
-    for (const obj of objs.filter((o) => o.kind === 'table' || o.kind === 'view')) {
+    const candidates = objs.filter(
+      (o) => o.kind === 'table' || o.kind === 'view' || o.kind === 'collection',
+    );
+    for (const obj of candidates) {
       const rs = await conn.fetchRows({ db: db.name, obj: obj.name, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
       if (rs.rowCount < minRows) {
         continue;
@@ -373,8 +381,20 @@ const FILTER_OPS: FilterOp[] = [
   'like', 'notLike', 'in', 'notIn', 'isNull', 'isNotNull', 'between',
 ];
 
+export interface FilterPushdownOptions {
+  /** Redis 类键值驱动不支持用户手写 WHERE 片段（E_VALIDATION）→ 跳过该检查 */
+  supportsWhereSql?: boolean;
+  /** 排序语义：server = 服务端下推全局序（默认）；page = 页内局部排序
+   *  （SCAN 类数据源无服务端排序且禁止取全表）→ 组合 filters+sorts+offset 的
+   *  全局序检查按 skip 处理，sorts 页内有序仍由 pagination 组验证 */
+  sorts?: 'server' | 'page';
+}
+
 /** 筛选下推组（M3）：每个 FilterOp 与内存过滤一致、组合条件+排序+分页、search 子串语义 */
-export async function runFilterPushdownChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+export async function runFilterPushdownChecks(
+  create: () => Promise<IConnection>,
+  opts?: FilterPushdownOptions,
+): Promise<ConformanceSummary> {
   const results: CheckResult[] = [];
   const conn = await create();
   try {
@@ -398,18 +418,23 @@ export async function runFilterPushdownChecks(create: () => Promise<IConnection>
         timeoutMs: SAMPLE_TIMEOUT_MS,
       });
 
-    // 用户手写 WHERE 片段（驱动规范 §4）：原样拼接且必须生效——1=1 不改变结果集
-    await check(results, 'filter-pushdown', 'whereSql 拼接生效（1=1 结果集不变）', async () => {
-      const base = await conn.fetchRows({ db, obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
-      const spliced = await conn.fetchRows({
-        db,
-        obj,
-        limit: SAMPLE_LIMIT,
-        whereSql: '1 = 1',
-        timeoutMs: SAMPLE_TIMEOUT_MS,
+    // 用户手写 WHERE 片段（驱动规范 §4）：原样拼接且必须生效——1=1 不改变结果集。
+    // 不支持的驱动（Redis 类）在收到的片段上抛 E_VALIDATION → 按能力跳过
+    if (opts?.supportsWhereSql === false) {
+      await skip(results, 'filter-pushdown', 'whereSql 拼接生效（驱动不支持手写片段，跳过）', 'supportsWhereSql=false');
+    } else {
+      await check(results, 'filter-pushdown', 'whereSql 拼接生效（1=1 结果集不变）', async () => {
+        const base = await conn.fetchRows({ db, obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+        const spliced = await conn.fetchRows({
+          db,
+          obj,
+          limit: SAMPLE_LIMIT,
+          whereSql: '1 = 1',
+          timeoutMs: SAMPLE_TIMEOUT_MS,
+        });
+        assert(spliced.rowCount === base.rowCount, `拼接 1=1 后行数变化：${base.rowCount} → ${spliced.rowCount}`);
       });
-      assert(spliced.rowCount === base.rowCount, `拼接 1=1 后行数变化：${base.rowCount} → ${spliced.rowCount}`);
-    });
+    }
 
     for (const op of FILTER_OPS) {
       const case_ = buildOpCase(op, sample);
@@ -430,26 +455,35 @@ export async function runFilterPushdownChecks(create: () => Promise<IConnection>
       });
     }
 
-    await check(results, 'filter-pushdown', '组合 filters+sorts+limit+offset 与内存流程一致', async () => {
-      const case1 = buildOpCase('eq', sample) ?? buildOpCase('gt', sample);
-      const case2 = buildOpCase('like', sample);
-      assert(case1 !== undefined && case2 !== undefined, '样例数据不足');
-      assert(primaryKey.length > 0, '样例表无主键');
-      const filters = [case1!.cond, case2!.cond];
-      const rs = await fetchFiltered(filters, {
-        sorts: [{ column: primaryKey[0], dir: 'asc' }],
-        limit: 5,
-        offset: 2,
+    if (opts?.sorts === 'page') {
+      await skip(
+        results,
+        'filter-pushdown',
+        '组合 filters+sorts+limit+offset（页内排序语义，跳过全局序检查）',
+        'sorts=page',
+      );
+    } else {
+      await check(results, 'filter-pushdown', '组合 filters+sorts+limit+offset 与内存流程一致', async () => {
+        const case1 = buildOpCase('eq', sample) ?? buildOpCase('gt', sample);
+        const case2 = buildOpCase('like', sample);
+        assert(case1 !== undefined && case2 !== undefined, '样例数据不足');
+        assert(primaryKey.length > 0, '样例表无主键');
+        const filters = [case1!.cond, case2!.cond];
+        const rs = await fetchFiltered(filters, {
+          sorts: [{ column: primaryKey[0], dir: 'asc' }],
+          limit: 5,
+          offset: 2,
+        });
+        const expected = sample.rows
+          .filter(
+            (r) =>
+              sqlMatch(r, case1!.cond, case1!.colIdx) && sqlMatch(r, case2!.cond, case2!.colIdx),
+          )
+          .sort((a, b) => valCmp(a[indexOfColumn(sample.columns, primaryKey[0])], b[indexOfColumn(sample.columns, primaryKey[0])]))
+          .slice(2, 7);
+        assert(rowsEqual(rs.rows, expected), '组合下推结果与内存过滤+排序+分页不一致');
       });
-      const expected = sample.rows
-        .filter(
-          (r) =>
-            sqlMatch(r, case1!.cond, case1!.colIdx) && sqlMatch(r, case2!.cond, case2!.colIdx),
-        )
-        .sort((a, b) => valCmp(a[indexOfColumn(sample.columns, primaryKey[0])], b[indexOfColumn(sample.columns, primaryKey[0])]))
-        .slice(2, 7);
-      assert(rowsEqual(rs.rows, expected), '组合下推结果与内存过滤+排序+分页不一致');
-    });
+    }
 
     await check(results, 'filter-pushdown', 'search 子串语义且特殊字符不抛错', async () => {
       const caseLike = buildOpCase('like', sample);
@@ -881,6 +915,249 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
         updates: [{ rowKey: pkMap, original: pkMap, changes: { [nullableCol.name]: { old: filled, new: null } } }],
       }));
     });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+// ───────────────────────── M6：cursor 分页 / SCAN 语义 / 值编码 ─────────────────────────
+
+export interface CursorPaginationOptions {
+  /** 仅 pagination='cursor' 的驱动跑本组，其余整组跳过 */
+  pagination?: 'offset' | 'cursor' | 'none';
+}
+
+/** cursor 分页组（M6）：nextCursor 存在性与翻页闭环（沿游标走完 = 全量取，无重复无遗漏） */
+export async function runCursorPaginationChecks(
+  create: () => Promise<IConnection>,
+  opts?: CursorPaginationOptions,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  if (opts?.pagination !== 'cursor') {
+    await skip(results, 'cursor-pagination', 'cursor 分页组（驱动非 cursor 分页，跳过）', 'pagination≠cursor');
+    return summarize(results);
+  }
+  const conn = await create();
+  try {
+    const sample = await findSampleTable(conn, 5);
+    if (!sample) {
+      await skip(results, 'cursor-pagination', '样例对象（≥5 行，跳过）', '样例不足');
+      return summarize(results);
+    }
+    const { db, obj, primaryKey } = sample;
+    assert(primaryKey.length > 0, 'cursor 组样例无主键列');
+    const pkIdx = indexOfColumn(sample.columns, primaryKey[0]);
+
+    await check(results, 'cursor-pagination', 'cursor 翻页闭环：走完游标 = 全量取（无重复无遗漏）', async () => {
+      const full = await conn.fetchRows({ db, obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      const walked: unknown[][] = [];
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = await conn.fetchRows({
+          db, obj, limit: 3, cursor, timeoutMs: SAMPLE_TIMEOUT_MS,
+        });
+        for (const row of page.rows) {
+          const key = JSON.stringify(row[pkIdx]);
+          assert(!seen.has(key), `cursor 翻页出现重复行：${key}`);
+          seen.add(key);
+          walked.push(row);
+        }
+        cursor = page.nextCursor;
+        pages++;
+        assert(pages < 10_000, 'cursor 翻页未收敛（疑似游标环）');
+      } while (cursor !== undefined);
+      assert(
+        walked.length === full.rows.length,
+        `cursor 走完 ${walked.length} 行 ≠ 全量 ${full.rows.length} 行`,
+      );
+      assert(
+        sameKeySet(walked, full.rows, pkIdx),
+        'cursor 走完的键集合与全量取不一致',
+      );
+    });
+
+    await check(results, 'cursor-pagination', '满页时返回 nextCursor；相邻页无重叠', async () => {
+      const page = await conn.fetchRows({ db, obj, limit: 3, timeoutMs: SAMPLE_TIMEOUT_MS });
+      const full = await conn.fetchRows({ db, obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      if (full.rows.length > 3) {
+        assert(typeof page.nextCursor === 'string' && page.nextCursor.length > 0, '未取尽时应返回 nextCursor');
+        const nextPage = await conn.fetchRows({
+          db, obj, limit: 3, cursor: page.nextCursor, timeoutMs: SAMPLE_TIMEOUT_MS,
+        });
+        const overlap = page.rows.some((r1) => nextPage.rows.some((r2) => rowEq(r1, r2)));
+        assert(!overlap, '相邻两 cursor 页存在重叠行');
+      } else {
+        assert(page.nextCursor === undefined, '已取尽时不应返回 nextCursor');
+      }
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+export interface ScanSemanticsOptions {
+  pagination?: 'offset' | 'cursor' | 'none';
+}
+
+const KV_TYPE_VALUES = new Set(['string', 'hash', 'list', 'set', 'zset', 'stream']);
+
+/** glob → RegExp（* ? [class] 足够覆盖测试模式；仅用于契约基准，不做完整 glob） */
+function globToRegExp(pattern: string): RegExp {
+  let re = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '*') re += '[\\s\\S]*';
+    else if (ch === '?') re += '[\\s\\S]';
+    else if (ch === '[') {
+      const end = pattern.indexOf(']', i);
+      if (end < 0) re += '\\[';
+      else {
+        re += pattern.slice(i, end + 1);
+        i = end;
+      }
+    } else re += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/** SCAN 语义组（M6，键值数据源）：模式匹配正确、type 列合法、__ttl 整数 */
+export async function runScanSemanticsChecks(
+  create: () => Promise<IConnection>,
+  opts?: ScanSemanticsOptions,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  if (opts?.pagination !== 'cursor') {
+    await skip(results, 'scan-semantics', 'SCAN 语义组（驱动非 cursor 分页，跳过）', 'pagination≠cursor');
+    return summarize(results);
+  }
+  const conn = await create();
+  try {
+    const sample = await findSampleTable(conn, 5);
+    if (!sample || !sample.columns.some((c) => c.name === 'key') || !sample.columns.some((c) => c.name === 'type')) {
+      await skip(results, 'scan-semantics', 'SCAN 语义组（样例无 key/type 列，跳过）', '样例不足');
+      return summarize(results);
+    }
+    const { obj } = sample;
+    const keyIdx = indexOfColumn(sample.columns, 'key');
+    const typeIdx = indexOfColumn(sample.columns, 'type');
+    const pattern = globToRegExp(obj);
+
+    await check(results, 'scan-semantics', '模式浏览行全部匹配 obj 模式（SCAN MATCH 下推）', async () => {
+      assert(sample.rows.length > 0, '模式浏览返回空');
+      for (const row of sample.rows) {
+        const key = row[keyIdx];
+        assert(typeof key === 'string', `key 列应为字符串，实际 ${typeof key}`);
+        assert(pattern.test(key), `键 "${key}" 不匹配模式 "${obj}"`);
+      }
+    });
+
+    await check(results, 'scan-semantics', 'type 列为合法 Redis 类型', async () => {
+      for (const row of sample.rows) {
+        const type = row[typeIdx];
+        assert(typeof type === 'string' && KV_TYPE_VALUES.has(type), `非法 type 列值: ${String(type)}`);
+      }
+    });
+
+    const ttlCol = sample.columns.find((c) => c.name === '__ttl');
+    if (ttlCol) {
+      await check(results, 'scan-semantics', '__ttl 列为整数（-1=无过期，≥0=剩余秒）', async () => {
+        const ttlIdx = indexOfColumn(sample.columns, '__ttl');
+        for (const row of sample.rows) {
+          const ttl = row[ttlIdx];
+          const n = toNumber(ttl);
+          assert(n !== undefined && Number.isInteger(n), `__ttl 应为整数，实际 ${String(ttl)}`);
+          assert(n >= -1, `__ttl 非法（应 ≥ -1）: ${String(ttl)}`);
+        }
+      });
+    }
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+export interface ValueEncodingFixtures {
+  db?: string;
+  /** 预置键名（驱动测试负责写入已知数据）：断言内容表列形状与值 JSON 安全 */
+  hash?: string;
+  list?: string;
+  set?: string;
+  zset?: string;
+  string?: string;
+  /** 二进制值键：断言单元格为合法 base64 */
+  binary?: string;
+}
+
+/** 值编码组（M6，概要 §4.4 / 驱动规范 §5.3）：单元格 JSON 安全 + 类型化内容表形状 */
+export async function runValueEncodingChecks(
+  create: () => Promise<IConnection>,
+  fixtures?: ValueEncodingFixtures,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    const dbs = await conn.listDatabases();
+    assert(dbs.length > 0, 'listDatabases 返回空数组');
+    const db = fixtures?.db ?? dbs[0].name;
+
+    await check(results, 'value-encoding', '样例行全部 JSON 安全（无二进制泄漏/循环引用）', async () => {
+      const sample = await findSampleTable(conn, 1);
+      if (!sample) {
+        await skip(results, 'value-encoding', '样例行 JSON 安全（无样例，跳过）', '样例不足');
+        return;
+      }
+      const rs = await conn.fetchRows({ db: sample.db, obj: sample.obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      for (const row of rs.rows) {
+        for (const cell of row) {
+          const json = JSON.stringify(cell ?? null);
+          assert(json !== undefined, `单元格不可 JSON 序列化: ${String(cell)}`);
+          // Buffer 实例会序列化为 {type:'Buffer',...}——IConnection 层不允许泄漏
+          assert(!Buffer.isBuffer(cell), '单元格为 Buffer 实例（违反值编码契约）');
+        }
+      }
+    });
+
+    const contentShape: Array<[keyof ValueEncodingFixtures, string[], (name: string) => string]> = [
+      ['hash', ['field', 'value'], (n) => `hash 键 "${n}" 应为 field/value 两列`],
+      ['list', ['index', 'value'], (n) => `list 键 "${n}" 应为 index/value 两列`],
+      ['set', ['member'], (n) => `set 键 "${n}" 应为 member 列`],
+      ['zset', ['member', 'score'], (n) => `zset 键 "${n}" 应为 member/score 两列`],
+      ['string', ['value'], (n) => `string 键 "${n}" 应为 value 列`],
+    ];
+
+    for (const [fixtureKey, expectedCols, failMsg] of contentShape) {
+      const keyName = fixtures?.[fixtureKey];
+      if (typeof keyName !== 'string') {
+        continue;
+      }
+      await check(results, 'value-encoding', `内容表形状：${String(fixtureKey)}（${keyName}）`, async () => {
+        const rs = await conn.fetchRows({ db, obj: keyName, limit: 100, timeoutMs: SAMPLE_TIMEOUT_MS });
+        assert(rs.columns.map((c) => c.name).join(',') === expectedCols.join(','), failMsg(keyName));
+        assert(rs.rows.length > 0, `内容表 ${keyName} 为空`);
+        for (const row of rs.rows) {
+          for (const cell of row) {
+            assert(!Buffer.isBuffer(cell), '单元格为 Buffer 实例（违反值编码契约）');
+            if (typeof cell === 'object' && cell !== null) {
+              assert(JSON.stringify(cell) !== undefined, 'json 值不可序列化');
+            }
+          }
+        }
+      });
+    }
+
+    if (typeof fixtures?.binary === 'string') {
+      await check(results, 'value-encoding', `二进制值 → base64（${fixtures.binary}）`, async () => {
+        const rs = await conn.fetchRows({ db, obj: fixtures.binary!, limit: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+        assert(rs.rows.length === 1, '二进制 string 键应返回 1 行');
+        const cell = rs.rows[0][0];
+        assert(typeof cell === 'string' && cell.length > 0, '二进制值应为非空 base64 字符串');
+        assert(/^[A-Za-z0-9+/=]+$/.test(cell), `值非合法 base64: ${String(cell).slice(0, 20)}…`);
+      });
+    }
   } finally {
     await conn.dispose();
   }
