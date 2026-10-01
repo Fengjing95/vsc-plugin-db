@@ -16,9 +16,10 @@ interface Candidate {
 
 /**
  * SQL 片段输入框（交互稿 §4.4 v0.1.3）：
- * textarea 文本透明 + 底层 pre 语法高亮（prism），同字体同内边距对位；
+ * 底层 pre 语法高亮（prism）+ 上层 textarea 文本透明，两者共享容器的单层边框与底色；
  * 输入词前缀触发补全（列名 + 上下文关键字），↑↓ 选择、Enter/Tab 采纳、Esc 关闭；
  * Enter 在补全关闭时触发 onApply。
+ * 注：VSCode 未向 webview 开放独立的补全组件（Monaco 需整包嵌入，体积过大），补全为自研轻量实现。
  */
 export function SqlInput({
   value,
@@ -27,7 +28,6 @@ export function SqlInput({
   columns,
   context,
   ariaLabel,
-  placeholder,
   widthClass,
 }: {
   value: string;
@@ -37,7 +37,6 @@ export function SqlInput({
   columns: Array<{ name: string; type: string }>;
   context: 'where' | 'order';
   ariaLabel: string;
-  placeholder?: string;
   widthClass?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -82,6 +81,10 @@ export function SqlInput({
     const ta = taRef.current;
     if (!ta) return;
     const word = wordBeforeCaret(ta.value, ta.selectionStart ?? 0);
+    // 补全弹层已开且词未变（如 ↑↓/Enter 后的 keyup）：保留当前选中项，不重置
+    if (open && word === caretWord) {
+      return;
+    }
     setCaretWord(word);
     if (word === '') {
       setOpen(false);
@@ -109,9 +112,8 @@ export function SqlInput({
     setCaretWord('');
     // 光标落到插入文本之后
     requestAnimationFrame(() => {
-      const pos = start + c.insert.length + 1;
       ta.focus();
-      ta.setSelectionRange(pos, pos);
+      ta.setSelectionRange(start + c.insert.length + 1, start + c.insert.length + 1);
     });
   };
 
@@ -147,11 +149,16 @@ export function SqlInput({
   const lines = Math.min(4, Math.max(1, value.split('\n').length));
 
   return (
-    <div className={`relative min-w-0 ${widthClass ?? 'flex-1'}`}>
+    /* 边框与底色只在容器上（单层）：pre/textarea 均无自带边框，focus-within 高亮 */
+    <div
+      className={`relative min-w-0 rounded-sm border bg-input-bg focus-within:border-ring ${
+        open ? 'border-ring' : 'border-border'
+      } ${widthClass ?? 'flex-1'}`}
+    >
       <pre
         ref={preRef}
         aria-hidden
-        className="sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all rounded-sm border border-transparent bg-input-bg px-2 py-1 font-mono text-[12px] leading-[1.6]"
+        className="sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all px-2 py-1 font-mono text-[12px] leading-[1.6]"
       >
         <span dangerouslySetInnerHTML={{ __html: highlightSql(value || ' ') }} />
       </pre>
@@ -161,7 +168,6 @@ export function SqlInput({
         spellCheck={false}
         wrap="soft"
         aria-label={ariaLabel}
-        placeholder={placeholder}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
@@ -172,7 +178,7 @@ export function SqlInput({
         onKeyUp={refreshCaret}
         onClick={refreshCaret}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="relative h-auto w-full resize-none overflow-x-auto whitespace-pre-wrap break-all rounded-sm border border-border bg-transparent px-2 py-1 font-mono text-[12px] leading-[1.6] text-transparent caret-ring outline-none placeholder:text-muted-foreground focus:border-ring"
+        className="relative block h-auto w-full resize-none bg-transparent px-2 py-1 font-mono text-[12px] leading-[1.6] text-transparent caret-ring outline-none"
       />
       {open && candidates.length > 0 && (
         <ul

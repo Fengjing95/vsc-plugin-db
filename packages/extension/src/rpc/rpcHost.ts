@@ -126,25 +126,34 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
 
         case RpcMethods.fetchRows: {
           if (tableDepsReady()) {
-            const p = FetchRowsParamsSchema.parse(req.params);
-            // core 保证 limit ≤ maxRows 配置（驱动开发规范 §4）
-            const maxRows = vscode.workspace
-              .getConfiguration('dbExplorer.query')
-              .get<number>('maxRows', 1000);
-            const conn = await deps.connections!.ensureConnected(p.connId);
-            const rs = await deps.host!.fetchRows(conn, {
-              db: p.db,
-              obj: p.obj,
-              limit: Math.min(p.limit, maxRows),
-              offset: p.offset,
-              columns: p.columns,
-              filters: p.filters,
-              sorts: p.sorts,
-              search: p.search,
-              whereSql: p.whereSql,
-              orderBySql: p.orderBySql,
-            });
-            respond(true, { result: rs });
+            try {
+              const p = FetchRowsParamsSchema.parse(req.params);
+              // core 保证 limit ≤ maxRows 配置（驱动开发规范 §4）
+              const maxRows = vscode.workspace
+                .getConfiguration('dbExplorer.query')
+                .get<number>('maxRows', 1000);
+              const conn = await deps.connections!.ensureConnected(p.connId);
+              const rs = await deps.host!.fetchRows(conn, {
+                db: p.db,
+                obj: p.obj,
+                limit: Math.min(p.limit, maxRows),
+                offset: p.offset,
+                columns: p.columns,
+                filters: p.filters,
+                sorts: p.sorts,
+                search: p.search,
+                whereSql: p.whereSql,
+                orderBySql: p.orderBySql,
+              });
+              respond(true, { result: rs });
+            } catch (err) {
+              // 用户手写 SQL 片段错误：除 webview toast 外，经全局通知呈现
+              // （VSCode 通知可点击展开完整详情，满足“看报错详细信息”）
+              if (err instanceof DriverError && err.code === 'E_VALIDATION') {
+                void vscode.window.showErrorMessage(`筛选条件有误：${err.message}`);
+              }
+              throw err;
+            }
             return;
           }
           break; // 缺依赖按“视图不支持”统一处理（与旧连接表单视图兼容）

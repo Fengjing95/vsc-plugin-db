@@ -32,8 +32,8 @@ export function FilterBar() {
   };
 
   return (
-    <div className="flex flex-wrap items-start gap-1.5 border-b border-border bg-panel px-2 py-1.5">
-      <span className="mt-1 shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 WHERE 条件（语法错误在应用时提示）">
+    <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-panel px-2 py-1.5">
+      <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 WHERE 条件（语法错误在应用时提示）">
         WHERE
       </span>
       <SqlInput
@@ -43,10 +43,9 @@ export function FilterBar() {
         columns={allColumns}
         context="where"
         ariaLabel="WHERE 条件"
-        placeholder="如：status = 'active' AND (amount > 100 OR note IS NOT NULL)"
         widthClass="min-w-56 flex-1"
       />
-      <span className="ml-1 mt-1 shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 ORDER BY（追加在列头排序之后）">
+      <span className="ml-1 shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 ORDER BY（追加在列头排序之后）">
         ORDER BY
       </span>
       <SqlInput
@@ -56,10 +55,9 @@ export function FilterBar() {
         columns={allColumns}
         context="order"
         ariaLabel="ORDER BY 排序"
-        placeholder="如：created_at DESC, id"
         widthClass="w-64"
       />
-      <div className="flex shrink-0 items-center gap-1.5 self-start">
+      <div className="flex shrink-0 items-center gap-1.5">
         <Button
           variant="ghost"
           size="sm"

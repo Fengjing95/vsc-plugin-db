@@ -274,12 +274,19 @@ export const useTableStore = create<TableState>((set, get) => ({
         return;
       }
       const rpc = err instanceof RpcError ? err : undefined;
+      const message = rpc?.message ?? (err instanceof Error ? err.message : String(err));
+      const hadData = get().phase === 'ready';
       set({
-        phase: 'error',
+        // 已有数据时不整页报错（保留旧数据，如手写条件语法错误），只通知
+        phase: hadData ? 'ready' : 'error',
         fetching: false,
-        errorMsg: rpc?.message ?? (err instanceof Error ? err.message : String(err)),
+        errorMsg: message,
         errorCode: rpc?.code,
       });
+      if (hadData) {
+        // 展示驱动返回的具体信息（如 SQL 片段语法错误位置）；全局弹窗由 Host 层负责
+        get().showToast({ kind: 'error', text: message }, 6000);
+      }
     }
   },
 
