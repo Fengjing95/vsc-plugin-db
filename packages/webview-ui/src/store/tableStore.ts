@@ -147,6 +147,8 @@ interface TableState {
   clearSelection(): void;
   markDeleteSelected(): void;
   revertRowByIndex(rowIndex: number): void;
+  /** 撤销选中行的未提交变更（工具栏 ↺；无选中或选中行均无变更时 no-op，插入行不可选中、由行内菜单管理） */
+  revertSelected(): void;
   revertAll(): Promise<void>;
   openPreview(): Promise<void>;
   closePreview(): void;
@@ -640,6 +642,36 @@ export const useTableStore = create<TableState>((set, get) => ({
     set({ updates, deletes, rowErrors });
     queueOp({ op: 'revertRow', rowKey: rowKeyOfRow(row, s.columns, s.primaryKey) });
     scheduleSync(set, get);
+  },
+
+  revertSelected() {
+    const s = get();
+    if (!s.editEnabled || s.committing || s.previewing) {
+      return;
+    }
+    // 与 revertRowByIndex 同语义的批量版：本地清覆盖层 + 逐行 revertRow op 合并一次上行
+    const updates = { ...s.updates };
+    const deletes = { ...s.deletes };
+    const rowErrors = { ...s.rowErrors };
+    let reverted = 0;
+    for (let i = 0; i < s.rows.length; i++) {
+      const rowKey = rowKeyOfRow(s.rows[i], s.columns, s.primaryKey);
+      const key = rowKeyString(rowKey);
+      if (!s.selectedRows[key] || (!s.updates[key] && !s.deletes[key])) {
+        continue;
+      }
+      delete updates[key];
+      delete deletes[key];
+      delete rowErrors[key];
+      queueOp({ op: 'revertRow', rowKey });
+      reverted++;
+    }
+    if (reverted === 0) {
+      return;
+    }
+    set({ updates, deletes, rowErrors });
+    scheduleSync(set, get);
+    get().showToast({ kind: 'info', text: `已撤销 ${reverted} 行的未提交变更` });
   },
 
   async revertAll() {

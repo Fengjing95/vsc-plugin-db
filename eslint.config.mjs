@@ -26,6 +26,16 @@ export default tseslint.config(
     },
   },
   {
+    // skill 资产脚本：浏览器（window）与 node（URL）全局并存，独立于包源码
+    files: ['.agents/**/*.mjs', '.agents/**/*.js'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },

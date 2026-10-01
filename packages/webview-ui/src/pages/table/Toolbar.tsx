@@ -41,11 +41,21 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const addInsertRow = useTableStore((s) => s.addInsertRow);
   const openPreview = useTableStore((s) => s.openPreview);
   const submitChanges = useTableStore((s) => s.submitChanges);
-  const revertAll = useTableStore((s) => s.revertAll);
+  const revertSelected = useTableStore((s) => s.revertSelected);
   const openDdl = useTableStore((s) => s.openDdl);
   const previewing = useTableStore((s) => s.previewing);
   const committing = useTableStore((s) => s.committing);
   const selectedCount = useTableStore((s) => Object.keys(s.selectedRows).length);
+  // 选中且存在未提交变更的行数（P-17：订阅底层切片本地聚合，不经 action 间接读）
+  const selectedDirtyCount = useTableStore((s) => {
+    let n = 0;
+    for (const key of Object.keys(s.selectedRows)) {
+      if (s.updates[key] || s.deletes[key]) {
+        n++;
+      }
+    }
+    return n;
+  });
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
 
   const [searchText, setSearchText] = useState('');
@@ -188,10 +198,14 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             variant="secondary"
             size="md"
             className={iconBtn}
-            disabled={counts.total === 0 || editBusy}
-            onClick={() => void revertAll()}
-            aria-label="撤销全部变更"
-            title="撤销全部未提交变更"
+            disabled={selectedDirtyCount === 0 || editBusy}
+            onClick={() => void revertSelected()}
+            aria-label={selectedDirtyCount > 0 ? `撤销选中行的变更（${selectedDirtyCount} 行）` : '撤销选中行的变更'}
+            title={
+              selectedDirtyCount > 0
+                ? `撤销选中行的变更（${selectedDirtyCount} 行）`
+                : '撤销选中行的变更（先选中行，且选中行需有未提交变更；撤销全部见行号右键菜单）'
+            }
           >
             <IconUndo size={15} />
           </Button>

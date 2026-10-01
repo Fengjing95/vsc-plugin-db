@@ -240,6 +240,12 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
       { key: 'delete', label: '标记删除', disabled: !editEnabled || kind === 'deleted', onSelect: () => markDeleteRow(rowIndex) },
       { key: 'undelete', label: '撤销删除', disabled: !editEnabled || kind !== 'deleted', onSelect: () => unmarkDeleteRow(rowIndex) },
       { key: 'revert', label: '放弃该行修改', disabled: !editEnabled || kind === 'normal', onSelect: () => revertRowByIndex(rowIndex) },
+      {
+        key: 'revert-all',
+        label: '撤销全部变更',
+        disabled: !editEnabled || useTableStore.getState().committing || useTableStore.getState().editCount().total === 0,
+        onSelect: () => void useTableStore.getState().revertAll(),
+      },
     ];
   };
 
