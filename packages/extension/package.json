@@ -23,6 +23,13 @@
           "title": "数据库",
           "icon": "media/database.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "dbExplorer-console-result",
+          "title": "SQL 结果",
+          "icon": "media/database.svg"
+        }
       ]
     },
     "views": {
@@ -33,7 +40,7 @@
           "type": "tree"
         }
       ],
-      "panel": [
+      "dbExplorer-console-result": [
         {
           "id": "dbExplorer.consoleResult",
           "name": "SQL 结果",
