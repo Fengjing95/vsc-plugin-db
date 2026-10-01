@@ -4,10 +4,11 @@ window.__DBX_STUB__ = {
   bootstrap: {
     page: 'console',
     viewId: 'console-1',
-    params: { consoleId: 'console-1' },
+    params: { consoleId: '' },
   },
   handlers: {
     'console.getState': () => ({
+      consoleId: 'console-1',
       bound: true,
       connLabel: '本地 Mock 数据源',
       db: 'demo',

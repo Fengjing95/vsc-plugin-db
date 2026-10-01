@@ -9,6 +9,7 @@ import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
+import { registerConsoleResultView } from './views/consolePanel';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
 const MOCK_CONNECTION: ConnectionConfig = {
@@ -58,6 +59,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     treeView,
     consoleService,
+    registerConsoleResultView(context, { connections, output, console: consoleService }),
     registerConsoleCompletion(context, consoleService),
     store.onDidChange(() => tree.refresh()),
     ...registerCommands(

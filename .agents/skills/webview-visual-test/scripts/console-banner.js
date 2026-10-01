@@ -8,6 +8,7 @@ window.__DBX_STUB__ = {
   },
   handlers: {
     'console.getState': () => ({
+      consoleId: 'console-2',
       bound: true,
       connLabel: '生产 MySQL',
       db: 'myapp',

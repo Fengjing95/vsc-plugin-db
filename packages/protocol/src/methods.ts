@@ -34,6 +34,7 @@ export const RpcEvents = {
   consoleBanner: 'evt:console.banner',
   consoleRunning: 'evt:console.running',
   consoleUpdated: 'evt:console.updated',
+  consoleActivated: 'evt:console.activated',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -482,12 +483,15 @@ export const ConsoleBannerSchema = z.object({
 export type ConsoleBanner = z.infer<typeof ConsoleBannerSchema>;
 
 export const ConsoleStateParamsSchema = z.object({
-  consoleId: z.string().min(1),
+  /** 空 = Host 解析为「最近执行的 Console」（底部面板单例视图的引导路径） */
+  consoleId: z.string(),
 });
 export type ConsoleStateParams = z.infer<typeof ConsoleStateParamsSchema>;
 
-/** 面板引导（含 Webview 重载恢复：最近一次运行 / 悬挂横幅 / 执行中状态） */
+/** 面板引导（含 Webview 重载恢复：最近一次运行 / 悬挂横幅 / 执行中状态）。
+ *  consoleId 回传实际绑定的 Console（底部面板共享单例视图，多 Console 间切换依据）。 */
 export const ConsoleStateResultSchema = z.object({
+  consoleId: z.string(),
   bound: z.boolean(),
   connLabel: z.string().optional(),
   db: z.string().nullable().optional(),
@@ -562,3 +566,9 @@ export const ConsoleUpdatedEventSchema = z.object({
   run: ConsoleRunSchema,
 });
 export type ConsoleUpdatedEvent = z.infer<typeof ConsoleUpdatedEventSchema>;
+
+/** evt:console.activated 负载：底部面板单例视图跟随切换到该 Console（空串 = 无活动 Console） */
+export const ConsoleActivatedEventSchema = z.object({
+  consoleId: z.string(),
+});
+export type ConsoleActivatedEvent = z.infer<typeof ConsoleActivatedEventSchema>;

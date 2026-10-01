@@ -4,10 +4,13 @@ import {
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
   ConsoleBannerSchema,
+  ConsoleActivatedEventSchema,
   ConsoleExecuteParamsSchema,
   ConsoleExportParamsSchema,
   ConsoleResolveBannerParamsSchema,
   ConsoleRunSchema,
+  ConsoleStateParamsSchema,
+  ConsoleStateResultSchema,
   EditChangesParamsSchema,
   ExportCancelParamsSchema,
   ExportRunParamsSchema,
@@ -261,6 +264,16 @@ describe('方法参数校验', () => {
     const base = { consoleId: 'c1', format: 'csv' as const };
     expect(ConsoleExportParamsSchema.parse({ ...base, itemSeq: 2 }).itemSeq).toBe(2);
     expect(() => ConsoleExportParamsSchema.parse({ ...base, itemSeq: 0 })).toThrow();
+  });
+
+  it('console.getState：consoleId 允许空串（底部面板「最近执行」引导路径）', () => {
+    expect(ConsoleStateParamsSchema.parse({ consoleId: '' }).consoleId).toBe('');
+    expect(ConsoleStateResultSchema.parse({ consoleId: '', bound: false }).bound).toBe(false);
+  });
+
+  it('evt:console.activated：负载为 consoleId（可空串）', () => {
+    expect(ConsoleActivatedEventSchema.parse({ consoleId: 'console-2' }).consoleId).toBe('console-2');
+    expect(ConsoleActivatedEventSchema.parse({ consoleId: '' }).consoleId).toBe('');
   });
 
   it('协议版本常量为 1', () => {

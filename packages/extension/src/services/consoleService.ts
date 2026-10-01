@@ -18,7 +18,7 @@ import {
 } from '@db-explorer/protocol';
 import { csvRow, toJsonObject } from './csvJson';
 import type { ConnectionManager } from './connectionManager';
-import { ensureConsolePanel, disposeConsolePanelsFor, pushToConsolePanel } from '../views/consolePanel';
+import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePanel';
 import type { ConsoleHistory } from './consoleHistory';
 import type { EditGuard } from './editGuard';
 
@@ -71,11 +71,8 @@ export class ConsoleService implements vscode.Disposable {
   /** untitled 关闭后的绑定回收定时器（另存迁移窗口，§7.1） */
   private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private lastClosedUntitled?: { key: string; textHash: string; at: number };
-
-  /** 结果面板依赖（consolePanel 用） */
-  private get panelDeps(): import('../views/consolePanel').ConsolePanelDeps {
-    return { connections: this.connections, output: this.output, console: this };
-  }
+  /** 底部结果视图当前跟随的 Console（空串 = 无；执行/横幅时切换，evt:console.activated 同步） */
+  private lastActiveConsoleId = '';
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -126,7 +123,6 @@ export class ConsoleService implements vscode.Disposable {
       clearTimeout(timer);
     }
     this.pendingTimers.clear();
-    disposeConsolePanelsFor();
     for (const d of this.disposables) {
       d.dispose();
     }
@@ -285,6 +281,10 @@ export class ConsoleService implements vscode.Disposable {
     }
     const state: ConsoleState = { consoleId, connId, db, run: null, banner: null };
     this.consoles.set(consoleId, state);
+    // 首个 Console 作为底部视图的默认跟随对象（面板先于执行被手动打开时不至于空白）
+    if (!this.lastActiveConsoleId) {
+      this.lastActiveConsoleId = consoleId;
+    }
     this.preheatCompletions(state);
     this.bindingsChangedEmitter.fire();
     return state;
@@ -547,8 +547,9 @@ export class ConsoleService implements vscode.Disposable {
     state.run = run;
 
     try {
-      // 结果面板未打开时自动在编辑组右侧打开；已打开则复用（交互稿 §7.2 / D-02）
-      ensureConsolePanel(this.context, this.panelDeps, state);
+      // 底部结果视图跟随本次执行：激活显示（用户可立即看到逐语句结果与进度）
+      this.setActiveConsole(state.consoleId);
+      revealConsoleResultView();
       pushToConsolePanel(state.consoleId, {
         event: RpcEvents.consoleRunning,
         payload: { consoleId: state.consoleId, runId, total: texts.length },
@@ -672,7 +673,9 @@ export class ConsoleService implements vscode.Disposable {
   ): Promise<boolean> {
     const bannerId = `banner-${Date.now()}`;
     state.banner = { bannerId, reasons, sql };
-    ensureConsolePanel(this.context, this.panelDeps, state);
+    // 横幅显示在底部结果视图顶部：切换跟随并激活
+    this.setActiveConsole(state.consoleId);
+    revealConsoleResultView();
     pushToConsolePanel(state.consoleId, {
       event: RpcEvents.consoleBanner,
       payload: { consoleId: state.consoleId, banner: state.banner },
@@ -703,13 +706,25 @@ export class ConsoleService implements vscode.Disposable {
 
   // ── 结果面板 RPC（console.*）─────────────────────────────
 
+  /** 底部视图跟随切换：推送 evt:console.activated，单例视图据此重新拉取全量状态 */
+  private setActiveConsole(consoleId: string): void {
+    this.lastActiveConsoleId = consoleId;
+    pushToConsolePanel(consoleId, {
+      event: RpcEvents.consoleActivated,
+      payload: { consoleId },
+    });
+  }
+
   async getState(consoleId: string): Promise<ConsoleStateResult> {
-    const state = this.consoles.get(consoleId);
+    // 空串 = 底部单例视图引导：解析为最近执行的 Console
+    const id = consoleId || this.lastActiveConsoleId;
+    const state = id ? this.consoles.get(id) : undefined;
     if (!state) {
-      return { bound: false };
+      return { consoleId: id ?? '', bound: false };
     }
     const cfg = this.connections.getConfig(state.connId);
     return {
+      consoleId: state.consoleId,
       bound: true,
       connLabel: cfg?.name ?? state.connId,
       db: state.db,
@@ -755,18 +770,24 @@ export class ConsoleService implements vscode.Disposable {
     return { filePath: target.fsPath, rows: rs.rowCount, bytes: Buffer.byteLength(content) };
   }
 
-  closePanel(consoleId: string): void {
-    disposeConsolePanelsFor(consoleId);
-  }
-
-  /** 连接删除/编辑后清理其 Console 面板与绑定（防悬空引用） */
+  /** 连接删除/编辑后清理其 Console 状态与绑定（防悬空引用） */
   closeConsolesForConnection(connId: string): void {
+    let activeRemoved = false;
     for (const [id, state] of [...this.consoles]) {
       if (state.connId === connId) {
         state.controller?.abort();
-        disposeConsolePanelsFor(id);
         this.consoles.delete(id);
+        if (this.lastActiveConsoleId === id) {
+          activeRemoved = true;
+        }
       }
+    }
+    if (activeRemoved) {
+      this.lastActiveConsoleId = '';
+      pushToConsolePanel('', {
+        event: RpcEvents.consoleActivated,
+        payload: { consoleId: '' },
+      });
     }
     this.bindingsChangedEmitter.fire();
     this.updateStatusBar();

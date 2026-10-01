@@ -6,12 +6,13 @@ import type { ConnectionManager } from '../services/connectionManager';
 import type { ConsoleService } from '../services/consoleService';
 
 /**
- * Console 结果面板（D-02：原生编辑器 + 独立结果 Webview）：
- * 每个 Console（consoleId）一个面板，未打开时在当前编辑组右侧打开，已打开则复用（§7.2）。
- * 面板 RPC：console.*（取态/执行/取消/横幅确认/导出/关闭），执行结果经 evt 推送。
+ * Console 结果视图（M5 试点：底部面板形态，D-02 备选位置）：
+ * `contributes.views["panel"]` 单例 WebviewView，与终端/输出并列；
+ * 所有 Console 共享，跟随最近执行的 Console（evt:console.activated 切换）。
+ * 执行后经 `<viewId>.focus` 激活显示（交互反馈同编辑器面板版）。
  */
 
-const panels = new Map<string, vscode.WebviewPanel>();
+export const CONSOLE_RESULT_VIEW_ID = 'dbExplorer.consoleResult';
 
 export interface ConsolePanelDeps {
   connections: ConnectionManager;
@@ -19,104 +20,88 @@ export interface ConsolePanelDeps {
   console: ConsoleService;
 }
 
-export function ensureConsolePanel(
-  context: vscode.ExtensionContext,
-  deps: ConsolePanelDeps,
-  state: { consoleId: string; connId: string; db: string | null },
-): vscode.WebviewPanel {
-  const existing = panels.get(state.consoleId);
-  if (existing) {
-    void existing.reveal();
-    return existing;
-  }
+let resultView: vscode.WebviewView | undefined;
 
-  const cfgOf = deps.connections.getConfig(state.connId);
-  const title = `${cfgOf?.name ?? state.connId}${state.db ? ` · ${state.db}` : ''}`;
-  const panel = vscode.window.createWebviewPanel('dbExplorer.consoleResult', `SQL 结果 · ${title}`, vscode.ViewColumn.Beside, {
-    enableScripts: true,
-    retainContextWhenHidden: true,
-    localResourceRoots: [vscode.Uri.file(webviewDistRoot(context.extensionUri))],
-  });
-  panels.set(state.consoleId, panel);
-  panel.onDidDispose(
-    () => {
-      panels.delete(state.consoleId);
+/** 注册底部面板结果视图（extension 激活时调用一次） */
+export function registerConsoleResultView(context: vscode.ExtensionContext, deps: ConsolePanelDeps): vscode.Disposable {
+  const provider: vscode.WebviewViewProvider = {
+    resolveWebviewView(view: vscode.WebviewView): void {
+      resultView = view;
+      view.webview.options = {
+        enableScripts: true,
+        localResourceRoots: [vscode.Uri.file(webviewDistRoot(context.extensionUri))],
+      };
+      // consoleId 留空：Host 解析为「最近执行的 Console」（单例视图引导路径）
+      view.webview.html = buildWebviewHtml(view.webview, context.extensionUri, {
+        page: 'console',
+        viewId: CONSOLE_RESULT_VIEW_ID,
+        params: { consoleId: '' },
+      });
+
+      const cfg = vscode.workspace.getConfiguration('dbExplorer');
+      const consoleIdOf = (params: unknown): string => {
+        const id = (params as { consoleId?: unknown } | undefined)?.consoleId;
+        return typeof id === 'string' && id ? id : '';
+      };
+      attachRpcHost(view.webview, {
+        viewId: CONSOLE_RESULT_VIEW_ID,
+        params: {},
+        connections: deps.connections,
+        host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15_000)),
+        output: deps.output,
+        console: {
+          getState: (params: unknown) => deps.console.getState(consoleIdOf(params)),
+          execute: (params: unknown) => {
+            const p = params as { consoleId?: string; sql?: string };
+            return deps.console.executeSql(consoleIdOf(p) || '', String(p.sql ?? ''));
+          },
+          cancel: (params: unknown) => {
+            deps.console.cancel(consoleIdOf(params));
+            return Promise.resolve({});
+          },
+          resolveBanner: (params: unknown) => {
+            const p = params as { consoleId?: string; bannerId?: string; action?: 'proceed' | 'cancel' };
+            return deps.console
+              .resolveBanner(consoleIdOf(p), String(p.bannerId ?? ''), p.action === 'proceed' ? 'proceed' : 'cancel')
+              .then(() => ({}));
+          },
+          exportResult: (params: unknown) => {
+            const p = params as { consoleId?: string; itemSeq?: number; format?: 'csv' | 'json' };
+            return deps.console.exportResult(
+              consoleIdOf(p),
+              Number(p.itemSeq ?? 0),
+              p.format === 'json' ? 'json' : 'csv',
+            );
+          },
+          close: () => {
+            // 底部面板形态：关闭 = 收起整个底部面板（下次执行自动再激活）
+            void vscode.commands.executeCommand('workbench.action.closePanel');
+            return Promise.resolve({});
+          },
+        },
+      });
+
+      view.onDidDispose(() => {
+        if (resultView === view) {
+          resultView = undefined;
+        }
+      });
     },
-    null,
-    context.subscriptions,
-  );
+  };
 
-  panel.webview.html = buildWebviewHtml(panel.webview, context.extensionUri, {
-    page: 'console',
-    viewId: state.consoleId,
-    params: { consoleId: state.consoleId },
+  return vscode.window.registerWebviewViewProvider(CONSOLE_RESULT_VIEW_ID, provider, {
+    webviewOptions: { retainContextWhenHidden: true },
   });
-
-  const cfg = vscode.workspace.getConfiguration('dbExplorer');
-  const consoleId = state.consoleId;
-  attachRpcHost(panel.webview, {
-    viewId: consoleId,
-    params: { consoleId },
-    connections: deps.connections,
-    host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15_000)),
-    output: deps.output,
-    console: {
-      getState: (params: unknown) =>
-        deps.console.getState(consoleIdOf(params, consoleId)),
-      execute: (params: unknown) => {
-        const p = params as { sql?: string };
-        return deps.console.executeSql(consoleIdOf(params, consoleId), String(p.sql ?? ''));
-      },
-      cancel: (params: unknown) => {
-        deps.console.cancel(consoleIdOf(params, consoleId));
-        return Promise.resolve({});
-      },
-      resolveBanner: (params: unknown) => {
-        const p = params as { bannerId?: string; action?: 'proceed' | 'cancel' };
-        return deps.console
-          .resolveBanner(
-            consoleIdOf(params, consoleId),
-            String(p.bannerId ?? ''),
-            p.action === 'proceed' ? 'proceed' : 'cancel',
-          )
-          .then(() => ({}));
-      },
-      exportResult: (params: unknown) => {
-        const p = params as { itemSeq?: number; format?: 'csv' | 'json' };
-        return deps.console.exportResult(
-          consoleIdOf(params, consoleId),
-          Number(p.itemSeq ?? 0),
-          p.format === 'json' ? 'json' : 'csv',
-        );
-      },
-      close: (params: unknown) => {
-        panels.get(consoleIdOf(params, consoleId))?.dispose();
-        return Promise.resolve({});
-      },
-    },
-  });
-  return panel;
 }
 
-function consoleIdOf(params: unknown, fallback: string): string {
-  const id = (params as { consoleId?: unknown } | undefined)?.consoleId;
-  return typeof id === 'string' && id ? id : fallback;
+/** 激活底部面板并聚焦结果视图（执行/横幅时调用） */
+export function revealConsoleResultView(): void {
+  void vscode.commands.executeCommand(`${CONSOLE_RESULT_VIEW_ID}.focus`);
 }
 
-/** 执行结果推送（Host → Webview evt 帧） */
-export function pushToConsolePanel(consoleId: string, frame: { event: string; payload: unknown }): void {
-  const panel = panels.get(consoleId);
-  if (panel) {
-    void panel.webview.postMessage({ kind: 'evt', ...frame });
-  }
-}
-
-/** 关闭指定 Console 面板；无参时关闭全部（服务 dispose 用） */
-export function disposeConsolePanelsFor(consoleId?: string): void {
-  for (const [id, panel] of [...panels]) {
-    if (!consoleId || id === consoleId) {
-      panels.delete(id);
-      panel.dispose();
-    }
+/** Host → Webview evt 帧推送（视图未打开时丢弃，恢复依赖 getState 引导） */
+export function pushToConsolePanel(_consoleId: string, frame: { event: string; payload: unknown }): void {
+  if (resultView) {
+    void resultView.webview.postMessage({ kind: 'evt', ...frame });
   }
 }

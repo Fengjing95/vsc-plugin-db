@@ -16,8 +16,9 @@ export default function App() {
   let page: ReactElement;
   if (boot.page === 'connectionForm') {
     page = <ConnectionFormPage connId={boot.params.connId || null} />;
-  } else if (boot.page === 'console' && boot.params.consoleId) {
-    page = <ConsolePage consoleId={boot.params.consoleId} />;
+  } else if (boot.page === 'console') {
+    // 底部面板单例视图：consoleId 引导为空串，由 Host 解析「最近执行的 Console」并回填
+    page = <ConsolePage consoleId={boot.params.consoleId ?? ''} />;
   } else if (boot.params.db && boot.params.obj && boot.params.connId) {
     const rowEstimate = boot.params.rowEstimate !== '' ? Number(boot.params.rowEstimate) : undefined;
     page = (

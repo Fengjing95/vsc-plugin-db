@@ -4,6 +4,7 @@ import type {
   ConsoleStateResult,
 } from '@db-explorer/protocol';
 import {
+  ConsoleActivatedEventSchema,
   ConsoleBannerEventSchema,
   ConsoleRunningEventSchema,
   ConsoleStateResultSchema,
@@ -19,6 +20,8 @@ import { deriveTabs } from '../lib/consoleView';
  * Console 结果面板状态（交互稿 §7.3/§7.4）：
  * Host 执行逐语句推送 evt:console.updated（全量运行快照），面板渲染 Tab/状态行/横幅。
  * Webview 重载经 console.getState 恢复（最近运行 + 悬挂横幅 + 执行中）。
+ * 底部面板为共享单例视图：consoleId 以空串引导（Host 解析为最近执行的 Console），
+ * 经 evt:console.activated 在多 Console 间跟随切换（重新拉取全量状态）。
  */
 
 interface ToastState {
@@ -97,6 +100,8 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     const tabs = deriveTabs(run);
     const lastResult = [...tabs].reverse().find((t) => t.kind === 'result');
     set({
+      // 底部面板单例视图：consoleId 以 Host 解析结果为准（引导传空串时在此回填）
+      consoleId: state.consoleId || get().consoleId,
       bound: state.bound,
       connLabel: state.connLabel,
       db: state.db ?? null,
@@ -130,6 +135,14 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
             : (tabs.find((t) => t.kind === 'result')?.id ?? 'msg');
       }
       set({ run, running: run.status === 'running' ? get().running : null, activeTab });
+      return;
+    }
+    if (evt.event === RpcEvents.consoleActivated) {
+      const parsed = ConsoleActivatedEventSchema.safeParse(evt.payload);
+      if (parsed.success && parsed.data.consoleId !== get().consoleId) {
+        // 切换跟随的 Console：重新拉全量状态（运行/横幅/Tab 一并恢复）
+        void get().bootstrap(parsed.data.consoleId);
+      }
       return;
     }
     if (evt.event === RpcEvents.consoleBanner) {

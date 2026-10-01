@@ -32,6 +32,13 @@
           "name": "连接",
           "type": "tree"
         }
+      ],
+      "panel": [
+        {
+          "id": "dbExplorer.consoleResult",
+          "name": "SQL 结果",
+          "type": "webview"
+        }
       ]
     },
     "commands": [
