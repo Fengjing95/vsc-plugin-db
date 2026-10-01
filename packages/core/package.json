@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.0"
+  },
+  "dependencies": {
+    "node-sql-parser": "^5.4.0"
   }
 }

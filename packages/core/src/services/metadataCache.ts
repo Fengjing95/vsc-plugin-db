@@ -1,4 +1,5 @@
 import type { ColumnMeta, DatabaseMeta, IndexMeta, KeyMeta, ObjectMeta } from '../model/meta';
+import type { CompletionSource } from '../model/rows';
 
 /**
  * 元数据层次缓存（概要设计 7.5）：
@@ -6,6 +7,8 @@ import type { ColumnMeta, DatabaseMeta, IndexMeta, KeyMeta, ObjectMeta } from '.
  * - in-flight 去重：同 key 并发加载合并为一次触达
  * - 失效粒度：连接 / 库 / 单对象；clear() 供全局刷新
  * - 时钟可注入，TTL 行为可测
+ * - completion：Console 补全数据源（getCompletionSource，5min / 随库失效），
+ *   M5 DoD「补全 <100ms（缓存命中）」的落点
  */
 interface Entry<T> {
   value: T;
@@ -33,6 +36,7 @@ export class MetadataCache {
   private readonly columns = new Map<string, Entry<ColumnMeta[]>>();
   private readonly indexes = new Map<string, Entry<IndexMeta[]>>();
   private readonly keys = new Map<string, Entry<KeyMeta[]>>();
+  private readonly completion = new Map<string, Entry<CompletionSource>>();
   private readonly inflight = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -60,15 +64,20 @@ export class MetadataCache {
     return this.get(this.keys, `key:${connId}/${db}/${obj}`, this.ttls.columns, load);
   }
 
+  /** Console 补全数据源（驱动 getCompletionSource 的缓存层；列 TTL 同步 5min） */
+  async getCompletionSource(connId: string, db: string, load: () => Promise<CompletionSource>): Promise<CompletionSource> {
+    return this.get(this.completion, `cpl:${connId}/${db}`, this.ttls.columns, load);
+  }
+
   /** 连接级失效：连接被删除/编辑后调用 */
   invalidateConnection(connId: string): void {
-    this.dropByPrefixes([`db:${connId}`, `obj:${connId}/`, `col:${connId}/`, `idx:${connId}/`, `key:${connId}/`]);
+    this.dropByPrefixes([`db:${connId}`, `obj:${connId}/`, `col:${connId}/`, `idx:${connId}/`, `key:${connId}/`, `cpl:${connId}/`]);
   }
 
   /** 库级失效：DDL 变更（M5 Console 联动）或手动刷新该库 */
   invalidateDb(connId: string, db: string): void {
     this.databases.delete(`db:${connId}`); // 库列表本身也可能增减
-    this.dropByPrefixes([`obj:${connId}/${db}`, `col:${connId}/${db}/`, `idx:${connId}/${db}/`, `key:${connId}/${db}/`]);
+    this.dropByPrefixes([`obj:${connId}/${db}`, `col:${connId}/${db}/`, `idx:${connId}/${db}/`, `key:${connId}/${db}/`, `cpl:${connId}/${db}`]);
   }
 
   /** 单对象失效：该表结构变更（M4 applyChanges 后仅失效行估算，此处为完整失效入口） */
@@ -79,7 +88,7 @@ export class MetadataCache {
   }
 
   clear(): void {
-    for (const map of [this.databases, this.objects, this.columns, this.indexes, this.keys]) {
+    for (const map of [this.databases, this.objects, this.columns, this.indexes, this.keys, this.completion]) {
       map.clear();
     }
     this.inflight.clear();
@@ -88,7 +97,7 @@ export class MetadataCache {
   /** 测试/诊断用：缓存条目数 */
   get size(): number {
     return (
-      this.databases.size + this.objects.size + this.columns.size + this.indexes.size + this.keys.size
+      this.databases.size + this.objects.size + this.columns.size + this.indexes.size + this.keys.size + this.completion.size
     );
   }
 

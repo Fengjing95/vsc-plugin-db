@@ -1,5 +1,6 @@
 import {
   DriverError,
+  splitSqlStatements,
   type ApplyResult,
   type ChangeSet,
   type ColumnMeta,
@@ -22,6 +23,7 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 import { compileOrderBy, compileWhere } from './whereEval';
+import { executeMockSelect, parseMockStatement } from './query';
 
 /**
  * M0 演示驱动：纯内存数据源。
@@ -30,11 +32,13 @@ import { compileOrderBy, compileWhere } from './whereEval';
  * M4：实现内存版 previewChanges/applyChanges（驱动规范 §8 语义：字段级乐观锁、
  * IS NULL 匹配、失败整体回滚），数据为**共享物化存储**——跨连接一致（模拟真实
  * 服务端），冲突场景可经两个视图人为构造；测试用 resetMockStore() 复位。
+ * M5：实现最小 SQL 执行（SELECT/INSERT/UPDATE/DELETE 子集，query.ts），
+ * 本地无真实库时供 SQL Console 自测。
  */
 export const MOCK_DRIVER_ID = 'mock';
 
 const capabilities: DriverCapabilities = {
-  supportsSQL: false, // M5 由真实驱动实现
+  supportsSQL: true, // M5 起支持最小 SQL 子集（Console 本地自测）；Redis 类 supportsSQL=false 走命令白名单
   supportsTransaction: true, // applyChanges 整体回滚（内存快照恢复）
   supportsInteractiveTransaction: false,
   supportsMultipleDatabases: true,
@@ -655,10 +659,102 @@ export class MockConnection implements IConnection {
     };
   }
 
-  query(_req: QueryRequest): Promise<ResultSet[]> {
-    return Promise.reject(
-      new DriverError('E_UNSUPPORTED', 'M0 演示驱动未实现 SQL 执行（M5 SQL Console 接入）'),
-    );
+  async query(req: QueryRequest): Promise<ResultSet[]> {
+    const started = Date.now();
+    // supportsMultiStatement=false：core 已切分；收到多语句按契约违反处理
+    const stmts = splitSqlStatements(req.sql);
+    if (stmts.length === 0) {
+      throw new DriverError('E_VALIDATION', '空语句');
+    }
+    if (stmts.length > 1) {
+      throw new DriverError('E_VALIDATION', 'mock 驱动不支持一次执行多条语句');
+    }
+    const plan = parseMockStatement(stmts[0].text);
+    const db = plan.ref.db ?? req.db;
+    if (!db) {
+      throw new DriverError('E_VALIDATION', `表 "${plan.ref.table}" 未限定库且连接未设默认库`);
+    }
+    const def = defOf(db, plan.ref.table);
+    const key = storeKey(db, plan.ref.table);
+    const rows = materialize(db, plan.ref.table);
+    const columns = def.columns;
+    const idxOf = (name: string): number => {
+      const i = columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
+      if (i < 0) {
+        throw new DriverError('E_VALIDATION', `mock 驱动：表 "${plan.ref.table}" 无列 "${name}"`);
+      }
+      return i;
+    };
+
+    if (plan.kind === 'select') {
+      return [executeMockSelect(plan, { columns, rows }, started)];
+    }
+
+    if (plan.kind === 'insert') {
+      for (const tuple of plan.tuples) {
+        const row = columns.map((c) => {
+          const pos = plan.columns.findIndex((n) => n.toLowerCase() === c.name.toLowerCase());
+          return pos >= 0 ? tuple[pos] : null;
+        });
+        for (let i = 0; i < columns.length; i++) {
+          const c = columns[i];
+          if (c.autoIncrement && (row[i] === null || row[i] === undefined)) {
+            const next = nextIds.get(key) ?? 1;
+            row[i] = next;
+            nextIds.set(key, next + 1);
+          }
+        }
+        rows.push(row);
+      }
+      return [
+        {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          affectedRows: plan.tuples.length,
+          executionMs: Math.max(Date.now() - started, 1),
+        },
+      ];
+    }
+
+    // update / delete：WHERE 缺省时作用于全表（Console 危险横幅负责前置确认）
+    const pred = (plan.where ? compileWhere(plan.where, columns) : null) ?? (() => true);
+    if (plan.kind === 'update') {
+      const setIdx = plan.sets.map((s) => ({ idx: idxOf(s.column), value: s.value }));
+      let affected = 0;
+      for (const row of rows) {
+        if (pred(row)) {
+          affected++;
+          for (const { idx, value } of setIdx) {
+            row[idx] = value;
+          }
+        }
+      }
+      return [
+        {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          affectedRows: affected,
+          executionMs: Math.max(Date.now() - started, 1),
+        },
+      ];
+    }
+
+    // delete：原地过滤（store 持有同一数组引用，必须就地变更）
+    const kept = rows.filter((row) => !pred(row));
+    const affected = rows.length - kept.length;
+    rows.length = 0;
+    rows.push(...kept);
+    return [
+      {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        affectedRows: affected,
+        executionMs: Math.max(Date.now() - started, 1),
+      },
+    ];
   }
 
   previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {

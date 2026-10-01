@@ -7,3 +7,6 @@ export * from './driver/registry';
 export * from './driver/host';
 export * from './services/metadataCache';
 export * from './services/changeSetService';
+export * from './services/sqlScript';
+export * from './services/sqlDanger';
+export * from './services/completionContext';

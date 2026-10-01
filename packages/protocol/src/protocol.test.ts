@@ -3,6 +3,11 @@ import {
   ApplyChangesResultSchema,
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
+  ConsoleBannerSchema,
+  ConsoleExecuteParamsSchema,
+  ConsoleExportParamsSchema,
+  ConsoleResolveBannerParamsSchema,
+  ConsoleRunSchema,
   EditChangesParamsSchema,
   ExportCancelParamsSchema,
   ExportRunParamsSchema,
@@ -212,6 +217,50 @@ describe('方法参数校验', () => {
     expect(ConnSaveParamsSchema.parse({ ...base, name: '本地 MySQL' }).name).toBe('本地 MySQL');
     expect(() => ConnSaveParamsSchema.parse({ ...base, name: '' })).toThrow();
     expect(() => ConnSaveParamsSchema.parse({ ...base })).toThrow();
+  });
+
+  it('console.execute：sql 必填且有长度上限', () => {
+    expect(ConsoleExecuteParamsSchema.parse({ consoleId: 'c1', sql: 'SELECT 1' }).sql).toBe('SELECT 1');
+    expect(() => ConsoleExecuteParamsSchema.parse({ consoleId: 'c1' })).toThrow();
+    expect(() => ConsoleExecuteParamsSchema.parse({ consoleId: 'c1', sql: '' })).toThrow();
+    expect(() => ConsoleExecuteParamsSchema.parse({ consoleId: 'c1', sql: 'x'.repeat(200_001) })).toThrow();
+  });
+
+  it('console.resolveBanner：action 枚举校验', () => {
+    const base = { consoleId: 'c1', bannerId: 'b1' };
+    expect(ConsoleResolveBannerParamsSchema.parse({ ...base, action: 'proceed' }).action).toBe('proceed');
+    expect(ConsoleResolveBannerParamsSchema.parse({ ...base, action: 'cancel' }).action).toBe('cancel');
+    expect(() => ConsoleResolveBannerParamsSchema.parse({ ...base, action: 'ignore' })).toThrow();
+  });
+
+  it('console.run：running 状态与结果项校验（多结果 Tab 形状）', () => {
+    const run = ConsoleRunSchema.parse({
+      consoleId: 'c1',
+      runId: 'r1',
+      startedAt: 1,
+      durationMs: 12,
+      status: 'running',
+      items: [
+        { seq: 1, sql: 'SELECT 1', executionMs: 5, resultSet: { columns: [], rows: [], rowCount: 0, executionMs: 5 } },
+        { seq: 2, sql: 'UPDATE t SET a=1', executionMs: 7, affectedRows: 3 },
+      ],
+    });
+    expect(run.items[0].resultSet?.rowCount).toBe(0);
+    expect(run.items[1].affectedRows).toBe(3);
+    expect(() =>
+      ConsoleRunSchema.parse({ consoleId: 'c1', runId: 'r1', startedAt: 1, durationMs: 1, status: 'paused', items: [] }),
+    ).toThrow();
+  });
+
+  it('console.banner：reasons 非空数组', () => {
+    expect(ConsoleBannerSchema.parse({ bannerId: 'b1', reasons: ['UPDATE 无 WHERE'], sql: 'UPDATE t SET a=1' }).reasons).toHaveLength(1);
+    expect(() => ConsoleBannerSchema.parse({ bannerId: 'b1', reasons: [], sql: 'x' })).toThrow();
+  });
+
+  it('console.export：itemSeq 必须为正整数', () => {
+    const base = { consoleId: 'c1', format: 'csv' as const };
+    expect(ConsoleExportParamsSchema.parse({ ...base, itemSeq: 2 }).itemSeq).toBe(2);
+    expect(() => ConsoleExportParamsSchema.parse({ ...base, itemSeq: 0 })).toThrow();
   });
 
   it('协议版本常量为 1', () => {

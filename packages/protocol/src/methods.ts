@@ -18,6 +18,12 @@ export const RpcMethods = {
   connSchema: 'conn.getSchema',
   connTest: 'conn.test',
   connSave: 'conn.save',
+  consoleState: 'console.getState',
+  consoleExecute: 'console.execute',
+  consoleCancel: 'console.cancel',
+  consoleResolveBanner: 'console.resolveBanner',
+  consoleExport: 'console.export',
+  consoleClose: 'console.close',
 } as const;
 
 /** Host → Webview 单向推送事件（概要设计 7.4.2） */
@@ -25,6 +31,9 @@ export const RpcEvents = {
   exportProgress: 'evt:export.progress',
   changesetUpdated: 'evt:changeset.updated',
   rowError: 'evt:row.error',
+  consoleBanner: 'evt:console.banner',
+  consoleRunning: 'evt:console.running',
+  consoleUpdated: 'evt:console.updated',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -429,3 +438,127 @@ export const ConnSaveResultSchema = z.object({
   connId: z.string(),
 });
 export type ConnSaveResult = z.infer<typeof ConnSaveResultSchema>;
+
+// ── console.*（M5 SQL Console：概要设计 5.5 / 7.4.2，交互稿 §7）────────────
+// 编辑器（原生 TextEditor）驱动执行走 VSCode 命令（Host 侧 ConsoleService），
+// 结果面板 Webview 经以下方法取态/确认/取消/导出，执行结果经 evt 推送。
+
+/** 单语句执行项：SELECT 语句携带 resultSet 生成“结果 N”Tab；非 SELECT 进“消息”Tab（交互稿 §7.3） */
+export const ConsoleRunItemSchema = z.object({
+  seq: z.number().int().min(1),
+  sql: z.string(),
+  resultSet: ResultSetSchema.optional(),
+  affectedRows: z.number().int().optional(),
+  messages: z.array(z.string()).optional(),
+  executionMs: z.number(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+});
+export type ConsoleRunItem = z.infer<typeof ConsoleRunItemSchema>;
+
+export const ConsoleRunSchema = z.object({
+  consoleId: z.string(),
+  runId: z.string(),
+  startedAt: z.number(),
+  durationMs: z.number(),
+  /** running = 执行中（逐语句增量推送） */
+  status: z.enum(['running', 'ok', 'error', 'canceled']),
+  /** 横幅“仍要执行”覆盖记录（仅本地日志用，交互稿 §7.4） */
+  dangerOverridden: z.boolean().optional(),
+  items: z.array(ConsoleRunItemSchema),
+});
+export type ConsoleRun = z.infer<typeof ConsoleRunSchema>;
+
+/** 危险语句横幅（交互稿 §7.4）：面板顶部内联 [仍要执行][取消] */
+export const ConsoleBannerSchema = z.object({
+  bannerId: z.string(),
+  reasons: z.array(z.string().min(1)).min(1),
+  sql: z.string(),
+});
+export type ConsoleBanner = z.infer<typeof ConsoleBannerSchema>;
+
+export const ConsoleStateParamsSchema = z.object({
+  consoleId: z.string().min(1),
+});
+export type ConsoleStateParams = z.infer<typeof ConsoleStateParamsSchema>;
+
+/** 面板引导（含 Webview 重载恢复：最近一次运行 / 悬挂横幅 / 执行中状态） */
+export const ConsoleStateResultSchema = z.object({
+  bound: z.boolean(),
+  connLabel: z.string().optional(),
+  db: z.string().nullable().optional(),
+  running: z
+    .object({
+      runId: z.string(),
+      total: z.number().int().min(1),
+    })
+    .optional(),
+  banner: ConsoleBannerSchema.nullable().optional(),
+  run: ConsoleRunSchema.nullable().optional(),
+});
+export type ConsoleStateResult = z.infer<typeof ConsoleStateResultSchema>;
+
+export const ConsoleExecuteParamsSchema = z.object({
+  consoleId: z.string().min(1),
+  sql: z.string().min(1).max(200_000),
+});
+export type ConsoleExecuteParams = z.infer<typeof ConsoleExecuteParamsSchema>;
+
+export const ConsoleCancelParamsSchema = z.object({
+  consoleId: z.string().min(1),
+});
+export type ConsoleCancelParams = z.infer<typeof ConsoleCancelParamsSchema>;
+
+export const ConsoleResolveBannerParamsSchema = z.object({
+  consoleId: z.string().min(1),
+  bannerId: z.string().min(1),
+  action: z.enum(['proceed', 'cancel']),
+});
+export type ConsoleResolveBannerParams = z.infer<typeof ConsoleResolveBannerParamsSchema>;
+
+export const ConsoleExportParamsSchema = z.object({
+  consoleId: z.string().min(1),
+  /** 结果 Tab 对应的语句序号（ConsoleRunItem.seq） */
+  itemSeq: z.number().int().min(1),
+  format: ExportFormatSchema,
+});
+export type ConsoleExportParams = z.infer<typeof ConsoleExportParamsSchema>;
+
+export const ConsoleExportResultSchema = z.object({
+  filePath: z.string(),
+  rows: z.number().int(),
+  bytes: z.number().int(),
+  canceled: z.boolean().optional(),
+});
+export type ConsoleExportResult = z.infer<typeof ConsoleExportResultSchema>;
+
+export const ConsoleCloseParamsSchema = z.object({
+  consoleId: z.string().min(1),
+});
+export type ConsoleCloseParams = z.infer<typeof ConsoleCloseParamsSchema>;
+
+/** evt:console.banner 负载（banner=null 表示横幅已关闭） */
+export const ConsoleBannerEventSchema = z.object({
+  consoleId: z.string(),
+  banner: ConsoleBannerSchema.nullable(),
+});
+export type ConsoleBannerEvent = z.infer<typeof ConsoleBannerEventSchema>;
+
+/** evt:console.running 负载 */
+export const ConsoleRunningEventSchema = z.object({
+  consoleId: z.string(),
+  runId: z.string(),
+  total: z.number().int().min(1),
+});
+export type ConsoleRunningEvent = z.infer<typeof ConsoleRunningEventSchema>;
+
+/** evt:console.updated 负载（全量运行快照，逐语句增量推送） */
+export const ConsoleUpdatedEventSchema = z.object({
+  consoleId: z.string(),
+  run: ConsoleRunSchema,
+});
+export type ConsoleUpdatedEvent = z.infer<typeof ConsoleUpdatedEventSchema>;
