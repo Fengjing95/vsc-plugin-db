@@ -201,6 +201,10 @@
         "key": "ctrl+alt+q"
       },
       {
+        "command": "dbExplorer.queryHistory",
+        "key": "ctrl+alt+h"
+      },
+      {
         "command": "dbExplorer.executeQuery",
         "key": "ctrl+enter",
         "mac": "cmd+enter",
