@@ -61,12 +61,17 @@
 ### 可视化验证（脱离 VSCode 宿主）
 - **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
 
-### 环境（Windows + Git Bash）
+### 测试与门禁
+- **P-23 dod.perf 阈值在并行跑时假失败**（M5 加测试后踩）→ vitest 默认并行跑测试文件，新增文件加剧 CPU 争抢，M4 perf（提交 100 条变更 <2s）在隔离跑 601ms、全量并行跑 2.5s+ 假红。→ `vitest.config.ts` 已设 `fileParallelism: false`（串行跑文件，全量耗时仅 +3s）；性能类阈值断言的稳定性依赖它，**不要再改回并行**。
+- **P-24 语句切分不能用 node-sql-parser 定位**（M5 设计条文 vs 实现取舍）→ node-sql-parser 的 AST 解析不提供语句在原文中的范围映射，无法支撑 Ctrl+Enter「光标所在语句」定位。→ 切分用自研扫描器 `core/services/sqlScript.ts`（字符串/注释内分号不切分，同一目标）；node-sql-parser 仅用于危险判定与只读 fail-closed（`core/services/sqlDanger.ts`，解析失败正则降级）。另注意其 `astify` 单调用可吞多语句（返回数组），`isReadStatement` 已显式拒绝多语句文本。
+
+### 环境（Windows + Git Bash / macOS 代理）
 - **P-12 heredoc 在本机 shell 不可靠** → `python - <<EOF` 直接失败（exit 49）；**bash heredoc 内容较长时会被截断**（报 "here-document delimited by end-of-file"，文件写一半）。→ 改文件一律用文件编辑工具（Edit/Write）；追加大段内容用 Edit 锚定文件尾部，不要用 `cat >> file <<EOF`。
 - **P-13 grep 实为 ugrep** → 转义/正则行为与 GNU grep 略有差异；复杂模式加 `-F` 或改用 `node -e` 脚本。
 - **P-14 pnpm store 被外部改动**（`pnpm store status` 报 mutated，常见于磁盘清理/杀软）→ `pnpm install --force` 恢复；当前仓库无原生编译依赖，影响有限。
 - **P-15 F5 卡"扩展未在 10 秒内启动"** → 日志含 `debugBrk: true` / "STOPPED on first line" 表示宿主被首行断点暂停（非代码错误）。→ launch.json 已显式 `"stopOnEntry": false`；检查用户设置 `debug.javascript.breakOnStart`、NODE_OPTIONS 是否含 `--inspect-brk`；应急用 Ctrl+F5（不调试运行）。
 - **P-16 Webview "Could not register service worker: InvalidStateError"** → VSCode 上游 bug（microsoft/vscode#247035，更新后偶发），发生在插件代码执行前。→ 先"Developer: Reload Window"；顽固时关闭 IDE 后删 `%APPDATA%\Code\Service Worker\`（会自动重建）。
+- **P-25 npm registry TLS 被代理拦截**（M5 装 node-sql-parser 时踩，macOS）→ `pnpm add` 报 `Cert does not contain a DNS name` / curl 报 self signed certificate，系统代理做 TLS 中间人且 Node 不读钥匙串。→ 单次安装绕过：`pnpm --filter <pkg> add <dep> --registry=https://registry.npmmirror.com`（不改全局配置）。
 
 ---
 
@@ -84,8 +89,14 @@
 | 查询参数/分页文案 | `webview-ui/src/lib/queryState.ts`（纯函数，有单测） |
 | ChangeSet 权威副本 | `packages/core/src/services/changeSetService.ts`（合并语义单测覆盖） |
 | MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
-| 编辑权限 + prod 护栏 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8） |
+| 编辑权限 + prod 护栏 + Console 危险判定 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8） |
+| SQL 语句切分 / 会话状态 / DDL 识别 | `packages/core/src/services/sqlScript.ts`（扫描器纯函数，P-24） |
+| 危险语句判定（AST + 正则降级）/ 只读 fail-closed | `packages/core/src/services/sqlDanger.ts`（纯函数，有单测） |
+| Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
+| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（P1-1 隔离） |
+| Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
+| Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts` |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts` |
-| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），坑与排查见其 `references/pitfalls.md`（P-21 等） |
+| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |
