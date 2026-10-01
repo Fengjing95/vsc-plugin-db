@@ -118,7 +118,7 @@
         "command": "dbExplorer.newQuery",
         "title": "新建 SQL Console",
         "category": "数据库",
-        "icon": "$(add)"
+        "icon": "$(terminal)"
       },
       {
         "command": "dbExplorer.executeQuery",
@@ -162,6 +162,11 @@
           "command": "dbExplorer.newQuery",
           "when": "viewItem == connection || viewItem == database",
           "group": "2_object@0"
+        },
+        {
+          "command": "dbExplorer.newQuery",
+          "when": "viewItem == connection || viewItem == database",
+          "group": "inline@0"
         },
         {
           "command": "dbExplorer.editConnection",
