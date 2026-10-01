@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import { DriverError, type EditOp, type InProcessDriverHost } from '@db-explorer/core';
 import {
   ApplyChangesParamsSchema,
+  ConsoleCancelParamsSchema,
+  ConsoleCloseParamsSchema,
+  ConsoleExecuteParamsSchema,
+  ConsoleExportParamsSchema,
+  ConsoleResolveBannerParamsSchema,
+  ConsoleStateParamsSchema,
   EditChangesParamsSchema,
   FetchRowsParamsSchema,
   GetDdlParamsSchema,
@@ -19,6 +25,16 @@ import type { ResultExporter } from '../services/resultExporter';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ChangeSetService } from '@db-explorer/core';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
+
+/** M5 Console 面板方法门面（console.*，rpcHost 完成 zod 校验后调用） */
+export interface ConsoleRpcFacade {
+  getState(params: unknown): Promise<unknown>;
+  execute(params: unknown): Promise<unknown>;
+  cancel(params: unknown): Promise<unknown>;
+  resolveBanner(params: unknown): Promise<unknown>;
+  exportResult(params: unknown): Promise<unknown>;
+  close(params: unknown): Promise<unknown>;
+}
 
 export interface RpcHostDeps {
   viewId: string;
@@ -38,6 +54,8 @@ export interface RpcHostDeps {
   editGuard?: EditGuard;
   /** 提交超时（变更集可能含上百条语句，比默认 15s 宽） */
   applyTimeoutMs?: number;
+  /** M5 SQL Console 结果面板（console.* 方法） */
+  console?: ConsoleRpcFacade;
 }
 
 /**
@@ -277,6 +295,61 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           if (deps.exporter) {
             deps.exporter.cancel(req.params);
             respond(true, { result: {} });
+            return;
+          }
+          break;
+        }
+
+        // ── M5 SQL Console（结果面板 Webview；执行结果经 evt:console.updated 推送）──
+        case RpcMethods.consoleState: {
+          if (deps.console) {
+            const p = ConsoleStateParamsSchema.parse(req.params ?? {});
+            respond(true, { result: await deps.console.getState(p.consoleId) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleExecute: {
+          if (deps.console) {
+            const p = ConsoleExecuteParamsSchema.parse(req.params);
+            respond(true, { result: await deps.console.execute(p) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleCancel: {
+          if (deps.console) {
+            const p = ConsoleCancelParamsSchema.parse(req.params);
+            respond(true, { result: await deps.console.cancel(p) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleResolveBanner: {
+          if (deps.console) {
+            const p = ConsoleResolveBannerParamsSchema.parse(req.params);
+            respond(true, { result: await deps.console.resolveBanner(p) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleExport: {
+          if (deps.console) {
+            const p = ConsoleExportParamsSchema.parse(req.params);
+            respond(true, { result: await deps.console.exportResult(p) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleClose: {
+          if (deps.console) {
+            const p = ConsoleCloseParamsSchema.parse(req.params ?? {});
+            respond(true, { result: await deps.console.close(p) });
             return;
           }
           break;

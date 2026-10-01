@@ -103,6 +103,27 @@
       {
         "command": "dbExplorer.newQuery",
         "title": "新建 SQL Console",
+        "category": "数据库",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dbExplorer.executeQuery",
+        "title": "执行 SQL",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.executeQueryAll",
+        "title": "执行全部语句",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.consoleSelectConnection",
+        "title": "SQL Console：选择连接/数据库",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.queryHistory",
+        "title": "SQL 执行历史",
         "category": "数据库"
       }
     ],
@@ -122,6 +143,11 @@
           "command": "dbExplorer.openTable",
           "when": "viewItem == table || viewItem == view",
           "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.newQuery",
+          "when": "viewItem == connection || viewItem == database",
+          "group": "2_object@0"
         },
         {
           "command": "dbExplorer.editConnection",
@@ -173,6 +199,18 @@
       {
         "command": "dbExplorer.newQuery",
         "key": "ctrl+alt+q"
+      },
+      {
+        "command": "dbExplorer.executeQuery",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "dbExplorer.executeQueryAll",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && editorLangId == sql"
       }
     ],
     "configuration": {

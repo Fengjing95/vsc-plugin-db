@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import type { DriverRegistry } from '@db-explorer/core';
 import type { ConnectionManager } from './services/connectionManager';
+import type { ConsoleService } from './services/consoleService';
+import { pickHistoryItem } from './services/consoleHistory';
 import type { EditGuard, ViewStateStore } from './services/editGuard';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
@@ -17,6 +19,10 @@ export interface AppServices {
   changesets: import('@db-explorer/core').ChangeSetService;
   viewStates: ViewStateStore;
   editGuard: EditGuard;
+  /** M5 SQL Console */
+  console: ConsoleService;
+  /** M5 执行历史 */
+  history: import('./services/consoleHistory').ConsoleHistory;
 }
 
 function copy(text: string, hint: string): void {
@@ -83,6 +89,8 @@ export function registerCommands(
       }
       connections.invalidate(connId);
       closeTablePanelsFor(connId);
+      services.console.closeConsolesForConnection(connId);
+      await services.history.removeConnection(connId);
       await store.delete(connId);
     }),
 
@@ -97,8 +105,33 @@ export function registerCommands(
       }
     }),
 
-    vscode.commands.registerCommand('dbExplorer.newQuery', () => {
-      void vscode.window.showInformationMessage('SQL Console 在 M5 交付。');
+    vscode.commands.registerCommand('dbExplorer.newQuery', (node?: DbTreeNode) => {
+      // 树上的连接/库节点右键 → 直接绑定该连接（库）；命令面板/快捷键 → 交互选择
+      const { connId, db } = node?.payload ?? {};
+      if (connId && (node?.type === 'connection' || node?.type === 'database')) {
+        void services.console.newConsole({ connId, db: node.type === 'database' ? db : undefined });
+      } else {
+        void services.console.newConsole();
+      }
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.executeQuery', () => {
+      void services.console.executeActiveEditor('cursor');
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.executeQueryAll', () => {
+      void services.console.executeActiveEditor('all');
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.consoleSelectConnection', () => {
+      void services.console.selectConnectionForActiveEditor();
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.queryHistory', async () => {
+      const item = await pickHistoryItem(services.history.list());
+      if (item) {
+        await services.console.rerunHistory(item);
+      }
     }),
 
     vscode.commands.registerCommand('dbExplorer.openTable', async (node?: DbTreeNode) => {

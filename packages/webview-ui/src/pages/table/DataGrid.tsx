@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ContextMenu, type ContextMenuItem } from '../../components/ui/contextMenu';
 import { cellView } from '../../lib/cellDisplay';
 import { applyOverlay } from '../../lib/editOverlay';
 import { cellInputText } from '../../lib/editValues';
@@ -15,7 +16,7 @@ const ROW_NUM_WIDTH = 56;
 const OVERSCAN = 12;
 
 /** 默认列宽按类型区分（概要设计 5.4 布局） */
-function defaultWidth(type: string): number {
+export function defaultWidth(type: string): number {
   switch (type) {
     case 'integer':
     case 'float':
@@ -33,60 +34,6 @@ function defaultWidth(type: string): number {
     default:
       return 170;
   }
-}
-
-interface MenuItem {
-  key: string;
-  label: string;
-  disabled?: boolean;
-  onSelect: () => void;
-}
-
-/** 轻量右键菜单（fixed 定位；Esc/点击外部关闭） */
-function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-  return (
-    <div
-      ref={ref}
-      role="menu"
-      className="fixed z-[70] min-w-36 rounded-sm border border-border bg-panel py-1 text-[12px] shadow-lg"
-      style={{ left: x, top: y }}
-    >
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          role="menuitem"
-          disabled={item.disabled}
-          className="block w-full truncate px-3 py-1 text-left hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => {
-            onClose();
-            item.onSelect();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 /**
@@ -118,7 +65,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [sizing, setSizing] = useState<Record<string, number>>({});
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
   const [editText, setEditText] = useState('');
   // 订阅覆盖层与选中集（rowEditState/selectRow 经 get() 读取，不自动触发重渲染）
   useTableStore((s) => s.updates);
@@ -203,9 +150,9 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
     }
   };
 
-  const cellMenuItems = (rowIndex: number, colIndex: number): MenuItem[] => {
+  const cellMenuItems = (rowIndex: number, colIndex: number): ContextMenuItem[] => {
     const value = useTableStore.getState().effectiveValue(rowIndex, colIndex);
-    const items: MenuItem[] = [
+    const items: ContextMenuItem[] = [
       { key: 'edit', label: '编辑', disabled: !editEnabled, onSelect: () => beginEdit(rowIndex, colIndex) },
     ];
     if (value !== null) {
@@ -224,7 +171,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
     return items;
   };
 
-  const rowNumMenuItems = (rowIndex: number): MenuItem[] => {
+  const rowNumMenuItems = (rowIndex: number): ContextMenuItem[] => {
     if (rowIndex >= rows.length) {
       const tempId = inserts[rowIndex - rows.length]?.tempId;
       return [

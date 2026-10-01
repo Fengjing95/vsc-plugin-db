@@ -1,6 +1,6 @@
 export {};
 
-type WebviewPage = 'table' | 'connectionForm';
+type WebviewPage = 'table' | 'connectionForm' | 'console';
 
 declare global {
   interface BootstrapData {

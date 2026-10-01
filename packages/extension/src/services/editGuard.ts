@@ -1,13 +1,17 @@
 import * as vscode from 'vscode';
+import { DriverError, assessStatementDanger, isReadStatement, type DangerAssessment } from '@db-explorer/core';
 import type { EditPermission, ViewUiState } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import type { MetadataCache } from '@db-explorer/core';
 
 /**
- * M4 表格编辑护栏（概要设计 §5.8 / D-03）：
+ * M4 表格编辑护栏 + M5 Console 危险判定（概要设计 §5.8 / D-03）：
  * - getPermission：编辑权限判定（Host 层 fail-closed——UI 置灰只是第一道防线）
- * - confirmApply：DangerGuard 检测点「表格变更提交」——prod 环境强制输入表名确认，
- *   判定与确认集中在本服务，避免各处自建
+ * - confirmApply：DangerGuard 检测点「表格变更提交」——prod 环境强制输入表名确认
+ * - assessDanger：DangerGuard 检测点「Console 语句」——无 WHERE 的 UPDATE/DELETE、
+ *   DROP、TRUNCATE、ALTER…DROP（AST + 正则降级），供 Console 横幅/Modal 使用
+ * - assertReadable：只读连接 fail-closed——无法证明语句是读一律拒绝（E_READONLY）
+ * 判定与确认集中在本服务，避免各处自建。
  */
 export class EditGuard {
   private readonly permissions = new Map<string, EditPermission>();
@@ -28,6 +32,27 @@ export class EditGuard {
     const permission = await this.compute(connId, db, obj);
     this.permissions.set(key, permission);
     return permission;
+  }
+
+  /** M5：单条语句危险判定（Console 执行前逐条调用；横幅/Modal 的依据） */
+  assessDanger(sql: string, dialectId?: string): DangerAssessment {
+    const assessment = assessStatementDanger(sql, dialectId);
+    if (assessment.dangerous) {
+      this.output.appendLine(
+        `[dangerGuard] 危险语句判定：${assessment.reasons.join('；')}${assessment.parseFailed ? '（正则降级）' : ''}`,
+      );
+    }
+    return assessment;
+  }
+
+  /** M5：只读连接 fail-closed（概要 §5.8）：任一语句无法证明为读 → E_READONLY */
+  assertReadable(statements: string[], dialectId?: string): void {
+    for (const sql of statements) {
+      if (!isReadStatement(sql, dialectId)) {
+        this.output.appendLine(`[dangerGuard] 只读连接拒绝非读语句（fail-closed）`);
+        throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许查询语句');
+      }
+    }
   }
 
   private async compute(connId: string, db: string, obj: string): Promise<EditPermission> {

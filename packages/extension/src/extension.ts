@@ -5,6 +5,9 @@ import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { registerCommands } from './commands';
 import { ConnectionManager } from './services/connectionManager';
 import { ConnectionStore } from './services/connectionStore';
+import { ConsoleHistory } from './services/consoleHistory';
+import { ConsoleService } from './services/consoleService';
+import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
@@ -35,6 +38,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: tree,
     showCollapseAll: true,
   });
+  // M5 SQL Console：绑定/执行链/结果面板/历史（概要设计 §5.5）
+  const history = new ConsoleHistory(context.workspaceState, connections);
+  const consoleService = new ConsoleService(
+    context,
+    connections,
+    cache,
+    editGuard,
+    history,
+    output,
+    () => tree.refresh(),
+  );
 
   await store.ensureSeed(MOCK_CONNECTION);
 
@@ -43,15 +57,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     connections,
     output,
     treeView,
+    consoleService,
+    registerConsoleCompletion(context, consoleService),
     store.onDidChange(() => tree.refresh()),
     ...registerCommands(
       context,
-      { registry, store, connections, output, changesets, viewStates, editGuard },
+      {
+        registry,
+        store,
+        connections,
+        output,
+        changesets,
+        viewStates,
+        editGuard,
+        console: consoleService,
+        history,
+      },
       tree,
     ),
   );
 }
 
 export function deactivate(): void {
-  // ConnectionManager 随 context.subscriptions dispose，统一关闭连接池
+  // ConnectionManager / ConsoleService 随 context.subscriptions dispose，统一关闭连接池
 }
