@@ -98,7 +98,8 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const columns = useTableStore((s) => s.columns);
   const rows = useTableStore((s) => s.rows);
   const sorts = useTableStore((s) => s.sorts);
-  const toggleSort = useTableStore((s) => s.toggleSort);
+  const toggleHeaderSort = useTableStore((s) => s.toggleHeaderSort);
+  const orderFreeform = useTableStore((s) => s.orderFreeform);
   const inserts = useTableStore((s) => s.inserts);
   const editEnabled = useTableStore((s) => s.editEnabled);
   const editing = useTableStore((s) => s.editing);
@@ -280,10 +281,10 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                 key={header.id}
                 role="columnheader"
                 aria-sort={sorted ? (sorted.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                className="group relative flex shrink-0 cursor-pointer select-none items-center justify-between gap-1 overflow-hidden border-r border-border px-2 text-left text-[13px] font-semibold text-panel-foreground hover:bg-accent"
+                className={`group relative flex shrink-0 select-none items-center justify-between gap-1 overflow-hidden border-r border-border px-2 text-left text-[13px] font-semibold text-panel-foreground ${orderFreeform ? 'cursor-default' : 'cursor-pointer hover:bg-accent'}`}
                 style={{ width: header.getSize() }}
-                onClick={() => void toggleSort(header.id)}
-                title={`按 ${header.id} 排序`}
+                onClick={() => toggleHeaderSort(header.id)}
+                title={orderFreeform ? '自定义 ORDER BY 表达式生效中，列头排序已停用（清空输入框后可用）' : `按 ${header.id} 排序`}
               >
                 <span className="truncate">{header.id}</span>
                 <span className="shrink-0 text-[10px] text-muted-foreground">

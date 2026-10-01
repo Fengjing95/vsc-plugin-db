@@ -23,7 +23,7 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 import { buildChangeStatements } from './changes';
-import { buildSelect, encodeValue, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
+import { buildSelect, encodeValue, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
 
 /**
  * MySQL 驱动（mysql2/promise）。
@@ -236,20 +236,29 @@ export class MysqlConnection implements IConnection {
   async fetchRows(req: FetchRowsRequest): Promise<ResultSet> {
     try {
       const cols = await this.listColumns(req.db, req.obj);
-      // 翻页稳定性契约（概要设计 §12.2-3）：未指定排序时默认按主键升序
+      // 翻页稳定性契约（概要设计 §12.2-3 / P-10）：主键升序作为兜底排序。
+      // v0.1.3 起用户 ORDER BY 片段优先——兜底主键改为追加在其后（片段未含主键时），
+      // 避免默认前置主键使唯一主键下的手写排序失效
       const pkCols = cols.filter((c) => c.isPrimaryKey).map((c) => c.name);
-      const sorts = req.sorts?.length
-        ? req.sorts
-        : pkCols.map((c) => ({ column: c, dir: 'asc' as const }));
+      const userOrder = req.orderBySql?.trim() ?? '';
+      const tailSorts: Array<{ column: string; dir: 'asc' | 'desc' }> = [];
+      if (userOrder) {
+        if (!pkCols.some((pk) => fragmentHasColumn(userOrder, pk))) {
+          tailSorts.push(...pkCols.map((c) => ({ column: c, dir: 'asc' as const })));
+        }
+      } else if (!req.sorts?.length) {
+        tailSorts.push(...pkCols.map((c) => ({ column: c, dir: 'asc' as const })));
+      }
       const built = buildSelect({
         db: req.db,
         obj: req.obj,
         columns: req.columns,
         filters: req.filters,
-        sorts,
+        sorts: req.sorts,
         search: req.search,
         whereSql: req.whereSql,
         orderBySql: req.orderBySql,
+        tailSorts,
         searchColumns: cols.map((c) => c.name),
         limit: req.limit,
         offset: req.offset,

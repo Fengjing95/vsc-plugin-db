@@ -9,6 +9,12 @@ export function quoteMysqlIdentifier(name: string): string {
 }
 
 /** LIKE 通配符转义由驱动负责（驱动开发规范 §4） */
+/** 字符串字面量剥除后做整词匹配——判断用户片段是否已引用某列（忽略大小写） */
+export function fragmentHasColumn(sql: string, column: string): boolean {
+  const stripped = sql.replace(/'(?:[^']|'')*'/g, ' ');
+  return new RegExp(`\\b${column.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(stripped);
+}
+
 export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
@@ -24,6 +30,8 @@ export interface SelectParts {
   whereSql?: string;
   /** 用户手写 ORDER BY 片段（追加在列头排序之后） */
   orderBySql?: string;
+  /** 追加在 orderBySql 之后的兜底排序（如主键升序，保证翻页稳定 P-10） */
+  tailSorts?: Array<{ column: string; dir: 'asc' | 'desc' }>;
   searchColumns: string[];
   limit: number;
   offset?: number;
@@ -133,6 +141,9 @@ export function buildSelect(req: SelectParts): BuiltSelect {
   const userOrder = req.orderBySql?.trim();
   if (userOrder) {
     orderParts.push(userOrder);
+  }
+  for (const t of req.tailSorts ?? []) {
+    orderParts.push(`${quoteMysqlIdentifier(t.column)} ${t.dir === 'desc' ? 'DESC' : 'ASC'}`);
   }
   if (orderParts.length > 0) {
     sql += ` ORDER BY ${orderParts.join(', ')}`;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FilterCondition } from '@db-explorer/core';
 import {
   buildSelect,
+  fragmentHasColumn,
   encodeValue,
   escapeLike,
   normalizeMysqlType,
@@ -21,6 +22,16 @@ describe('escapeLike', () => {
     expect(escapeLike('100%')).toBe('100\\%');
     expect(escapeLike('a_b')).toBe('a\\_b');
     expect(escapeLike('a\\b')).toBe('a\\\\b');
+  });
+});
+
+describe('fragmentHasColumn（判断用户片段是否引用某列）', () => {
+  it('整词匹配、剥除字符串字面量、识别反引号引用', () => {
+    expect(fragmentHasColumn('amount DESC', 'amount')).toBe(true);
+    expect(fragmentHasColumn('`id` DESC', 'id')).toBe(true);
+    expect(fragmentHasColumn("'id' DESC", 'id')).toBe(false); // 字符串字面量剥除
+    expect(fragmentHasColumn('paid DESC', 'id')).toBe(false); // 整词边界
+    expect(fragmentHasColumn('ID DESC', 'id')).toBe(true); // 忽略大小写
   });
 });
 
@@ -72,6 +83,18 @@ describe('buildSelect', () => {
     });
     expect(built.sql).toContain('WHERE `id` > ? AND (`name` LIKE ?) AND (1 = 1)');
     expect(built.params).toEqual([5, '%kw%', 10]);
+  });
+
+  it('tailSorts 追加在 orderBySql 之后（主键兜底）', () => {
+    const built = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      searchColumns: [],
+      limit: 10,
+      orderBySql: 'amount DESC',
+      tailSorts: [{ column: 'id', dir: 'asc' }],
+    });
+    expect(built.sql).toContain('ORDER BY amount DESC, `id` ASC');
   });
 
   it('orderBySql 追加在列头排序之后', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeMultiValues, encodeScalar, opsForType, opValueShape } from './filterOps';
-import { buildQueryParams, formatEstimate, nextSort, paginationLabel } from './queryState';
+import { buildQueryParams, formatEstimate, paginationLabel } from './queryState';
 
 describe('opsForType（交互稿 §4.4：操作符按列类型过滤）', () => {
   it('文本列含 like，不含 between', () => {
@@ -52,7 +52,6 @@ describe('buildQueryParams', () => {
         obj: 'users',
         page: 3,
         pageSize: 100,
-        sorts: [],
         where: '',
         orderBy: '',
         search: '',
@@ -63,7 +62,6 @@ describe('buildQueryParams', () => {
     expect(params.limit).toBe(100);
     expect(params.whereSql).toBeUndefined();
     expect(params.orderBySql).toBeUndefined();
-    expect(params.sorts).toBeUndefined();
     expect(params.search).toBeUndefined();
     expect(params.columns).toBeUndefined();
   });
@@ -76,7 +74,6 @@ describe('buildQueryParams', () => {
         obj: 'users',
         page: 0,
         pageSize: 50,
-        sorts: [{ column: 'id', dir: 'asc' }],
         where: "status = 'active'",
         orderBy: 'created_at DESC',
         search: '张',
@@ -85,25 +82,11 @@ describe('buildQueryParams', () => {
     );
     expect(params.whereSql).toBe("status = 'active'");
     expect(params.orderBySql).toBe('created_at DESC');
-    expect(params.sorts).toEqual([{ column: 'id', dir: 'asc' }]);
     expect(params.search).toBe('张');
     expect(params.columns).toEqual(['id', 'status']);
   });
 });
 
-describe('nextSort（三态循环）', () => {
-  it('无 → asc → desc → 无', () => {
-    expect(nextSort([], 'a')).toEqual([{ column: 'a', dir: 'asc' }]);
-    expect(nextSort([{ column: 'a', dir: 'asc' }], 'a')).toEqual([{ column: 'a', dir: 'desc' }]);
-    expect(nextSort([{ column: 'a', dir: 'desc' }], 'a')).toEqual([]);
-  });
-  it('切换列时保留既有排序（多列）', () => {
-    expect(nextSort([{ column: 'a', dir: 'asc' }], 'b')).toEqual([
-      { column: 'a', dir: 'asc' },
-      { column: 'b', dir: 'asc' },
-    ]);
-  });
-});
 
 describe('paginationLabel（交互稿 §4.7 分页栏细则）', () => {
   it('totalCount 已知：第 X-Y 行 / 共 N 行', () => {

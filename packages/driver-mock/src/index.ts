@@ -599,11 +599,20 @@ export class MockConnection implements IConnection {
     }
     const totalCount = rows.length;
 
-    // 排序链：列头排序在前，用户 ORDER BY 片段在后（与 MySQL 的 ORDER BY 拼接同序）
+    // 排序链：结构化 sorts 在前，用户 ORDER BY 片段在后；
+    // 片段未含主键时追加主键升序兜底（P-10 翻页稳定，与 MySQL 同规则）
     const sortSpecs: Array<{ column: string; dir: 'asc' | 'desc' }> = [...(req.sorts ?? [])];
     if (req.orderBySql?.trim()) {
-      for (const o of compileOrderBy(req.orderBySql, columns)) {
+      const orderTerms = compileOrderBy(req.orderBySql, columns);
+      for (const o of orderTerms) {
         sortSpecs.push({ column: columns[o.index].name, dir: o.dir });
+      }
+      const pkCols = def.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+      const hasPk = orderTerms.some((o) => pkCols.includes(columns[o.index].name));
+      if (!hasPk) {
+        for (const pk of pkCols) {
+          sortSpecs.push({ column: pk, dir: 'asc' as const });
+        }
       }
     }
     if (sortSpecs.length > 0) {

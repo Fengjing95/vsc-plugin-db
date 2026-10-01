@@ -25,6 +25,7 @@ import {
   type RowColumns,
   type RowOverlay,
 } from '../lib/editOverlay';
+import { headerSortToText, orderTermsToSpecs, parseOrderTerms } from '../lib/orderTerms';
 import { buildQueryParams } from '../lib/queryState';
 import { PAGE_SIZES } from '../lib/queryState';
 
@@ -86,7 +87,10 @@ interface TableState {
 
   page: number;
   pageSize: number;
+  /** appliedOrderBy 的规范解析镜像（表头指示器；自由表达式时为空） */
   sorts: SortSpecPayload[];
+  /** appliedOrderBy 为自由表达式（不可与列头联动） */
+  orderFreeform: boolean;
   /** 用户手写 WHERE / ORDER BY 片段（已应用值；v0.1.3 取代筛选构造器 drafts） */
   appliedWhere: string;
   appliedOrderBy: string;
@@ -122,9 +126,13 @@ interface TableState {
   refresh(): Promise<void>;
   setPage(page: number): Promise<void>;
   setPageSize(size: number): Promise<void>;
-  toggleSort(column: string): Promise<void>;
+  /** 列头排序（双向联动）：解析/三态切换 ORDER BY 输入框内容并立即应用；
+   *  输入框为自由表达式时仅提示、不覆盖 */
+  toggleHeaderSort(column: string): void;
   /** 应用 WHERE/ORDER BY 自由条件（空串 = 无），回到第 1 页 */
   applyQuery(where: string, orderBy: string): Promise<void>;
+  /** 依 allColumns 解析 appliedOrderBy → sorts 镜像 + orderFreeform */
+  syncOrderMirror(): void;
   clearFilters(): Promise<void>;
   applySearch(text: string): Promise<void>;
   setVisibleColumns(cols: string[] | null): Promise<void>;
@@ -198,6 +206,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   page: 0,
   pageSize: PAGE_SIZES[0],
   sorts: [],
+  orderFreeform: false,
   appliedWhere: '',
   appliedOrderBy: '',
   searchApplied: '',
@@ -237,7 +246,6 @@ export const useTableStore = create<TableState>((set, get) => ({
           obj: s.obj,
           page: s.page,
           pageSize: s.pageSize,
-          sorts: s.sorts,
           where: s.appliedWhere,
           orderBy: s.appliedOrderBy,
           search: s.searchApplied,
@@ -269,6 +277,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         selectedRows: {},
         selectionAnchor: null,
       });
+      get().syncOrderMirror();
     } catch (err) {
       if (seq !== reqSeq) {
         return;
@@ -300,21 +309,37 @@ export const useTableStore = create<TableState>((set, get) => ({
     await get().refresh();
   },
 
-  async toggleSort(column) {
-    const cur = get().sorts;
-    const existing = cur.find((x) => x.column === column);
-    const next: SortSpecPayload[] = !existing
-      ? [...cur, { column, dir: 'asc' }]
-      : existing.dir === 'asc'
-        ? cur.map((x) => (x.column === column ? { ...x, dir: 'desc' as const } : x))
-        : cur.filter((x) => x.column !== column);
-    set({ sorts: next });
+  async applyQuery(where, orderBy) {
+    set({ appliedWhere: where, appliedOrderBy: orderBy, page: 0 });
+    get().syncOrderMirror();
     await get().refresh();
   },
 
-  async applyQuery(where, orderBy) {
-    set({ appliedWhere: where, appliedOrderBy: orderBy, page: 0 });
-    await get().refresh();
+  toggleHeaderSort(column) {
+    const s = get();
+    if (s.orderFreeform) {
+      // 自由表达式不参与联动：提示而非静默覆盖用户输入
+      get().showToast({ kind: 'info', text: '已存在手写 ORDER BY 表达式，列头排序停用（清空输入框后可用）' });
+      return;
+    }
+    const names = (s.allColumns.length > 0 ? s.allColumns : s.columns).map((c) => c.name);
+    const nextText = headerSortToText(s.appliedOrderBy, column, names);
+    if (nextText === null) {
+      return;
+    }
+    set({ appliedOrderBy: nextText });
+    get().syncOrderMirror();
+    void get().refresh();
+  },
+
+  syncOrderMirror() {
+    const s = get();
+    const names = (s.allColumns.length > 0 ? s.allColumns : s.columns).map((c) => c.name);
+    const parsed = parseOrderTerms(s.appliedOrderBy, names);
+    set({
+      sorts: orderTermsToSpecs(s.appliedOrderBy, names),
+      orderFreeform: !parsed.canonical && s.appliedOrderBy.trim() !== '',
+    });
   },
 
   async clearFilters() {
@@ -346,7 +371,6 @@ export const useTableStore = create<TableState>((set, get) => ({
           obj: s.obj,
           page: s.page,
           pageSize: s.pageSize,
-          sorts: s.sorts,
           where: s.appliedWhere,
           orderBy: s.appliedOrderBy,
           search: s.searchApplied,
@@ -389,7 +413,6 @@ export const useTableStore = create<TableState>((set, get) => ({
       set({
         page: ui.page,
         pageSize: ui.pageSize,
-        sorts: ui.sorts,
         searchApplied: ui.search,
         // drafts 为旧版构造器遗留（协议兼容保留），恒忽略；恢复 WHERE/ORDER BY 自由条件
         appliedWhere: ui.where ?? '',
@@ -833,7 +856,6 @@ export const useTableStore = create<TableState>((set, get) => ({
           obj: s.obj,
           page: 0,
           pageSize: 5,
-          sorts: [],
           where: '',
           orderBy: '',
           search: '',
@@ -988,7 +1010,7 @@ function flushPending(
     uiState: {
       page: s.page,
       pageSize: s.pageSize,
-      sorts: s.sorts,
+      sorts: [],
       search: s.searchApplied,
       drafts: [],
       where: s.appliedWhere,

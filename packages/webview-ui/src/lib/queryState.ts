@@ -1,5 +1,3 @@
-import type { SortSpecPayload } from '@db-explorer/protocol';
-
 /**
  * 查询状态 → RPC 参数（table.fetchRows / export.run 共用形状）。
  * 纯函数：筛选/排序/投影/分页的编码与页码计算集中在此，便于单测。
@@ -11,8 +9,8 @@ export interface QueryUiState {
   obj: string;
   page: number;
   pageSize: number;
-  sorts: SortSpecPayload[];
-  /** 用户手写 WHERE / ORDER BY 片段（v0.1.3 取代筛选构造器，空串 = 无） */
+  /** 用户手写 WHERE / ORDER BY 片段（v0.1.3 取代筛选构造器，空串 = 无；
+   *  排序只走 orderBySql 一路——与列头排序双向联动后不再下发结构化 sorts） */
   where: string;
   orderBy: string;
   search: string;
@@ -31,26 +29,10 @@ export function buildQueryParams(state: QueryUiState) {
     limit: state.pageSize,
     offset: state.page * state.pageSize,
     columns: state.visibleColumns ?? undefined,
-    sorts: state.sorts.length > 0 ? state.sorts : undefined,
     search: state.search !== '' ? state.search : undefined,
     whereSql: state.where !== '' ? state.where : undefined,
     orderBySql: state.orderBy !== '' ? state.orderBy : undefined,
   };
-}
-
-/** 列头点击的三态循环：无 → asc → desc → 无（保留其他列的排序，多列下推） */
-export function nextSort(
-  current: SortSpecPayload[],
-  column: string,
-): SortSpecPayload[] {
-  const existing = current.find((s) => s.column === column);
-  if (!existing) {
-    return [...current, { column, dir: 'asc' }];
-  }
-  if (existing.dir === 'asc') {
-    return current.map((s) => (s.column === column ? { ...s, dir: 'desc' as const } : s));
-  }
-  return current.filter((s) => s.column !== column);
 }
 
 /** “约 N 行”：≥1 万显示 k 单位（交互稿 §4.7：“约”字必须带，由调用方拼接） */

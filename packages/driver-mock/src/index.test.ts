@@ -105,6 +105,31 @@ describe('driver-mock：M0 可插拔契约演示', () => {
     expect(filtered.rows[0][0]).toBe(5);
   });
 
+  it('fetchRows：orderBySql 片段生效；未含主键时追加主键兜底（P-10）', async () => {
+    const conn = await connection();
+    const byNameDesc = await conn.fetchRows({
+      db: 'demo',
+      obj: 'users',
+      limit: 2,
+      orderBySql: 'name DESC',
+      timeoutMs: 1000,
+    });
+    // name 为字符串序：'用户9' > '用户8' > ... > '用户60'；未含主键 → 主键升序兜底
+    expect(byNameDesc.rows[0][0]).toBe(9);
+    expect(byNameDesc.rows[1][0]).toBe(8);
+
+    const byIdDesc = await conn.fetchRows({
+      db: 'demo',
+      obj: 'users',
+      limit: 2,
+      orderBySql: '`id` DESC',
+      timeoutMs: 1000,
+    });
+    // 片段已含主键 → 不再追加兜底，首两行 60/59
+    expect(byIdDesc.rows[0][0]).toBe(60);
+    expect(byIdDesc.rows[1][0]).toBe(59);
+  });
+
   it('M3 DoD 数据集：demo.wide 1000×20、big 库单表 5 万行', async () => {
     const conn = await connection();
     const wide = await conn.fetchRows({ db: 'demo', obj: 'wide', limit: 1, timeoutMs: 1000 });
