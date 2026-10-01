@@ -1,5 +1,12 @@
 import * as vscode from 'vscode';
-import { DriverError, assessStatementDanger, isReadStatement, type DangerAssessment } from '@db-explorer/core';
+import {
+  DriverError,
+  assessRedisCommand,
+  assessStatementDanger,
+  isProvablyReadRedisCommand,
+  isReadStatement,
+  type DangerAssessment,
+} from '@db-explorer/core';
 import type { EditPermission, ViewUiState } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import type { MetadataCache } from '@db-explorer/core';
@@ -11,6 +18,8 @@ import type { MetadataCache } from '@db-explorer/core';
  * - assessDanger：DangerGuard 检测点「Console 语句」——无 WHERE 的 UPDATE/DELETE、
  *   DROP、TRUNCATE、ALTER…DROP（AST + 正则降级），供 Console 横幅/Modal 使用
  * - assertReadable：只读连接 fail-closed——无法证明语句是读一律拒绝（E_READONLY）
+ * - M6（驱动规范 §5.3）：supportsSQL=false 的命令控制台走同构的命令白名单版本
+ *   assessCommandDanger / assertCommandsReadable（core redisCommands），复用同一横幅流程
  * 判定与确认集中在本服务，避免各处自建。
  */
 export class EditGuard {
@@ -51,6 +60,30 @@ export class EditGuard {
       if (!isReadStatement(sql, dialectId)) {
         this.output.appendLine(`[dangerGuard] 只读连接拒绝非读语句（fail-closed）`);
         throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许查询语句');
+      }
+    }
+  }
+
+  /** M6：命令危险判定（core 命令白名单，驱动规范 §5.3；横幅/Modal 与 SQL 同构） */
+  assessCommandDanger(commandText: string): DangerAssessment {
+    const a = assessRedisCommand(commandText);
+    const assessment: DangerAssessment = {
+      dangerous: a.dangerous,
+      reasons: a.reasons,
+      parseFailed: a.unparseable,
+    };
+    if (assessment.dangerous) {
+      this.output.appendLine(`[dangerGuard] 危险命令判定：${assessment.reasons.join('；')}`);
+    }
+    return assessment;
+  }
+
+  /** M6：只读连接命令白名单 fail-closed（§5.3）：不可证明为读 → E_READONLY */
+  assertCommandsReadable(commands: string[]): void {
+    for (const command of commands) {
+      if (!isProvablyReadRedisCommand(command)) {
+        this.output.appendLine(`[dangerGuard] 只读连接拒绝非读命令（fail-closed）`);
+        throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许读命令');
       }
     }
   }

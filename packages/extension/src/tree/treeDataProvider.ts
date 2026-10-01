@@ -8,11 +8,19 @@ export type TreeNodeType =
   | 'folder'
   | 'table'
   | 'view'
+  | 'collection'
   | 'column'
   | 'key'
   | 'index';
 
-export type FolderKind = 'table' | 'view' | 'columns' | 'keys' | 'indexes';
+export type FolderKind = 'table' | 'view' | 'collection' | 'columns' | 'keys' | 'indexes';
+
+/** 数据源的目录分组（kind → 目录标签/图标）：数据驱动渲染，非 SQL 数据源（collection）同构处理 */
+const KIND_FOLDERS: Array<{ kind: FolderKind; label: string; iconId: string }> = [
+  { kind: 'table', label: '表', iconId: 'folder' },
+  { kind: 'view', label: '视图', iconId: 'folder' },
+  { kind: 'collection', label: 'Keys', iconId: 'folder' },
+];
 
 export interface DbTreeNode {
   id: string;
@@ -72,7 +80,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     if (node.description) {
       item.description = node.description;
     }
-    if (node.type === 'table' || node.type === 'view') {
+    if (node.type === 'table' || node.type === 'view' || node.type === 'collection') {
       item.command = {
         command: 'dbExplorer.openTable',
         title: '打开表格视图',
@@ -117,17 +125,16 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
       }
 
       case 'database': {
-        // 目录节点描述 = 纯数字统计（M4 评审反馈：行估算意义有限，数量更有用）
+        // 目录节点按 listObjects 实际返回的 kind 数据驱动生成（M6：Redis 仅 Keys 目录，
+        // 概要设计 §5.1.3 —— UI 经 capabilities/数据决定渲染层级，不做数据源硬编码）
         const connId = node.payload.connId!;
         const db = node.payload.db!;
         const conn = await this.connections.ensureConnected(connId);
         const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
-        const tableCount = objs.filter((o) => o.kind === 'table').length;
-        const viewCount = objs.filter((o) => o.kind === 'view').length;
-        return [
-          this.folderNode(node, 'table', '表', 'folder', countLabel(tableCount)),
-          this.folderNode(node, 'view', '视图', 'folder', countLabel(viewCount)),
-        ];
+        return KIND_FOLDERS.filter((k) => objs.some((o) => o.kind === k.kind)).map((k) => {
+          const count = objs.filter((o) => o.kind === k.kind).length;
+          return this.folderNode(node, k.kind, k.label, k.iconId, countLabel(count));
+        });
       }
 
       case 'table': {
@@ -180,6 +187,23 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           contextValue: kind,
           iconId: kind === 'table' ? 'table' : 'eye',
           // rowEstimate 仍随 payload 供表格分页栏“约 N 行”（交互稿 §4.7）
+          payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
+        }));
+    }
+
+    if (kind === 'collection') {
+      // M6 键值数据源：模式分组节点（名称含 glob）与单键（comment=类型）都打开表格视图
+      const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
+      return objs
+        .filter((o) => o.kind === 'collection')
+        .map((o) => ({
+          id: `${node.id}:${o.name}`,
+          type: 'collection' as const,
+          label: o.name,
+          description: o.comment,
+          collapsibleState: None,
+          contextValue: 'collection',
+          iconId: o.name.includes('*') || o.name.includes('?') ? 'search' : 'key',
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
         }));
     }

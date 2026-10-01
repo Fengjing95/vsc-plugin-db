@@ -155,7 +155,7 @@
       "view/item/context": [
         {
           "command": "dbExplorer.openTable",
-          "when": "viewItem == table || viewItem == view",
+          "when": "viewItem == table || viewItem == view || viewItem == collection",
           "group": "inline@1"
         },
         {
@@ -195,7 +195,7 @@
         },
         {
           "command": "dbExplorer.copyName",
-          "when": "viewItem == table || viewItem == view || viewItem == column || viewItem == index || viewItem == key",
+          "when": "viewItem == table || viewItem == view || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
           "group": "2_object@2"
         },
         {
@@ -275,7 +275,8 @@
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*",
     "@db-explorer/driver-mysql": "workspace:*",
-    "@db-explorer/protocol": "workspace:*"
+    "@db-explorer/protocol": "workspace:*",
+    "@db-explorer/driver-redis": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

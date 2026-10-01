@@ -3,11 +3,14 @@ import {
   DriverError,
   InProcessDriverHost,
   isDdlStatement,
+  isProvablyReadRedisCommand,
   isSessionStateStatement,
+  splitCommandLines,
   splitSqlStatements,
   statementAtOffset,
   type CompletionSource,
   type MetadataCache,
+  type SqlStatement,
 } from '@db-explorer/core';
 import {
   RpcEvents,
@@ -372,7 +375,7 @@ export class ConsoleService implements vscode.Disposable {
 
   // ── 执行（§7.2）──────────────────────────────────────────
 
-  /** Ctrl+Enter：选区优先，否则光标所在语句；Ctrl+Shift+Enter：全部 */
+  /** Ctrl+Enter：选区优先，否则光标所在语句/命令；Ctrl+Shift+Enter：全部 */
   async executeActiveEditor(scope: 'cursor' | 'all'): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') {
@@ -380,6 +383,15 @@ export class ConsoleService implements vscode.Disposable {
       return;
     }
     await this.executeDocument(editor, scope);
+  }
+
+  /** 命令模式（驱动规范 §5.3）：supportsSQL=false 的驱动按行切分命令，危险/只读走 core 命令白名单 */
+  private splitRanges(connId: string, raw: string): SqlStatement[] {
+    const driver = this.connections.getDriver(connId);
+    if (driver && !driver.capabilities.supportsSQL) {
+      return splitCommandLines(raw); // 与 SqlStatement 形状兼容，statementAtOffset 通用
+    }
+    return splitSqlStatements(raw);
   }
 
   private async executeDocument(
@@ -391,25 +403,26 @@ export class ConsoleService implements vscode.Disposable {
     if (!state) {
       return; // 未选择连接
     }
+    const ranges = this.splitRanges(state.connId, doc.getText());
     let texts: string[];
     if (scope === 'all') {
-      texts = splitSqlStatements(doc.getText()).map((s) => s.text);
+      texts = ranges.map((s) => s.text);
     } else if (!editor.selection.isEmpty) {
-      texts = splitSqlStatements(doc.getText(editor.selection)).map((s) => s.text);
+      texts = this.splitRanges(state.connId, doc.getText(editor.selection)).map((s) => s.text);
     } else {
-      const stmt = statementAtOffset(splitSqlStatements(doc.getText()), doc.offsetAt(editor.selection.active));
+      const stmt = statementAtOffset(ranges, doc.offsetAt(editor.selection.active));
       texts = stmt ? [stmt.text] : [];
     }
     await this.runStatements(state, texts);
   }
 
-  /** 结果面板「重跑」按钮：对指定 Console 重跑一段 SQL（完整危险判定流程） */
+  /** 结果面板「重跑」按钮：对指定 Console 重跑一段 SQL/命令（完整危险判定流程） */
   async executeSql(consoleId: string, sql: string): Promise<void> {
     const state = this.consoles.get(consoleId);
     if (!state) {
       throw new DriverError('E_NOT_FOUND', 'Console 不存在（可能已关闭）');
     }
-    await this.runStatements(state, splitSqlStatements(sql).map((s) => s.text));
+    await this.runStatements(state, this.splitRanges(state.connId, sql).map((s) => s.text));
   }
 
   /** 历史重跑：活动 Console（一次性连接覆盖）或新建 Console 执行 */
@@ -417,7 +430,10 @@ export class ConsoleService implements vscode.Disposable {
     const doc = vscode.window.activeTextEditor?.document;
     const state = doc && doc.languageId === 'sql' ? this.bindingForDocument(doc) : undefined;
     if (state) {
-      await this.runStatements(state, [item.sql], { connId: item.connId, db: item.db });
+      await this.runStatements(state, this.splitRanges(state.connId, item.sql).map((s) => s.text), {
+        connId: item.connId,
+        db: item.db,
+      });
       return;
     }
     await this.newConsole({ connId: item.connId, db: item.db ?? undefined }, item.sql, { autoExecute: true });
@@ -458,11 +474,9 @@ export class ConsoleService implements vscode.Disposable {
       void vscode.window.showErrorMessage('驱动未注册。');
       return;
     }
-    if (!driver.capabilities.supportsSQL) {
-      // M6 Redis：命令白名单控制台预留接口（驱动规范 §5.3）
-      void vscode.window.showInformationMessage('当前驱动不支持 SQL 执行（命令控制台将于后续版本提供）。');
-      return;
-    }
+    // 命令模式（驱动规范 §5.3 / 评审 P1-6）：supportsSQL=false 仍提供命令控制台，
+    // 危险判定/只读 fail-closed 改用 core 命令白名单，其余流程（横幅/Modal/执行/历史）复用
+    const commandMode = !driver.capabilities.supportsSQL;
 
     let conn;
     try {
@@ -475,18 +489,26 @@ export class ConsoleService implements vscode.Disposable {
     }
     const dialectId = conn.dialect?.id;
 
-    // 只读连接 fail-closed（概要 §5.8）：无法证明是读 → 拒绝
+    // 只读连接 fail-closed（概要 §5.8）：SQL 无法证明是读 → 拒绝；命令模式下用命令白名单
     if (cfg.readOnly) {
       try {
-        this.editGuard.assertReadable(texts, dialectId);
+        if (commandMode) {
+          this.editGuard.assertCommandsReadable(texts);
+        } else {
+          this.editGuard.assertReadable(texts, dialectId);
+        }
       } catch (err) {
         void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
         return;
       }
     }
 
-    // 危险判定（概要 §5.8 / 交互稿 §7.4）：任一语句危险 → 横幅（dev/test）或 Modal（prod）
-    const assessments = texts.map((t) => this.editGuard.assessDanger(t, dialectId));
+    // 危险判定（概要 §5.8 / 交互稿 §7.4）：任一语句/命令危险 → 横幅（dev/test）或 Modal（prod）
+    const assessments = texts.map((t) =>
+      commandMode
+        ? this.editGuard.assessCommandDanger(t)
+        : this.editGuard.assessDanger(t, dialectId),
+    );
     const dangerReasons = [...new Set(assessments.flatMap((a) => a.reasons))];
     let dangerOverridden = false;
     if (dangerReasons.length > 0) {
@@ -494,7 +516,7 @@ export class ConsoleService implements vscode.Disposable {
       const env = cfg.env ?? null;
       if (env === 'prod') {
         const pick = await vscode.window.showWarningMessage(
-          `生产环境危险语句：${dangerReasons.join('；')}`,
+          `生产环境危险${commandMode ? '命令' : '语句'}：${dangerReasons.join('；')}`,
           { modal: true, detail: offending },
           '仍要执行',
         );
@@ -514,8 +536,9 @@ export class ConsoleService implements vscode.Disposable {
       this.output.appendLine(`[dangerGuard] 用户确认覆盖危险语句（${dangerReasons.join('；')}）`);
     }
 
-    // 会话状态检查（评审 P1-5）：切分逐条执行会丢失 SET @x/USE 的会话上下文
-    if (texts.length > 1 && !driver.capabilities.supportsMultiStatement) {
+    // 会话状态检查（评审 P1-5）：仅 SQL 路径——命令模式逐行本就是独立命令（SELECT 等
+    // 连接级状态在同一连接内按序执行，无逐条池化丢状态问题）
+    if (!commandMode && texts.length > 1 && !driver.capabilities.supportsMultiStatement) {
       const hasSession = texts.some((t) => isSessionStateStatement(t));
       if (hasSession) {
         void vscode.window.showErrorMessage(
@@ -557,7 +580,7 @@ export class ConsoleService implements vscode.Disposable {
       this.pushRun(state);
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: '执行 SQL…', cancellable: true },
+        { location: vscode.ProgressLocation.Window, title: commandMode ? '执行命令…' : '执行 SQL…', cancellable: true },
         async (_progress, token) => {
           token.onCancellationRequested(() => controller.abort());
           for (const sqlText of texts) {
@@ -575,7 +598,11 @@ export class ConsoleService implements vscode.Disposable {
                 item.seq = run.items.length + 1;
                 run.items.push(item);
               }
-              if (isDdlStatement(sqlText) && db) {
+              if (commandMode && db && !isProvablyReadRedisCommand(sqlText)) {
+                // 写命令失效联动（概要 §7.5 的命令版）：失效该库元数据缓存并联动树刷新
+                this.cache.invalidateDb(connId, db);
+                this.refreshTree();
+              } else if (!commandMode && isDdlStatement(sqlText) && db) {
                 // DDL 失效联动（概要 §7.5）：失效该库元数据 + 联动树刷新
                 this.cache.invalidateDb(connId, db);
                 this.refreshTree();

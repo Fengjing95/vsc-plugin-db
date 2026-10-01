@@ -91,6 +91,9 @@ importers:
       '@db-explorer/driver-mysql':
         specifier: workspace:*
         version: link:../driver-mysql
+      '@db-explorer/driver-redis':
+        specifier: workspace:*
+        version: link:../driver-redis
       '@db-explorer/protocol':
         specifier: workspace:*
         version: link:../protocol

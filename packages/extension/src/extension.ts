@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ChangeSetService, DriverRegistry, MetadataCache, type ConnectionConfig } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
+import { createRedisDriver } from '@db-explorer/driver-redis';
 import { registerCommands } from './commands';
 import { ConnectionManager } from './services/connectionManager';
 import { ConnectionStore } from './services/connectionStore';
@@ -25,6 +26,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const registry = new DriverRegistry();
   registry.register(createMockDriver());
   registry.register(createMysqlDriver());
+  // M6 Redis 驱动：仅注册（可插拔验收），树/取数/命令控制台路径零核心改动
+  registry.register(createRedisDriver());
 
   const output = vscode.window.createOutputChannel('Database Explorer');
   const store = new ConnectionStore(context.globalState, context.secrets);
