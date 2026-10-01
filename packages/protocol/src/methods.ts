@@ -96,13 +96,17 @@ export const FilterDraftSchema = z.object({
 });
 export type FilterDraftPayload = z.infer<typeof FilterDraftSchema>;
 
-/** Webview 上行的视图状态（崩溃恢复时随快照回放，概要设计 §5.4.5） */
+/** Webview 上行的视图状态（崩溃恢复时随快照回放，概要设计 §5.4.5）。
+ *  drafts 为旧版筛选构造器遗留（v0.1.3 起由 where/orderBy 自由条件取代，保持必填恒空以兼容旧快照） */
 export const ViewUiStateSchema = z.object({
   page: z.number().int().min(0),
   pageSize: z.number().int().positive(),
   sorts: z.array(SortSpecSchema),
   search: z.string(),
   drafts: z.array(FilterDraftSchema),
+  /** 用户手写的 WHERE / ORDER BY 片段（拼接进最终语句，驱动规范 §4） */
+  where: z.string().max(2000).optional(),
+  orderBy: z.string().max(500).optional(),
 });
 export type ViewUiState = z.infer<typeof ViewUiStateSchema>;
 
@@ -128,6 +132,10 @@ export const FetchRowsParamsSchema = z.object({
   sorts: z.array(SortSpecSchema).max(5).optional(),
   /** 全局关键字，Host 侧经驱动下推（LIKE/全文由驱动决定，须转义） */
   search: z.string().max(256).optional(),
+  /** 用户手写 WHERE 片段（拼接进最终语句，驱动规范 §4：原样拼接、语法/列名错误报 E_VALIDATION） */
+  whereSql: z.string().max(2000).optional(),
+  /** 用户手写 ORDER BY 片段（追加在列头排序之后） */
+  orderBySql: z.string().max(500).optional(),
 });
 export type FetchRowsParams = z.infer<typeof FetchRowsParamsSchema>;
 
@@ -297,6 +305,9 @@ export const ExportRunParamsSchema = z.object({
   filters: z.array(FilterConditionSchema).max(20).optional(),
   sorts: z.array(SortSpecSchema).max(5).optional(),
   search: z.string().max(256).optional(),
+  /** 与 table.fetchRows 同语义的用户手写片段（导出所见即所得） */
+  whereSql: z.string().max(2000).optional(),
+  orderBySql: z.string().max(500).optional(),
 });
 export type ExportRunParams = z.infer<typeof ExportRunParamsSchema>;
 

@@ -385,7 +385,7 @@ export async function runFilterPushdownChecks(create: () => Promise<IConnection>
     }
     const { db, obj, primaryKey } = sample;
 
-    const fetchFiltered = (filters: FilterCondition[], extra?: { sorts?: Array<{ column: string; dir: 'asc' | 'desc' }>; limit?: number; offset?: number; search?: string }) =>
+    const fetchFiltered = (filters: FilterCondition[], extra?: { sorts?: Array<{ column: string; dir: 'asc' | 'desc' }>; limit?: number; offset?: number; search?: string; whereSql?: string }) =>
       conn.fetchRows({
         db,
         obj,
@@ -394,8 +394,22 @@ export async function runFilterPushdownChecks(create: () => Promise<IConnection>
         offset: extra?.offset,
         sorts: extra?.sorts,
         search: extra?.search,
+        whereSql: extra?.whereSql,
         timeoutMs: SAMPLE_TIMEOUT_MS,
       });
+
+    // 用户手写 WHERE 片段（驱动规范 §4）：原样拼接且必须生效——1=1 不改变结果集
+    await check(results, 'filter-pushdown', 'whereSql 拼接生效（1=1 结果集不变）', async () => {
+      const base = await conn.fetchRows({ db, obj, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      const spliced = await conn.fetchRows({
+        db,
+        obj,
+        limit: SAMPLE_LIMIT,
+        whereSql: '1 = 1',
+        timeoutMs: SAMPLE_TIMEOUT_MS,
+      });
+      assert(spliced.rowCount === base.rowCount, `拼接 1=1 后行数变化：${base.rowCount} → ${spliced.rowCount}`);
+    });
 
     for (const op of FILTER_OPS) {
       const case_ = buildOpCase(op, sample);

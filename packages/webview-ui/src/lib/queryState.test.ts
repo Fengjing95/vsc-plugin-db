@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeMultiValues, encodeScalar, opsForType, opValueShape } from './filterOps';
-import { buildQueryParams, draftsToFilters, formatEstimate, nextSort, paginationLabel } from './queryState';
-import type { FilterDraft } from './filterOps';
-
-function draft(partial: Partial<FilterDraft>): FilterDraft {
-  return { id: 'd1', column: 'c', op: 'eq', value: '', value2: '', ...partial };
-}
+import { buildQueryParams, formatEstimate, nextSort, paginationLabel } from './queryState';
 
 describe('opsForType（交互稿 §4.4：操作符按列类型过滤）', () => {
   it('文本列含 like，不含 between', () => {
@@ -48,12 +43,8 @@ describe('值编码（概要设计 §4.4）', () => {
 });
 
 describe('buildQueryParams', () => {
-  const columns = [
-    { name: 'id', type: 'integer' },
-    { name: 'status', type: 'string' },
-  ];
 
-  it('offset = page × pageSize；空草稿不产生 filters', () => {
+  it('offset = page × pageSize；空条件不产生 whereSql/orderBySql', () => {
     const params = buildQueryParams(
       {
         connId: 'c',
@@ -62,21 +53,22 @@ describe('buildQueryParams', () => {
         page: 3,
         pageSize: 100,
         sorts: [],
-        drafts: [],
+        where: '',
+        orderBy: '',
         search: '',
         visibleColumns: null,
       },
-      columns,
     );
     expect(params.offset).toBe(300);
     expect(params.limit).toBe(100);
-    expect(params.filters).toEqual([]);
+    expect(params.whereSql).toBeUndefined();
+    expect(params.orderBySql).toBeUndefined();
     expect(params.sorts).toBeUndefined();
     expect(params.search).toBeUndefined();
     expect(params.columns).toBeUndefined();
   });
 
-  it('草稿 → 下推条件（值类型化）', () => {
+  it('where/orderBy 片段透传（非空才下发）', () => {
     const params = buildQueryParams(
       {
         connId: 'c',
@@ -85,24 +77,17 @@ describe('buildQueryParams', () => {
         page: 0,
         pageSize: 50,
         sorts: [{ column: 'id', dir: 'asc' }],
-        drafts: [draft({ column: 'id', op: 'gt', value: '10' })],
+        where: "status = 'active'",
+        orderBy: 'created_at DESC',
         search: '张',
         visibleColumns: ['id', 'status'],
       },
-      columns,
     );
-    expect(params.filters).toEqual([{ column: 'id', op: 'gt', value: 10 }]);
+    expect(params.whereSql).toBe("status = 'active'");
+    expect(params.orderBySql).toBe('created_at DESC');
     expect(params.sorts).toEqual([{ column: 'id', dir: 'asc' }]);
     expect(params.search).toBe('张');
     expect(params.columns).toEqual(['id', 'status']);
-  });
-
-  it('draftsToFilters 丢弃值缺失的非法行', () => {
-    const filters = draftsToFilters(
-      [draft({ column: 'status', op: 'eq', value: '' })],
-      columns,
-    );
-    expect(filters).toEqual([]);
   });
 });
 

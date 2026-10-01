@@ -129,6 +129,8 @@ export class ResultExporter {
             filters,
             sorts: p.sorts,
             search: p.search,
+            whereSql: p.whereSql,
+            orderBySql: p.orderBySql,
             limit: scopePage ? (p.limit ?? this.deps.chunkRows) : this.deps.chunkRows,
             offset,
             timeoutMs: this.deps.timeoutMs,

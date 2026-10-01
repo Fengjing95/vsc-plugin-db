@@ -43,8 +43,8 @@ it('conformance: mock 驱动通过 pagination 组（M3）', async () => {
 it('conformance: mock 驱动通过 filter-pushdown 组（M3）', async () => {
   const summary = await runFilterPushdownChecks(mockConnection);
   expect(summary.failed).toBe(0);
-  // 13 个 FilterOp + 组合 + search
-  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(15);
+  // 13 个 FilterOp + 组合 + search + whereSql 拼接
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(16);
 });
 
 it('conformance: mock 驱动通过 changeset 组（M4）', async () => {

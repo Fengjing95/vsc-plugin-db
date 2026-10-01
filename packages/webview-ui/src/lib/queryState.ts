@@ -1,6 +1,4 @@
-import type { FilterConditionPayload, SortSpecPayload } from '@db-explorer/protocol';
-import type { FilterDraft } from './filterOps';
-import { draftToCondition } from './filterOps';
+import type { SortSpecPayload } from '@db-explorer/protocol';
 
 /**
  * 查询状态 → RPC 参数（table.fetchRows / export.run 共用形状）。
@@ -14,7 +12,9 @@ export interface QueryUiState {
   page: number;
   pageSize: number;
   sorts: SortSpecPayload[];
-  drafts: FilterDraft[];
+  /** 用户手写 WHERE / ORDER BY 片段（v0.1.3 取代筛选构造器，空串 = 无） */
+  where: string;
+  orderBy: string;
   search: string;
   /** null = 全部列（不下发投影） */
   visibleColumns: string[] | null;
@@ -22,17 +22,8 @@ export interface QueryUiState {
 
 export const PAGE_SIZES = [50, 100, 200, 500] as const;
 
-export function draftsToFilters(
-  drafts: FilterDraft[],
-  columns: Array<{ name: string; type: string }>,
-): FilterConditionPayload[] {
-  return drafts
-    .map((d) => draftToCondition(d, columns))
-    .filter((c): c is FilterConditionPayload => c !== null);
-}
-
 /** fetchRows/export 共用的取数形状；offset = page × pageSize */
-export function buildQueryParams(state: QueryUiState, columns: Array<{ name: string; type: string }>) {
+export function buildQueryParams(state: QueryUiState) {
   return {
     connId: state.connId,
     db: state.db,
@@ -40,9 +31,10 @@ export function buildQueryParams(state: QueryUiState, columns: Array<{ name: str
     limit: state.pageSize,
     offset: state.page * state.pageSize,
     columns: state.visibleColumns ?? undefined,
-    filters: draftsToFilters(state.drafts, columns),
     sorts: state.sorts.length > 0 ? state.sorts : undefined,
     search: state.search !== '' ? state.search : undefined,
+    whereSql: state.where !== '' ? state.where : undefined,
+    orderBySql: state.orderBy !== '' ? state.orderBy : undefined,
   };
 }
 

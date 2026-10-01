@@ -1,7 +1,6 @@
 import type {
   ApplyChangesResult,
   EditOpPayload,
-  FilterDraftPayload,
   GetDdlResult,
   HandshakeResult,
   PreviewChangesResult,
@@ -26,7 +25,6 @@ import {
   type RowColumns,
   type RowOverlay,
 } from '../lib/editOverlay';
-import type { FilterDraft } from '../lib/filterOps';
 import { buildQueryParams } from '../lib/queryState';
 import { PAGE_SIZES } from '../lib/queryState';
 
@@ -89,7 +87,9 @@ interface TableState {
   page: number;
   pageSize: number;
   sorts: SortSpecPayload[];
-  appliedDrafts: FilterDraft[];
+  /** 用户手写 WHERE / ORDER BY 片段（已应用值；v0.1.3 取代筛选构造器 drafts） */
+  appliedWhere: string;
+  appliedOrderBy: string;
   searchApplied: string;
   visibleColumns: string[] | null;
 
@@ -123,7 +123,8 @@ interface TableState {
   setPage(page: number): Promise<void>;
   setPageSize(size: number): Promise<void>;
   toggleSort(column: string): Promise<void>;
-  applyFilters(drafts: FilterDraft[]): Promise<void>;
+  /** 应用 WHERE/ORDER BY 自由条件（空串 = 无），回到第 1 页 */
+  applyQuery(where: string, orderBy: string): Promise<void>;
   clearFilters(): Promise<void>;
   applySearch(text: string): Promise<void>;
   setVisibleColumns(cols: string[] | null): Promise<void>;
@@ -197,7 +198,8 @@ export const useTableStore = create<TableState>((set, get) => ({
   page: 0,
   pageSize: PAGE_SIZES[0],
   sorts: [],
-  appliedDrafts: [],
+  appliedWhere: '',
+  appliedOrderBy: '',
   searchApplied: '',
   visibleColumns: null,
 
@@ -236,14 +238,14 @@ export const useTableStore = create<TableState>((set, get) => ({
           page: s.page,
           pageSize: s.pageSize,
           sorts: s.sorts,
-          drafts: s.appliedDrafts,
+          where: s.appliedWhere,
+          orderBy: s.appliedOrderBy,
           search: s.searchApplied,
           // 编辑态保障：投影列 ∪ 主键列（P-7）；无主键全列匹配必须取全行（D-03）
           visibleColumns: s.editEnabled
             ? (effectiveFetchColumns(s.visibleColumns, s.primaryKey, s.allColumns.length > 0 ? s.allColumns : s.columns) ?? null)
             : s.visibleColumns,
         },
-        s.allColumns.length > 0 ? s.allColumns : s.columns,
       );
       const rs = await request<ResultSetPayload>('table.fetchRows', params);
       if (seq !== reqSeq) {
@@ -303,13 +305,13 @@ export const useTableStore = create<TableState>((set, get) => ({
     await get().refresh();
   },
 
-  async applyFilters(drafts) {
-    set({ appliedDrafts: drafts, page: 0 });
+  async applyQuery(where, orderBy) {
+    set({ appliedWhere: where, appliedOrderBy: orderBy, page: 0 });
     await get().refresh();
   },
 
   async clearFilters() {
-    set({ appliedDrafts: [], page: 0 });
+    set({ appliedWhere: '', appliedOrderBy: '', page: 0 });
     await get().refresh();
   },
 
@@ -338,11 +340,11 @@ export const useTableStore = create<TableState>((set, get) => ({
           page: s.page,
           pageSize: s.pageSize,
           sorts: s.sorts,
-          drafts: s.appliedDrafts,
+          where: s.appliedWhere,
+          orderBy: s.appliedOrderBy,
           search: s.searchApplied,
           visibleColumns: s.visibleColumns,
         },
-        s.allColumns.length > 0 ? s.allColumns : s.columns,
       );
       // scope=page 只取当前页；scope=result 由 Host 循环取尽（概要设计 5.7）
       await request<unknown>(
@@ -382,7 +384,9 @@ export const useTableStore = create<TableState>((set, get) => ({
         pageSize: ui.pageSize,
         sorts: ui.sorts,
         searchApplied: ui.search,
-        appliedDrafts: ui.drafts.map((d: FilterDraftPayload) => ({ ...d })),
+        // drafts 为旧版构造器遗留（协议兼容保留），恒忽略；恢复 WHERE/ORDER BY 自由条件
+        appliedWhere: ui.where ?? '',
+        appliedOrderBy: ui.orderBy ?? '',
       });
     }
   },
@@ -823,11 +827,11 @@ export const useTableStore = create<TableState>((set, get) => ({
           page: 0,
           pageSize: 5,
           sorts: [],
-          drafts: [],
+          where: '',
+          orderBy: '',
           search: '',
           visibleColumns: null, // 全列基线
         },
-        s.allColumns,
       );
       const rs = await request<ResultSetPayload>('table.fetchRows', {
         ...params,
@@ -979,7 +983,9 @@ function flushPending(
       pageSize: s.pageSize,
       sorts: s.sorts,
       search: s.searchApplied,
-      drafts: s.appliedDrafts,
+      drafts: [],
+      where: s.appliedWhere,
+      orderBy: s.appliedOrderBy,
     },
   }).then(
     () => true,

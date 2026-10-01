@@ -21,6 +21,7 @@ import {
   type RowKey,
   type TestResult,
 } from '@db-explorer/core';
+import { compileOrderBy, compileWhere } from './whereEval';
 
 /**
  * M0 演示驱动：纯内存数据源。
@@ -589,11 +590,25 @@ export class MockConnection implements IConnection {
     if (req.filters?.length) {
       rows = applyFilters(rows, columns, req.filters);
     }
+    if (req.whereSql) {
+      // 用户手写 WHERE 片段（驱动规范 §4）：内存求值，语法/列名错误 → E_VALIDATION
+      const pred = compileWhere(req.whereSql, columns);
+      if (pred) {
+        rows = rows.filter(pred);
+      }
+    }
     const totalCount = rows.length;
 
-    if (req.sorts?.length) {
+    // 排序链：列头排序在前，用户 ORDER BY 片段在后（与 MySQL 的 ORDER BY 拼接同序）
+    const sortSpecs: Array<{ column: string; dir: 'asc' | 'desc' }> = [...(req.sorts ?? [])];
+    if (req.orderBySql?.trim()) {
+      for (const o of compileOrderBy(req.orderBySql, columns)) {
+        sortSpecs.push({ column: columns[o.index].name, dir: o.dir });
+      }
+    }
+    if (sortSpecs.length > 0) {
       rows = [...rows].sort((a, b) => {
-        for (const s of req.sorts ?? []) {
+        for (const s of sortSpecs) {
           const idx = columns.findIndex((c) => c.name === s.column);
           if (idx < 0) continue;
           const av = a[idx];

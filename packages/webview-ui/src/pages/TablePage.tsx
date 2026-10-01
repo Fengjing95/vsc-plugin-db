@@ -39,7 +39,8 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   const rows = useTableStore((s) => s.rows);
   const refresh = useTableStore((s) => s.refresh);
   const clearFilters = useTableStore((s) => s.clearFilters);
-  const appliedDrafts = useTableStore((s) => s.appliedDrafts);
+  const appliedWhere = useTableStore((s) => s.appliedWhere);
+  const appliedOrderBy = useTableStore((s) => s.appliedOrderBy);
   const searchApplied = useTableStore((s) => s.searchApplied);
   const setExportProgress = useTableStore((s) => s.setExportProgress);
   const page = useTableStore((s) => s.page);
@@ -146,7 +147,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
     );
   }
 
-  const hasQuery = appliedDrafts.length > 0 || searchApplied !== '';
+  const hasQuery = appliedWhere !== '' || appliedOrderBy !== '' || searchApplied !== '';
   const env = (window.__BOOTSTRAP__?.params.env ?? '') as 'dev' | 'test' | 'prod' | '';
 
   return (

@@ -248,6 +248,8 @@ export class MysqlConnection implements IConnection {
         filters: req.filters,
         sorts,
         search: req.search,
+        whereSql: req.whereSql,
+        orderBySql: req.orderBySql,
         searchColumns: cols.map((c) => c.name),
         limit: req.limit,
         offset: req.offset,

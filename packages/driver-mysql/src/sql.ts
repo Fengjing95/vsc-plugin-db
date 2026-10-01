@@ -20,6 +20,10 @@ export interface SelectParts {
   filters?: FilterCondition[];
   sorts?: Array<{ column: string; dir: 'asc' | 'desc' }>;
   search?: string;
+  /** 用户手写 WHERE 片段（驱动规范 §4：原样拼接，括号包裹保持 AND 语义） */
+  whereSql?: string;
+  /** 用户手写 ORDER BY 片段（追加在列头排序之后） */
+  orderBySql?: string;
   searchColumns: string[];
   limit: number;
   offset?: number;
@@ -115,13 +119,23 @@ export function buildSelect(req: SelectParts): BuiltSelect {
     req.searchColumns.forEach(() => params.push(kw));
   }
 
+  const userWhere = req.whereSql?.trim();
+  if (userWhere) {
+    // 用户自撰 SQL 片段（驱动规范 §4）：括号包裹保持 AND 语义，原样拼接不转义
+    where.push(`(${userWhere})`);
+  }
   if (where.length > 0) {
     sql += ` WHERE ${where.join(' AND ')}`;
   }
-  if (req.sorts && req.sorts.length > 0) {
-    sql += ` ORDER BY ${req.sorts
-      .map((s) => `${quoteMysqlIdentifier(s.column)} ${s.dir === 'desc' ? 'DESC' : 'ASC'}`)
-      .join(', ')}`;
+  const orderParts = (req.sorts ?? []).map(
+    (s) => `${quoteMysqlIdentifier(s.column)} ${s.dir === 'desc' ? 'DESC' : 'ASC'}`,
+  );
+  const userOrder = req.orderBySql?.trim();
+  if (userOrder) {
+    orderParts.push(userOrder);
+  }
+  if (orderParts.length > 0) {
+    sql += ` ORDER BY ${orderParts.join(', ')}`;
   }
   sql += ` LIMIT ?`;
   params.push(req.limit);

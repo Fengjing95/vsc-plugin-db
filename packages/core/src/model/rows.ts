@@ -35,6 +35,10 @@ export interface FetchRowsRequest {
   sorts?: Array<{ column: string; dir: 'asc' | 'desc' }>;
   /** 全局关键字，驱动负责转义与下推 */
   search?: string;
+  /** 用户手写 WHERE / ORDER BY 片段（驱动规范 §4：原样拼接进最终语句，
+   *  属用户自撰 SQL 而非数据值，不做转义/参数化；语法或列名错误 → E_VALIDATION） */
+  whereSql?: string;
+  orderBySql?: string;
   limit: number;
   offset?: number;
   cursor?: string;

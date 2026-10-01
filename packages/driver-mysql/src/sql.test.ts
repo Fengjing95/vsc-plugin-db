@@ -48,6 +48,52 @@ describe('buildSelect', () => {
     expect(built.params).toEqual([10, 20]);
   });
 
+  it('whereSql 原样拼接且括号包裹（用户自撰片段不转义）', () => {
+    const built = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      searchColumns: [],
+      limit: 10,
+      whereSql: "status = 'active' AND age > 18",
+    });
+    expect(built.sql).toContain("WHERE (status = 'active' AND age > 18) LIMIT ?");
+    expect(built.params).toEqual([10]);
+  });
+
+  it('whereSql 与结构化筛选/search 同为 AND 语义', () => {
+    const built = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      filters: [{ column: 'id', op: 'gt', value: 5 }],
+      search: 'kw',
+      searchColumns: ['name'],
+      limit: 10,
+      whereSql: '1 = 1',
+    });
+    expect(built.sql).toContain('WHERE `id` > ? AND (`name` LIKE ?) AND (1 = 1)');
+    expect(built.params).toEqual([5, '%kw%', 10]);
+  });
+
+  it('orderBySql 追加在列头排序之后', () => {
+    const withSorts = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      searchColumns: [],
+      limit: 10,
+      sorts: [{ column: 'id', dir: 'desc' }],
+      orderBySql: 'created_at ASC, amount DESC',
+    });
+    expect(withSorts.sql).toContain('ORDER BY `id` DESC, created_at ASC, amount DESC');
+    const noSorts = buildSelect({
+      db: 'demo',
+      obj: 'users',
+      searchColumns: [],
+      limit: 10,
+      orderBySql: 'created_at ASC',
+    });
+    expect(noSorts.sql).toContain('ORDER BY created_at ASC');
+  });
+
   it('列投影', () => {
     const built = buildSelect({
       db: 'demo',

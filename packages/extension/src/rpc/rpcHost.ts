@@ -141,6 +141,8 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
               filters: p.filters,
               sorts: p.sorts,
               search: p.search,
+              whereSql: p.whereSql,
+              orderBySql: p.orderBySql,
             });
             respond(true, { result: rs });
             return;

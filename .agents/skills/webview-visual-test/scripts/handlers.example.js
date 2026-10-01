@@ -1,4 +1,7 @@
 // 表格页默认场景（浏览器侧 JS，非 node 模块；可复制改名后编辑 handlers 即为新场景）
+// 注意：handler 收到的 params 即 Webview 下发的请求参数（如 table.fetchRows 的
+// whereSql/orderBySql/filters/sorts）——静态数据场景可直接忽略，要验证查询逻辑时需在
+// handler 内按 params 过滤/排序（参考真实驱动语义）
 window.__DBX_STUB__ = {
   delayMs: 60,
   bootstrap: {
