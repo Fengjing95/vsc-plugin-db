@@ -147,6 +147,9 @@ export function SqlInput({
   };
 
   const lines = Math.min(4, Math.max(1, value.split('\n').length));
+  // 有内容时显示内联清除按钮；文本层同步加右内边距避免文字压到按钮下
+  const hasValue = value !== '';
+  const clearPadding = hasValue ? ' pr-6' : '';
 
   return (
     /* 边框与底色只在容器上（单层）：pre/textarea 均无自带边框，focus-within 高亮 */
@@ -158,7 +161,7 @@ export function SqlInput({
       <pre
         ref={preRef}
         aria-hidden
-        className="sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all px-2 py-1 font-mono text-[12px] leading-[1.6]"
+        className={`sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all px-2 py-1 font-mono text-[12px] leading-[1.6]${clearPadding}`}
       >
         <span dangerouslySetInnerHTML={{ __html: highlightSql(value || ' ') }} />
       </pre>
@@ -178,8 +181,26 @@ export function SqlInput({
         onKeyUp={refreshCaret}
         onClick={refreshCaret}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="relative block h-auto w-full resize-none bg-transparent px-2 py-1 font-mono text-[12px] leading-[1.6] text-transparent caret-ring outline-none"
+        className={`relative block h-auto w-full resize-none bg-transparent px-2 py-1 font-mono text-[12px] leading-[1.6] text-transparent caret-ring outline-none${clearPadding}`}
       />
+      {hasValue && (
+        <button
+          type="button"
+          aria-label={`清除${ariaLabel}内容`}
+          title="清除内容（Enter 重新应用）"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onChange('');
+            requestAnimationFrame(() => {
+              taRef.current?.focus();
+              taRef.current?.setSelectionRange(0, 0);
+            });
+          }}
+          className="absolute right-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded-sm text-[11px] leading-none text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          ✕
+        </button>
+      )}
       {open && candidates.length > 0 && (
         <ul
           role="listbox"

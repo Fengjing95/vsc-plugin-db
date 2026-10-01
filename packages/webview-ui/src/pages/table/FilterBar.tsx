@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/button';
+import { IconPlay } from '../../components/ui/icons';
 import { useTableStore } from '../../store/tableStore';
 import { SqlInput } from './SqlInput';
 
@@ -13,9 +14,6 @@ export function FilterBar() {
   const appliedWhere = useTableStore((s) => s.appliedWhere);
   const appliedOrderBy = useTableStore((s) => s.appliedOrderBy);
   const applyQuery = useTableStore((s) => s.applyQuery);
-  const clearFilters = useTableStore((s) => s.clearFilters);
-  const searchApplied = useTableStore((s) => s.searchApplied);
-  const applySearch = useTableStore((s) => s.applySearch);
 
   const [where, setWhere] = useState(appliedWhere);
   const [orderBy, setOrderBy] = useState(appliedOrderBy);
@@ -57,28 +55,17 @@ export function FilterBar() {
         ariaLabel="ORDER BY 排序"
         widthClass="w-64"
       />
-      <div className="flex shrink-0 items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setWhere('');
-            setOrderBy('');
-            void clearFilters();
-            // 清空语义包含全局搜索一并移除（回到全量数据）
-            if (searchApplied !== '') {
-              void applySearch('');
-            }
-          }}
-          disabled={where === '' && orderBy === '' && searchApplied === ''}
-        >
-          ↺ 清空
-        </Button>
-        <Button variant="primary" size="sm" disabled={!dirty} onClick={apply} title={dirty ? '应用条件（服务端拼接）' : '无未应用的改动'}>
-          ▶ 应用
-          {dirty && <span className="h-1.5 w-1.5 rounded-full bg-link" aria-label="有未应用的改动" />}
-        </Button>
-      </div>
+      <Button
+        variant="primary"
+        size="sm"
+        className="w-7 px-0"
+        disabled={!dirty}
+        onClick={apply}
+        aria-label="应用条件"
+        title={dirty ? '应用条件（Enter 同效）' : '条件未变化'}
+      >
+        <IconPlay size={13} />
+      </Button>
     </div>
   );
 }
