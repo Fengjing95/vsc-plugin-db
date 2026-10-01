@@ -57,6 +57,10 @@
 - **P-18 mock 数据是共享物化存储**（M4 起）→ `MockConnection` 的数据在模块级 `store` 首次访问时物化，**跨连接一致**（模拟真实服务端，冲突场景可两视图构造）；同一测试文件内先跑只读契约组再跑 changeset 组（会改 `demo.*` 数据），测试需要干净数据时调用导出的 `resetMockStore()`。
 - **P-19 契约组按能力跳过的判定**（M4 踩）→ `runChangesetChecks` 的能力探测里，驱动对探测表抛 `E_NOT_FOUND` 恰说明编辑**已实现**（表不存在才报错），只有 `E_UNSUPPORTED` 才整组跳过；写成"任何错误都跳过"会让组静默全跳、测试假绿。
 - **P-22 预览语句只显示 ?**（M4 踩）→ Webview 预览回填实际值依赖 `PreviewItem.params`（`interpolateSqlParams`），mock 驱动曾漏传导致预览只剩占位符（MySQL 驱动正常，问题只在该驱动复现）。→ 契约组已强制：语句含 ? 时 params 必须等长携带（`preview 语句带参数化 params` 检查）；新驱动实现 previewChanges 必须同源透传 params。
+- **P-26 node-redis v5 的重连与销毁语义**（M6 踩）→ ① `reconnectStrategy` 在 `socket` 选项里（顶层传入被静默忽略）；**默认策略无限重试**，错误密码/不可达时 `connect()` 长时间不 resolve、失败后 `quit()` 永久挂起（QUIT 排在重连队列之后）。→ 驱动统一经 `createRedisClient` 注入有限重连（3 次），**失败路径必须 `destroy()` 不能 `quit()`**。② v5 无 v4 的 `withDataType`；二进制保真用 `client.sendCommand(args, { typeMapping: { [RESP_TYPES.BLOB_STRING]: Buffer } })`（`typeMapping` 是**命令级选项**，client 选项与 `withTypeMapping` 都不影响 sendCommand；对类型化命令才生效）。
+- **P-27 SCAN 游标分页必须携带批内位置**（M6 踩）→ SCAN 的 COUNT 是提示，一批可能覆盖整个 keyspace（小库必然）——服务端游标已到 '0' 时仍有未消费数据，「只存服务端游标」的翻页第一页后就断流。→ 游标 = `{scan, pending}`（批内未消费单元随游标走，driver-redis `feedScan` 状态机）；初始 '0' 是「未开始」不是「已取尽」，状态机需区分。pending 若走 utf8 字符串通道会**丢二进制字节**（契约值编码 §5.3），游标内以 base64 承载。同构适用于 HSCAN（扁平 [f1,v1,…] 按 2 为单元消费）。
+- **P-28 本机无可用容器运行时**（M6 起环境事实，macOS）→ Docker CLI 在但 daemon 未装（无 Docker Desktop/OrbStack/colima/podman），brew 在代理下 "no bottle available" 不可用，github.com 不可达；**download.redis.io 可达**。→ 本地 Redis/类服务从 download.redis.io 下源码编译（`make -j8 MALLOC=libc`，~1 分钟）：`/tmp/redis-7.2.5/src/redis-server --port 6379 --daemonize yes --save '' --appendonly no`；契约测试默认连 127.0.0.1:6379（REDIS_HOST/PORT 可覆盖），错误密码用例用 6390 requirepass 实例。
+- **P-29 node --experimental-strip-types 跑不了本仓库 TS**（M6 踩）→ 驱动/服务类大量使用构造器参数属性（`constructor(private readonly cfg: …)`），strip-only 模式直接语法报错。→ 临时脚本/评估用 vitest 承载（esbuild 转换支持全量 TS 语法），门控用 `describe.skipIf(!process.env.XXX)`（如 D05_EVAL），不污染门禁。
 
 ### 可视化验证（脱离 VSCode 宿主）
 - **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
@@ -89,14 +93,17 @@
 | 查询参数/分页文案 | `webview-ui/src/lib/queryState.ts`（纯函数，有单测） |
 | ChangeSet 权威副本 | `packages/core/src/services/changeSetService.ts`（合并语义单测覆盖） |
 | MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
-| 编辑权限 + prod 护栏 + Console 危险判定 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8） |
+| Redis 驱动（M6） | `packages/driver-redis`（SCAN/cursor/值编码见其 README；纯函数层 `keys.ts`、错误映射 `errors.ts`） |
+| Redis 命令白名单 / 命令行切分 | `packages/core/src/services/redisCommands.ts`（provablyRead fail-closed / dangerous / known，纯函数有单测） |
+| 编辑权限 + prod 护栏 + Console 危险判定 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8；命令模式同构方法 assessCommandDanger/assertCommandsReadable） |
 | SQL 语句切分 / 会话状态 / DDL 识别 | `packages/core/src/services/sqlScript.ts`（扫描器纯函数，P-24） |
 | 危险语句判定（AST + 正则降级）/ 只读 fail-closed | `packages/core/src/services/sqlDanger.ts`（纯函数，有单测） |
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
 | Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（P1-1 隔离） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
 | Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts` |
-| 契约测试套件 | `packages/driver-conformance/src/index.ts` |
+| 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |
+| Redis 契约测试 | `packages/driver-redis/src/redis.conformance.test.ts`（需本地 Redis，环境见 P-28；D-05 评估 `D05_EVAL=1` 跑 `d05.eval.test.ts`） |
 | Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |

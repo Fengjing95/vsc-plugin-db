@@ -8,6 +8,27 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 + 6390 requirepass 供错误密码用例）
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis-auth:
+        image: redis:7
+        ports:
+          - 6390:6390
+        options: >-
+          --requirepass m6cipass
+          --health-cmd "redis-cli -a m6cipass ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -30,5 +51,9 @@ jobs:
       - name: 构建
         run: pnpm build
 
-      - name: 测试
+      - name: 测试（含 Redis 契约）
         run: pnpm test
+        env:
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          REDIS_AUTH_PORT: 6390
