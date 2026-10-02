@@ -104,6 +104,8 @@ export function registerCommands(
         return;
       }
       await connections.disconnect(connId);
+      // 断开 = 回到空闲态：自动收起该连接节点（内容已失效，展开即重连）
+      tree.collapseConnection(connId);
       // 无破坏性（懒连接 D-10：下次操作自动重连），不弹确认，状态栏轻提示即可
       void vscode.window.setStatusBarMessage(`已断开 ${cfg.name}（下次操作自动重连）`, 3000);
     }),

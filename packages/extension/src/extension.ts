@@ -42,6 +42,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: tree,
     showCollapseAll: true,
   });
+  // 断开连接后收起节点（reveal 需要视图句柄与当前元素引用）
+  tree.attachView(treeView);
   // M5 SQL Console：绑定/执行链/结果面板/历史（概要设计 §5.5）
   const history = new ConsoleHistory(context.workspaceState, connections);
   const consoleService = new ConsoleService(

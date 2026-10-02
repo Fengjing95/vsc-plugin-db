@@ -45,14 +45,38 @@ const { Collapsed, None } = vscode.TreeItemCollapsibleState;
 export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNode> {
   private readonly emitter = new vscode.EventEmitter<DbTreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
+  /** 最近一次构建的连接根节点（断开后收起节点用：reveal 需要「当前」元素对象，重建后旧引用失效） */
+  private connectionNodes = new Map<string, DbTreeNode>();
+  private view?: vscode.TreeView<DbTreeNode>;
 
   constructor(
     private readonly connections: ConnectionManager,
     private readonly cache: MetadataCache,
   ) {}
 
+  /** extension.ts 创建 treeView 后回挂（reveal 收起节点需要视图句柄） */
+  attachView(view: vscode.TreeView<DbTreeNode>): void {
+    this.view = view;
+  }
+
   refresh(): void {
     this.emitter.fire(undefined);
+  }
+
+  /**
+   * 断开连接后收起该连接节点（断开 = 回到空闲态，展开内容已失效）。
+   * 树刷新（状态事件触发）会恢复节点展开状态，必须等重建完成后再收起，
+   * 否则收起会被刷新的展开状态恢复覆盖。
+   */
+  collapseConnection(connId: string): void {
+    const node = this.connectionNodes.get(`conn:${connId}`);
+    if (!node || !this.view) {
+      return;
+    }
+    setTimeout(() => {
+      // reveal 需要节点当前在树中可见；树重建间隙引用可能失效（元素未找到）——失败静默
+      void Promise.resolve(this.view?.reveal(node, { expand: false })).catch(() => undefined);
+    }, 150);
   }
 
   /** 子树刷新：仅失效该节点以下的缓存（概要设计 5.3.3） */
@@ -92,11 +116,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   async getChildren(node?: DbTreeNode): Promise<DbTreeNode[]> {
     if (!node) {
-      const configs = this.connections.listConfigs();
-      return configs.then((configs) =>
-        configs.map((c) => ({
+      const configs = await this.connections.listConfigs();
+      const rootNodes = configs.map((c) => {
+        const connectionNode: DbTreeNode = {
           id: `conn:${c.id}`,
-          type: 'connection' as const,
+          type: 'connection',
           label: c.name,
           // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连
           description: [
@@ -111,8 +135,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           contextValue: 'connection',
           iconId: 'database',
           payload: { connId: c.id },
-        })),
-      );
+        };
+        this.connectionNodes.set(connectionNode.id, connectionNode);
+        return connectionNode;
+      });
+      // 清掉已删除连接的残留引用
+      for (const key of [...this.connectionNodes.keys()]) {
+        if (!rootNodes.some((n) => n.id === key)) {
+          this.connectionNodes.delete(key);
+        }
+      }
+      return rootNodes;
     }
 
     switch (node.type) {
