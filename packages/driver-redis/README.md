@@ -75,6 +75,10 @@ SSL/SSH 隧道：M7 范围，未实现。
 
 ## 本地测试
 
+本机（macOS）已永久安装并 launchd 自启（AGENTS.md P-28）：`~/tools/redis/redis-server`，
+端口 6379（常规）与 6390（`requirepass m6cipass`），开机自动运行，无需手动启动。
+其他环境若需手动起两个实例：
+
 ```bash
 redis-server --port 6379 --daemonize yes --save '' --appendonly no        # 常规契约
 redis-server --port 6390 --requirepass m6cipass --daemonize yes           # 错误密码用例
