@@ -173,6 +173,7 @@ function formHandlers(
         params: {},
         changeSet: { inserts: [], updates: [], deletes: [] },
         edit: { enabled: false, reason: '连接表单视图' },
+        capabilities: { supportsSQL: false, supportsDdl: false },
       };
       return result;
     },

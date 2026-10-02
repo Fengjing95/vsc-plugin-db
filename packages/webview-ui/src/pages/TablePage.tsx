@@ -42,6 +42,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   const appliedWhere = useTableStore((s) => s.appliedWhere);
   const appliedOrderBy = useTableStore((s) => s.appliedOrderBy);
   const searchApplied = useTableStore((s) => s.searchApplied);
+  const supportsSQL = useTableStore((s) => s.capabilities.supportsSQL);
   const setExportProgress = useTableStore((s) => s.setExportProgress);
   const page = useTableStore((s) => s.page);
   const pageSize = useTableStore((s) => s.pageSize);
@@ -153,7 +154,8 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Toolbar db={db} obj={obj} env={env === '' ? null : env} />
-      <FilterBar />
+      {/* 自由条件栏是手写 SQL 片段（驱动规范 §4 whereSql/orderBySql），仅 supportsSQL 驱动渲染 */}
+      {supportsSQL && <FilterBar />}
       {phase === 'ready' && rows.length === 0 && insertsLen === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
           <span>无匹配数据</span>

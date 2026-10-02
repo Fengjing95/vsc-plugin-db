@@ -11,6 +11,9 @@ import type { ConnectionStore } from './connectionStore';
 /** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
 export class ConnectionManager implements vscode.Disposable {
   private readonly cache = new Map<string, IConnection>();
+  /** 连接状态变化（建连/断开）→ 树刷新状态徽标（概要 §8.1 连接 description） */
+  private readonly statusEmitter = new vscode.EventEmitter<string>();
+  readonly onDidChangeStatus = this.statusEmitter.event;
 
   constructor(
     private readonly registry: DriverRegistry,
@@ -32,6 +35,11 @@ export class ConnectionManager implements vscode.Disposable {
     return cfg ? this.registry.get(cfg.driverId) : undefined;
   }
 
+  /** 当前是否有活跃连接（懒连接语义：false 只代表空闲未连，不代表不可用） */
+  isConnected(connId: string): boolean {
+    return this.cache.has(connId);
+  }
+
   async ensureConnected(connId: string): Promise<IConnection> {
     const cached = this.cache.get(connId);
     if (cached) {
@@ -45,7 +53,22 @@ export class ConnectionManager implements vscode.Disposable {
     const secret = (await this.store.getSecret(connId)) ?? '';
     const conn = await driver.connect(cfg, secret);
     this.cache.set(connId, conn);
+    this.statusEmitter.fire(connId);
     return conn;
+  }
+
+  /**
+   * 断开连接（用户主动，树节点快捷操作）：释放连接池/socket 资源。
+   * 懒连接语义下下次操作自动重连（D-10），不影响已保存配置与 Console 绑定。
+   */
+  async disconnect(connId: string): Promise<void> {
+    const conn = this.cache.get(connId);
+    if (!conn) {
+      return; // 幂等：本就未连接
+    }
+    this.cache.delete(connId);
+    await Promise.resolve(conn.dispose());
+    this.statusEmitter.fire(connId);
   }
 
   /** 编辑/删除连接后失效缓存，下次操作按新配置重连 */
@@ -53,7 +76,7 @@ export class ConnectionManager implements vscode.Disposable {
     const conn = this.cache.get(connId);
     this.cache.delete(connId);
     if (conn) {
-      void Promise.resolve(conn.dispose());
+      void Promise.resolve(conn.dispose()).then(() => this.statusEmitter.fire(connId));
     }
   }
 
@@ -62,5 +85,6 @@ export class ConnectionManager implements vscode.Disposable {
       void Promise.resolve(conn.dispose());
     }
     this.cache.clear();
+    this.statusEmitter.dispose();
   }
 }

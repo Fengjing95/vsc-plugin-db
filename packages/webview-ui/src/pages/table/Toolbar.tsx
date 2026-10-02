@@ -57,6 +57,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
     return n;
   });
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
+  const supportsDdl = useTableStore((s) => s.capabilities.supportsDdl);
 
   const [searchText, setSearchText] = useState('');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -239,17 +240,19 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           />
         </div>
 
-        <Button
-          variant="secondary"
-          size="md"
-          className={iconBtn}
-          aria-label="查看表 DDL"
-          title="查看当前表 DDL"
-          onClick={() => void openDdl()}
-        >
-          <span className="text-[11px] font-medium tracking-tight">DDL</span>
-        </Button>
-
+        {/* DDL 按能力位隐藏（supportsDdl=false 的驱动未实现 getDdl，概要 §5.1.3 降级渲染） */}
+        {supportsDdl && (
+          <Button
+            variant="secondary"
+            size="md"
+            className={iconBtn}
+            aria-label="查看表 DDL"
+            title="查看当前表 DDL"
+            onClick={() => void openDdl()}
+          >
+            <span className="text-[11px] font-medium tracking-tight">DDL</span>
+          </Button>
+        )}
         <Popover
           trigger={
             <Button variant="secondary" size="md" className={`${iconBtn} gap-0.5`} aria-label="列设置" title="列设置（显示/隐藏列）">

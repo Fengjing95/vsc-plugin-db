@@ -92,19 +92,27 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   async getChildren(node?: DbTreeNode): Promise<DbTreeNode[]> {
     if (!node) {
-      const configs = await this.connections.listConfigs();
-      return configs.map((c) => ({
-        id: `conn:${c.id}`,
-        type: 'connection',
-        label: c.name,
-        description: [c.driverId, c.env ?? 'dev', c.readOnly ? '只读' : undefined]
-          .filter(Boolean)
-          .join(' · '),
-        collapsibleState: Collapsed,
-        contextValue: 'connection',
-        iconId: 'database',
-        payload: { connId: c.id },
-      }));
+      const configs = this.connections.listConfigs();
+      return configs.then((configs) =>
+        configs.map((c) => ({
+          id: `conn:${c.id}`,
+          type: 'connection' as const,
+          label: c.name,
+          // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连
+          description: [
+            c.driverId,
+            c.env ?? 'dev',
+            c.readOnly ? '只读' : undefined,
+            this.connections.isConnected(c.id) ? '已连接' : '未连接',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          collapsibleState: Collapsed,
+          contextValue: 'connection',
+          iconId: 'database',
+          payload: { connId: c.id },
+        })),
+      );
     }
 
     switch (node.type) {

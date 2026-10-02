@@ -68,6 +68,8 @@ interface TableState {
   obj: string;
   readOnly: boolean;
   rowEstimate?: number;
+  /** 驱动能力子集（握手下行，概要 §5.1.3）：UI 按能力降级渲染，不感知数据库类型 */
+  capabilities: { supportsSQL: boolean; supportsDdl: boolean };
 
   phase: 'loading' | 'ready' | 'error';
   errorMsg: string;
@@ -190,6 +192,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   db: '',
   obj: '',
   readOnly: false,
+  capabilities: { supportsSQL: true, supportsDdl: false },
 
   phase: 'loading',
   errorMsg: '',
@@ -401,7 +404,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   // ── M4 编辑动作 ──────────────────────────────────────────
 
   applyHandshake(hs) {
-    set({ editEnabled: hs.edit.enabled, editReason: hs.edit.reason });
+    set({ editEnabled: hs.edit.enabled, editReason: hs.edit.reason, capabilities: hs.capabilities });
     const snapshot = hs.changeSet;
     const hasSnapshot = snapshot.inserts.length + snapshot.updates.length + snapshot.deletes.length > 0;
     if (hasSnapshot) {

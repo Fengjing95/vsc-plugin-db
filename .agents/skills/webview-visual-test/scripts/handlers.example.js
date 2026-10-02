@@ -16,6 +16,7 @@ window.__DBX_STUB__ = {
       params: {},
       changeSet: { inserts: [], updates: [], deletes: [] },
       edit: { enabled: true },
+      capabilities: { supportsSQL: true, supportsDdl: true },
     }),
     'table.fetchRows': () => {
       const pad = (n) => String(n).padStart(2, '0');

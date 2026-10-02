@@ -86,7 +86,8 @@
       {
         "command": "dbExplorer.refreshNode",
         "title": "刷新",
-        "category": "数据库"
+        "category": "数据库",
+        "icon": "$(refresh)"
       },
       {
         "command": "dbExplorer.viewDdl",
@@ -139,6 +140,12 @@
         "command": "dbExplorer.queryHistory",
         "title": "SQL 执行历史",
         "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.disconnectConnection",
+        "title": "断开连接",
+        "category": "数据库",
+        "icon": "$(debug-disconnect)"
       }
     ],
     "menus": {
@@ -171,12 +178,12 @@
         {
           "command": "dbExplorer.editConnection",
           "when": "viewItem == connection",
-          "group": "inline@1"
+          "group": "inline@3"
         },
         {
           "command": "dbExplorer.deleteConnection",
           "when": "viewItem == connection",
-          "group": "inline@2"
+          "group": "inline@4"
         },
         {
           "command": "dbExplorer.copyConnection",
@@ -207,6 +214,16 @@
           "command": "dbExplorer.copyQualifiedName",
           "when": "viewItem == column",
           "group": "2_object@1"
+        },
+        {
+          "command": "dbExplorer.refreshNode",
+          "when": "viewItem == connection",
+          "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.disconnectConnection",
+          "when": "viewItem == connection",
+          "group": "inline@2"
         }
       ]
     },

@@ -137,6 +137,11 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
                 : { inserts: [], updates: [], deletes: [] },
               uiState: deps.viewStates?.get(deps.viewId),
               edit,
+              // 能力下行（registry 声明读取，不建连——懒连接 D-10）；驱动缺失时保守给 SQL 型默认
+              capabilities: {
+                supportsSQL: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsSQL ?? true,
+                supportsDdl: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsDdl ?? false,
+              },
             },
           });
           return;

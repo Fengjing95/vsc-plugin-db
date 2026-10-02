@@ -65,6 +65,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerConsoleResultView(context, { connections, output, console: consoleService }),
     registerConsoleCompletion(context, consoleService),
     store.onDidChange(() => tree.refresh()),
+    // 连接状态变化（建连/断开）→ 树刷新连接节点徽标（概要 §8.1）
+    connections.onDidChangeStatus(() => tree.refresh()),
     ...registerCommands(
       context,
       {

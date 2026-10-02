@@ -127,6 +127,12 @@ export const HandshakeResultSchema = z.object({
   changeSet: ChangeSetSnapshotSchema,
   uiState: ViewUiStateSchema.optional(),
   edit: EditPermissionSchema,
+  /** 驱动能力子集（概要 §5.1.3：UI 按 capabilities 降级渲染，不感知数据库类型）。
+   *  来自 driver.capabilities（registry 侧读取，握手不触发建连，D-10） */
+  capabilities: z.object({
+    supportsSQL: z.boolean(),
+    supportsDdl: z.boolean(),
+  }),
 });
 export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
 

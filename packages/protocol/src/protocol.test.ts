@@ -72,16 +72,27 @@ describe('方法参数校验', () => {
         deletes: [],
       },
       edit: { enabled: true },
+      capabilities: { supportsSQL: true, supportsDdl: true },
     });
     expect(result.changeSet.updates[0].changes.name.new).toBe('b');
     expect(result.uiState).toBeUndefined();
-    // 缺 edit 权限 → 拒绝（M4 起握手必带）
+    expect(result.capabilities.supportsSQL).toBe(true);
+    // 缺 edit 权限 → 拒绝（M4 起握手必带）；缺 capabilities 同样拒绝（M6 起必带）
     expect(() =>
       HandshakeResultSchema.parse({
         protocolVersion: 1,
         viewId: 'v',
         params: {},
         changeSet: { inserts: [], updates: [], deletes: [] },
+      }),
+    ).toThrow();
+    expect(() =>
+      HandshakeResultSchema.parse({
+        protocolVersion: 1,
+        viewId: 'v',
+        params: {},
+        changeSet: { inserts: [], updates: [], deletes: [] },
+        edit: { enabled: false },
       }),
     ).toThrow();
   });

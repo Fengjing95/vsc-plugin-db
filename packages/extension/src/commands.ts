@@ -94,6 +94,20 @@ export function registerCommands(
       await store.delete(connId);
     }),
 
+    vscode.commands.registerCommand('dbExplorer.disconnectConnection', async (node?: DbTreeNode) => {
+      const connId = node?.payload.connId;
+      if (!connId) {
+        return;
+      }
+      const cfg = store.get(connId);
+      if (!cfg) {
+        return;
+      }
+      await connections.disconnect(connId);
+      // 无破坏性（懒连接 D-10：下次操作自动重连），不弹确认，状态栏轻提示即可
+      void vscode.window.setStatusBarMessage(`已断开 ${cfg.name}（下次操作自动重连）`, 3000);
+    }),
+
     vscode.commands.registerCommand('dbExplorer.refresh', () => {
       // 全局刷新：清空全部元数据缓存并重载（概要设计 5.3.3）
       tree.clearCacheAndRefresh();
