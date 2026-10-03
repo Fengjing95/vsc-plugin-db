@@ -14,6 +14,8 @@ export class ConnectionManager implements vscode.Disposable {
   private readonly cache = new Map<string, IConnection>();
   /** connId → SSH 隧道（与连接同生命周期：断开/失效/停用即拆） */
   private readonly tunnels = new Map<string, SshTunnel>();
+  /** 用户主动断开的时刻：树刷新会重新拉取展开节点的子级，窗口期内禁止自动重连（P-33 竞态） */
+  private readonly disconnectedAt = new Map<string, number>();
   /** 连接状态变化（建连/断开）→ 树刷新状态徽标（概要 §8.1 连接 description） */
   private readonly statusEmitter = new vscode.EventEmitter<string>();
   readonly onDidChangeStatus = this.statusEmitter.event;
@@ -44,6 +46,12 @@ export class ConnectionManager implements vscode.Disposable {
     return this.cache.has(connId);
   }
 
+  /** 最近的用户主动断开（窗口期内树刷新不得自动重连，P-33：展开节点刷新会拉子级触发建连） */
+  recentlyDisconnected(connId: string, withinMs = 2000): boolean {
+    const at = this.disconnectedAt.get(connId);
+    return at !== undefined && Date.now() - at < withinMs;
+  }
+
   async ensureConnected(connId: string): Promise<IConnection> {
     const cached = this.cache.get(connId);
     if (cached) {
@@ -64,6 +72,7 @@ export class ConnectionManager implements vscode.Disposable {
     try {
       const conn = await driver.connect(resolved.cfg, secret);
       this.cache.set(connId, conn);
+      this.disconnectedAt.delete(connId); // 重连成功，退出断开保护窗口
       if (resolved.tunnel) {
         this.tunnels.set(connId, resolved.tunnel);
       }
@@ -86,6 +95,7 @@ export class ConnectionManager implements vscode.Disposable {
       return; // 幂等：本就未连接
     }
     this.cache.delete(connId);
+    this.disconnectedAt.set(connId, Date.now());
     await this.disposeTunnel(connId);
     await Promise.resolve(conn.dispose());
     this.statusEmitter.fire(connId);

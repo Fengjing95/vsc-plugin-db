@@ -67,18 +67,22 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   /**
    * 断开连接后收起该连接节点（断开 = 回到空闲态，展开内容已失效）。
-   * 树刷新（状态事件触发）会恢复节点展开状态，必须等重建完成后再收起，
-   * 否则收起会被刷新的展开状态恢复覆盖。
+   * 两头竞态（P-33）：
+   * - 树刷新（状态事件触发）会恢复节点展开状态，必须等重建完成后再收起——收起早于刷新会被覆盖；
+   * - 重建后的子级拉取若先到，会经 ensureConnected 把连接拉回（ConnectionManager 断开保护窗口兜底）。
+   * reveal 重试至多 10 次（每次取最新节点引用，重建后旧引用失效），失败静默。
    */
   collapseConnection(connId: string): void {
-    const node = this.connectionNodes.get(`conn:${connId}`);
-    if (!node || !this.view) {
-      return;
+    const attempts = 10;
+    for (let i = 0; i < attempts; i++) {
+      setTimeout(() => {
+        const node = this.connectionNodes.get(`conn:${connId}`); // 每次取最新引用
+        if (!node || !this.view) {
+          return;
+        }
+        void Promise.resolve(this.view.reveal(node, { expand: false })).catch(() => undefined);
+      }, 120 * i);
     }
-    setTimeout(() => {
-      // reveal 需要节点当前在树中可见；树重建间隙引用可能失效（元素未找到）——失败静默
-      void Promise.resolve(this.view?.reveal(node, { expand: false })).catch(() => undefined);
-    }, 150);
   }
 
   /** 子树刷新：仅失效该节点以下的缓存（概要设计 5.3.3） */
@@ -155,6 +159,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     switch (node.type) {
       case 'connection': {
         const connId = node.payload.connId!;
+        // P-33 竞态防护：断开触发的树刷新会重新拉取「展开着」的连接节点的子级，
+        // ensureConnected 会把刚断开的连接静默拉起（本地握手毫秒级，稳赢延迟收起）。
+        // 断开保护窗口内返回空子级，等收起完成后由用户主动展开再连（D-10 展开即重连）。
+        if (!this.connections.isConnected(connId) && this.connections.recentlyDisconnected(connId)) {
+          return [];
+        }
         const conn = await this.connections.ensureConnected(connId);
         const dbs = await this.cache.getDatabases(connId, () => conn.listDatabases());
         return dbs.map((db) => ({
