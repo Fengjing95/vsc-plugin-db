@@ -23,7 +23,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
   const [env, setEnv] = useState<'dev' | 'test' | 'prod'>('dev');
   const [readOnly, setReadOnly] = useState(false);
   const [options, setOptions] = useState<Record<string, unknown>>({});
-  const [password, setPassword] = useState('');
+  /** 密码字段按 key 分开保存：驱动密码（key='password'）走独立参数，其余（如 sshPassword）随 options 上行由 Host 拦截 */
+  const [passwords, setPasswords] = useState<Record<string, string>>({});
   const [hasSecret, setHasSecret] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [phase, setPhase] = useState<TestPhase>('idle');
@@ -106,10 +107,22 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
     return Object.keys(errs).length === 0;
   }
 
+  /** 合并 schema 的密码字段（除驱动主密码 password 外）随 options 上行，Host 按类型拦截入 SecretStorage */
+  function mergePasswordFields(base: Record<string, unknown>): Record<string, unknown> {
+    const merged = { ...base };
+    for (const f of schema?.fields ?? []) {
+      if (f.type === 'password' && f.key !== 'password') {
+        merged[f.key] = passwords[f.key] ?? '';
+      }
+    }
+    return merged;
+  }
+
   async function switchDriver(next: string) {
     setDriverId(next);
     setPhase('idle');
     setTestInfo(null);
+    setPasswords({});
     const r = await request<{ schema: FormSchemaPayload }>('conn.getSchema', { driverId: next });
     setSchema(r.schema);
     setOptions(defaultsOf(r.schema));
@@ -121,8 +134,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
     try {
       const r = await request<ConnTestResult>('conn.test', {
         driverId,
-        options,
-        password: password || null,
+        options: mergePasswordFields(options),
+        password: passwords['password'] || null,
         connId: connId ?? null,
       });
       setTestInfo(r);
@@ -146,8 +159,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
       driverId,
       env,
       readOnly,
-      options,
-      password: password || null,
+      options: mergePasswordFields(options),
+      password: passwords['password'] || null,
     });
   }
 
@@ -191,7 +204,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
           field={f}
           value={options[f.key]}
           error={errors[f.key]}
-          passwordState={{ value: password, hasSecret, onChange: setPassword }}
+          passwordState={{
+            value: passwords[f.key] ?? '',
+            hasSecret: f.key === 'password' ? hasSecret : false,
+            onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
+          }}
           onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
         />
       ))}
@@ -220,7 +237,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
               field={f}
               value={options[f.key]}
               error={errors[f.key]}
-              passwordState={{ value: password, hasSecret, onChange: setPassword }}
+              passwordState={{
+                value: passwords[f.key] ?? '',
+                hasSecret: f.key === 'password' ? hasSecret : false,
+                onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
+              }}
               onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
             />
           ))}

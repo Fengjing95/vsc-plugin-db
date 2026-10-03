@@ -24,6 +24,11 @@ export function secretRefOf(connId: string): string {
   return `dbExplorer.secrets.${connId}`;
 }
 
+/** SSH 密码独立 vault 槽位（C-10：密码不进配置/日志） */
+export function sshSecretRefOf(connId: string): string {
+  return `dbExplorer.secrets.${connId}.ssh`;
+}
+
 export class ConnectionStore {
   private readonly changeEmitter = new Emitter<void>();
 
@@ -56,8 +61,9 @@ export class ConnectionStore {
       CONNECTIONS_KEY,
       this.list().filter((c) => c.id !== connId),
     );
-    // P1-3：删除连接必须同步清理密钥
+    // P1-3：删除连接必须同步清理密钥（含 SSH 密码，防孤儿）
     await this.secrets.delete(secretRefOf(connId));
+    await this.secrets.delete(sshSecretRefOf(connId));
     this.changeEmitter.fire();
   }
 
@@ -73,10 +79,22 @@ export class ConnectionStore {
     return (await this.getSecret(connId)) !== undefined;
   }
 
+  async setSshPassword(connId: string, secret: string): Promise<void> {
+    await this.secrets.store(sshSecretRefOf(connId), secret);
+  }
+
+  async getSshPassword(connId: string): Promise<string | undefined> {
+    return this.secrets.get(sshSecretRefOf(connId));
+  }
+
   async copySecret(fromConnId: string, toConnId: string): Promise<void> {
     const secret = await this.getSecret(fromConnId);
     if (secret !== undefined) {
       await this.secrets.store(secretRefOf(toConnId), secret);
+    }
+    const sshSecret = await this.getSshPassword(fromConnId);
+    if (sshSecret !== undefined) {
+      await this.secrets.store(sshSecretRefOf(toConnId), sshSecret);
     }
   }
 

@@ -70,6 +70,7 @@
 - **P-29 node --experimental-strip-types 跑不了本仓库 TS**（M6 踩）→ 驱动/服务类大量使用构造器参数属性（`constructor(private readonly cfg: …)`），strip-only 模式直接语法报错。→ 临时脚本/评估用 vitest 承载（esbuild 转换支持全量 TS 语法），门控用 `describe.skipIf(!process.env.XXX)`（如 D05_EVAL），不污染门禁。
 - **P-30 node-redis v5 明文连 TLS 端口：connect() 永久挂起**（M7 踩）→ 明文 client 连 TLS-only 端口（`port 0 --tls-port`）时 TCP 能建立，服务端随即 reset，node-redis 重连循环不终止、`connect()` 永不 resolve，且 ECONNRESET 以**未捕获异常**逃逸（会毒化 vitest 进程）。socket 的 `connectTimeout` 是 TCP 层参数，此场景不触发。→ 驱动建连必须 race 死线（driver-redis `connectWithTimeout`：超时 reject 后由调用方 `destroy()` 报 E_CONN）。同族：重连耗尽后抛的是 `ReconnectStrategyError`，message 为策略自撰文案，**真实原因在 `.socketError`**——错误映射前必须解包（`toRedisError` 已处理，顺带修复「不可达主机误报 E_INTERNAL」的隐患）。契约组「不可达端口」用例固定用 6391，**本地附加实例不得占用 6391**（TLS 实例用 6392）。
 - **P-31 sql-formatter 15.x 选项改名 keywordCasing → keywordCase**（M7 踩）→ 15.9.0 传 `keywordCasing` 被静默忽略（dist 无该字段），关键字保持原大小写。→ 用 `keywordCase: 'upper'`（另有 identifierCase/dataTypeCase/functionCase；identifierCase 默认 preserve，勿改动用户标识符大小写）。
+- **P-32 ssh2 三连坑（@types 1.15 与 ssh2 1.17 运行时不一致）**（M7 踩）→ ① 服务端认证上下文的认证方法在 **`ctx.method`**（@types 声明的 `ctx.type` 运行时恒 undefined），密码取 `ctx.password` 需 Loose cast；② 客户端 `forwardOut` 签名是 `(srcIP, srcPort, dstIP, dstPort, cb(err, stream))`——**不接收 socket**，channel stream 与本地 socket 要手动 pipe（把 socket 当首参传会静默走 noop）；③ 进程内 `ssh2.Server` 做测试 fixture 时会被粗暴断开（认证拒绝/超时），协议层错误以未捕获异常逃逸（KEY_EXCHANGE_FAILED）——fixture 每个连接必须挂 `client.on('error', () => undefined)`。另：ssh2 本体纯 JS，`cpu-features` 是可选 native 加速（try/catch require，缺省降级），esbuild 打包必须把 `ssh2`/`cpu-features` 标 external（.node 无法打包）——按 D-05 口径无 native 硬依赖、不触发隔离评估。
 
 ### 可视化验证（脱离 VSCode 宿主）
 - **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
@@ -114,6 +115,9 @@
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |
 | Redis 契约测试 | `packages/driver-redis/src/redis.conformance.test.ts`（需本地 Redis，环境见 P-28；D-05 评估 `D05_EVAL=1` 跑 `d05.eval.test.ts`） |
 | Redis SSL/TLS 契约 | `packages/driver-redis/src/ssl.test.ts`（schema 断言常驻；TLS 集成探测 6392，环境见 P-28/P-30） |
+| SSH 隧道（cfg.ssh / TOFU 指纹 / 错误映射 / 表单字段注入） | `packages/extension/src/services/sshTunnel.ts`（进程内 ssh2 Server 单测，P-32；表单走 resolveSshTarget 与建连同源） |
+| 复制为多种格式（IN/JSON/Markdown/TS/INSERT） | `webview-ui/src/lib/copyFormats.ts`（纯函数有单测）+ `sys.copyText`（rpcHost 剪贴板）+ 工具栏「复制」菜单 |
+| 由表结构生成代码（TS/Java/Go/Prisma） | `packages/extension/src/services/codegen.ts`（纯函数有单测）+ 树右键命令 `dbExplorer.generateCode` |
 | SQL 格式化 | `packages/core/src/services/sqlFormat.ts`（sql-formatter 封装，P-31 选项名；命令 `dbExplorer.formatSql` 在 commands.ts） |
 | 保存查询 | `packages/extension/src/services/savedQueries.ts`（纯函数）+ `savedQueryActions.ts`（VSCode 交互），落盘 `.vscode/db-queries/*.sql` |
 | Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |

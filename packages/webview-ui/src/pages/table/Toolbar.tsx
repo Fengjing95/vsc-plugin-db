@@ -15,7 +15,17 @@ import {
   IconRefresh,
   IconUndo,
 } from '../../components/ui/icons';
+import { request } from '../../rpc/client';
+import { rowKeyOfRow, rowKeyString } from '../../lib/editOverlay';
 import { useTableStore } from '../../store/tableStore';
+import {
+  rowsToInList,
+  rowsToInsert,
+  rowsToJson,
+  rowsToMarkdown,
+  rowsToTsType,
+  type CopyColumn,
+} from '../../lib/copyFormats';
 
 /**
  * 工具栏（交互稿 §4.1/概要设计 5.4.2）：标题、编辑操作、搜索、列设置、DDL、导出。
@@ -58,15 +68,25 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   });
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
   const supportsDdl = useTableStore((s) => s.capabilities.supportsDdl);
+  // 复制为多种格式（概要 §6 #6）：选中行 × 可见列，webview 内联生成（≤ 单页行数）
+  const rows = useTableStore((s) => s.rows);
+  const columns = useTableStore((s) => s.columns);
+  const allColumnsList = useTableStore((s) => (s.allColumns.length > 0 ? s.allColumns : s.columns));
+  const primaryKey = useTableStore((s) => s.primaryKey);
 
   const [searchText, setSearchText] = useState('');
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const [copyHint, setCopyHint] = useState('');
+  const copyHintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     return () => {
       if (debounceRef.current !== undefined) {
         clearTimeout(debounceRef.current);
+      }
+      if (copyHintTimer.current !== undefined) {
+        clearTimeout(copyHintTimer.current);
       }
     };
   }, []);
@@ -87,6 +107,48 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
 
   const visible = visibleColumns ?? allColumns.map((c) => c.name);
   const visibleSet = new Set(visible);
+
+  // ── 复制为多种格式（概要 §6 #6）：选中行 × 可见列 ──
+  const selectedRowsMap = useTableStore((s) => s.selectedRows);
+
+  const onCopyAs = async (format: 'inList' | 'json' | 'markdown' | 'tsType' | 'insert') => {
+    // 取数列序：rows 数组按 s.columns 对齐；可见列取值经索引映射
+    const idxOf = (name: string) => columns.findIndex((c) => c.name === name);
+    const colNames = visible.filter((n) => idxOf(n) >= 0);
+    const selected = rows.filter((row) => {
+      const key = rowKeyString(rowKeyOfRow(row, columns, primaryKey));
+      return Boolean(selectedRowsMap[key]);
+    });
+    if (selected.length === 0) {
+      return;
+    }
+    let text = '';
+    if (format === 'inList') {
+      // IN 列表取主键首列（无主键回退首可见列）——选中行 IN 查询的高频复用场景
+      const inCol = (primaryKey.length > 0 ? primaryKey[0] : colNames[0]) ?? '';
+      const idx = idxOf(inCol);
+      if (idx < 0) return;
+      text = rowsToInList(selected.map((row) => row[idx]));
+    } else if (format === 'json') {
+      text = rowsToJson(colNames, selected.map((row) => colNames.map((n) => row[idxOf(n)])));
+    } else if (format === 'markdown') {
+      text = rowsToMarkdown(colNames, selected.map((row) => colNames.map((n) => row[idxOf(n)])));
+    } else if (format === 'tsType') {
+      const cols: CopyColumn[] = colNames.map((n) => {
+        const meta = allColumnsList.find((c) => c.name === n);
+        return { name: n, type: meta?.type ?? 'unknown' };
+      });
+      text = rowsToTsType(obj, cols);
+    } else {
+      text = rowsToInsert(obj, colNames, selected.map((row) => colNames.map((n) => row[idxOf(n)])));
+    }
+    await request('sys.copyText', { text });
+    setCopyHint(`已复制 ${selected.length} 行`);
+    if (copyHintTimer.current !== undefined) {
+      clearTimeout(copyHintTimer.current);
+    }
+    copyHintTimer.current = setTimeout(() => setCopyHint(''), 2000);
+  };
 
   const toggleColumn = (name: string, show: boolean) => {
     const next = show ? [...visible, name] : visible.filter((c) => c !== name);
@@ -214,6 +276,9 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
       )}
 
       <div className="ml-auto flex min-w-0 items-center gap-1.5">
+        {copyHint && (
+          <span className="shrink-0 text-[12px] text-muted-foreground">{copyHint}</span>
+        )}
         {exportProgress && (
           <span className="shrink-0 text-[12px] text-muted-foreground">
             导出中… {exportProgress.rows} 行
@@ -239,6 +304,30 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             className="pl-6"
           />
         </div>
+
+        {/* 复制为多种格式（概要 §6 #6）：选中行 × 可见列；未选中行置灰（不隐藏） */}
+        <Menu
+          trigger={
+            <Button
+              variant="secondary"
+              size="md"
+              className="gap-0.5 px-2"
+              disabled={selectedCount === 0}
+              aria-label="复制选中行"
+              title={selectedCount > 0 ? `复制选中行（${selectedCount}）：IN 列表 / JSON / Markdown / TS 类型 / INSERT` : '复制为多种格式（先选中行）'}
+            >
+              <span className="text-[11px] font-medium tracking-tight">复制</span>
+              <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
+            </Button>
+          }
+          items={[
+            { key: 'inList', label: `IN 列表（${primaryKey.length > 0 ? primaryKey[0] : '首列'}）`, onSelect: () => void onCopyAs('inList') },
+            { key: 'json', label: 'JSON', onSelect: () => void onCopyAs('json') },
+            { key: 'markdown', label: 'Markdown 表格', onSelect: () => void onCopyAs('markdown') },
+            { key: 'tsType', label: 'TS 类型定义', onSelect: () => void onCopyAs('tsType') },
+            { key: 'insert', label: 'INSERT 语句', onSelect: () => void onCopyAs('insert') },
+          ]}
+        />
 
         {/* DDL 按能力位隐藏（supportsDdl=false 的驱动未实现 getDdl，概要 §5.1.3 降级渲染） */}
         {supportsDdl && (

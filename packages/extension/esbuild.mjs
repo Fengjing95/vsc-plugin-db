@@ -7,7 +7,9 @@ const options = {
   entryPoints: ['src/extension.ts'],
   bundle: true,
   outfile: 'dist/extension.js',
-  external: ['vscode'],
+  // ssh2：可选 native 加速 cpu-features（try/catch require，缺省纯 JS 降级）——
+  // native .node 无法打包，二者一律 external 从 node_modules 运行时加载
+  external: ['vscode', 'ssh2', 'cpu-features'],
   format: 'cjs',
   platform: 'node',
   target: 'node18',

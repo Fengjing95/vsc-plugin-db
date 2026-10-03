@@ -7,6 +7,7 @@ import { pickHistoryItem } from './services/consoleHistory';
 import type { EditGuard, ViewStateStore } from './services/editGuard';
 import { formatSql } from '@db-explorer/core';
 import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
+import { CODEGEN_LANGUAGES, codegenLanguageId, generateCode, type CodegenLanguage } from './services/codegen';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
 import { openConnectionForm } from './views/connectionFormPanel';
@@ -25,6 +26,8 @@ export interface AppServices {
   console: ConsoleService;
   /** M5 执行历史 */
   history: import('./services/consoleHistory').ConsoleHistory;
+  /** M7 SSH 隧道：主机指纹库（TOFU），连接表单与 ConnectionManager 共享 */
+  sshFingerprints: import('./services/sshTunnel').FingerprintStore;
 }
 
 function copy(text: string, hint: string): void {
@@ -243,6 +246,40 @@ export function registerCommands(
       const conn = await connections.ensureConnected(connId);
       const q = conn.quoteIdentifier ?? ((n: string) => `\`${n.replace(/`/g, '``')}\``);
       copy(`SELECT * FROM ${q(db)}.${q(obj)} LIMIT 100;`, 'SELECT 语句');
+    }),
+
+    // 由表结构生成代码（概要 §6 #7）：树右键 table/view → 选语言 → 打开只读草稿文档
+    vscode.commands.registerCommand('dbExplorer.generateCode', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      const picked = await vscode.window.showQuickPick(CODEGEN_LANGUAGES, {
+        title: `由表结构生成代码：${obj}`,
+        placeHolder: '选择目标语言',
+      });
+      if (!picked) {
+        return;
+      }
+      try {
+        const conn = await connections.ensureConnected(connId);
+        const columns = await conn.listColumns(db, obj);
+        if (columns.length === 0) {
+          void vscode.window.showInformationMessage(`表 "${obj}" 没有可用的列元数据。`);
+          return;
+        }
+        const code = generateCode(picked.value as CodegenLanguage, obj, columns);
+        const doc = await vscode.workspace.openTextDocument({
+          content: `${code}\n`,
+          language: codegenLanguageId(picked.value as CodegenLanguage),
+        });
+        await vscode.window.showTextDocument(doc, { preview: true });
+        copy(code, `${picked.label}`);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `生成代码失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }),
 
     vscode.commands.registerCommand('dbExplorer.viewDdl', async (node?: DbTreeNode) => {

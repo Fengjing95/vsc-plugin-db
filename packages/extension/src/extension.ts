@@ -10,6 +10,7 @@ import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
+import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { registerConsoleResultView } from './views/consolePanel';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
@@ -31,7 +32,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const output = vscode.window.createOutputChannel('Database Explorer');
   const store = new ConnectionStore(context.globalState, context.secrets);
-  const connections = new ConnectionManager(registry, store);
+  // SSH 主机指纹库（TOFU，globalState 持久化）：ConnectionManager 与连接表单共享同一实例
+  const sshFingerprints = new GlobalStateFingerprintStore(context.globalState);
+  const connections = new ConnectionManager(registry, store, sshFingerprints);
   const cache = new MetadataCache();
   // M4 表格编辑：ChangeSet 权威副本（ADR D-06）+ 视图状态快照 + 编辑护栏（§5.8 / D-03）
   const changesets = new ChangeSetService();
@@ -81,6 +84,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         editGuard,
         console: consoleService,
         history,
+        sshFingerprints,
       },
       tree,
     ),

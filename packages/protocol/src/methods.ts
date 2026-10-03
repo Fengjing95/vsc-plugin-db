@@ -24,6 +24,7 @@ export const RpcMethods = {
   consoleResolveBanner: 'console.resolveBanner',
   consoleExport: 'console.export',
   consoleClose: 'console.close',
+  copyText: 'sys.copyText',
 } as const;
 
 /** Host → Webview 单向推送事件（概要设计 7.4.2） */
@@ -552,6 +553,17 @@ export const ConsoleCloseParamsSchema = z.object({
   consoleId: z.string().min(1),
 });
 export type ConsoleCloseParams = z.infer<typeof ConsoleCloseParamsSchema>;
+
+// ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
+export const CopyTextParamsSchema = z.object({
+  text: z.string().max(1_000_000),
+});
+export type CopyTextParams = z.infer<typeof CopyTextParamsSchema>;
+
+export const CopyTextResultSchema = z.object({
+  written: z.number().int().min(0),
+});
+export type CopyTextResult = z.infer<typeof CopyTextResultSchema>;
 
 /** evt:console.banner 负载（banner=null 表示横幅已关闭） */
 export const ConsoleBannerEventSchema = z.object({

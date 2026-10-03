@@ -8,6 +8,7 @@ import {
   ConsoleExportParamsSchema,
   ConsoleResolveBannerParamsSchema,
   ConsoleStateParamsSchema,
+  CopyTextParamsSchema,
   EditChangesParamsSchema,
   FetchRowsParamsSchema,
   GetDdlParamsSchema,
@@ -358,6 +359,14 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             return;
           }
           break;
+        }
+
+        case RpcMethods.copyText: {
+          // 任意 webview 通用：剪贴板经 Host 写入（navigator.clipboard 在 webview 环境不可靠）
+          const p = CopyTextParamsSchema.parse(req.params);
+          await vscode.env.clipboard.writeText(p.text);
+          respond(true, { result: { written: Buffer.byteLength(p.text) } });
+          return;
         }
       }
 

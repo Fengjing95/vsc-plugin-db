@@ -7,10 +7,13 @@ import {
   type IDatabaseDriver,
 } from '@db-explorer/core';
 import type { ConnectionStore } from './connectionStore';
+import { resolveSshTarget, type FingerprintStore, type SshTunnel } from './sshTunnel';
 
 /** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
 export class ConnectionManager implements vscode.Disposable {
   private readonly cache = new Map<string, IConnection>();
+  /** connId → SSH 隧道（与连接同生命周期：断开/失效/停用即拆） */
+  private readonly tunnels = new Map<string, SshTunnel>();
   /** 连接状态变化（建连/断开）→ 树刷新状态徽标（概要 §8.1 连接 description） */
   private readonly statusEmitter = new vscode.EventEmitter<string>();
   readonly onDidChangeStatus = this.statusEmitter.event;
@@ -18,6 +21,7 @@ export class ConnectionManager implements vscode.Disposable {
   constructor(
     private readonly registry: DriverRegistry,
     private readonly store: ConnectionStore,
+    private readonly fingerprints: FingerprintStore,
   ) {}
 
   async listConfigs(): Promise<ConnectionConfig[]> {
@@ -51,14 +55,29 @@ export class ConnectionManager implements vscode.Disposable {
     }
     const driver = this.registry.require(cfg.driverId);
     const secret = (await this.store.getSecret(connId)) ?? '';
-    const conn = await driver.connect(cfg, secret);
-    this.cache.set(connId, conn);
-    this.statusEmitter.fire(connId);
-    return conn;
+    // SSH 隧道（概要 §6 #14）：需要时先开隧道，驱动拿到的是本地回环地址（驱动不感知 SSH）
+    const sshSecret = (await this.store.getSshPassword(connId)) ?? '';
+    const timeoutMs = vscode.workspace
+      .getConfiguration('dbExplorer')
+      .get('connection.connectTimeoutMs', 10_000);
+    const resolved = await resolveSshTarget(cfg, sshSecret, this.fingerprints, timeoutMs);
+    try {
+      const conn = await driver.connect(resolved.cfg, secret);
+      this.cache.set(connId, conn);
+      if (resolved.tunnel) {
+        this.tunnels.set(connId, resolved.tunnel);
+      }
+      this.statusEmitter.fire(connId);
+      return conn;
+    } catch (err) {
+      // 建连失败不遗留半开的隧道
+      resolved.tunnel?.dispose();
+      throw err;
+    }
   }
 
   /**
-   * 断开连接（用户主动，树节点快捷操作）：释放连接池/socket 资源。
+   * 断开连接（用户主动，树节点快捷操作）：释放连接池/socket 资源与 SSH 隧道。
    * 懒连接语义下下次操作自动重连（D-10），不影响已保存配置与 Console 绑定。
    */
   async disconnect(connId: string): Promise<void> {
@@ -67,6 +86,7 @@ export class ConnectionManager implements vscode.Disposable {
       return; // 幂等：本就未连接
     }
     this.cache.delete(connId);
+    await this.disposeTunnel(connId);
     await Promise.resolve(conn.dispose());
     this.statusEmitter.fire(connId);
   }
@@ -75,8 +95,20 @@ export class ConnectionManager implements vscode.Disposable {
   invalidate(connId: string): void {
     const conn = this.cache.get(connId);
     this.cache.delete(connId);
-    if (conn) {
-      void Promise.resolve(conn.dispose()).then(() => this.statusEmitter.fire(connId));
+    const done = Promise.resolve(this.disposeTunnel(connId)).then(() => {
+      if (conn) {
+        return Promise.resolve(conn.dispose()).then(() => this.statusEmitter.fire(connId));
+      }
+      return undefined;
+    });
+    void done;
+  }
+
+  private async disposeTunnel(connId: string): Promise<void> {
+    const tunnel = this.tunnels.get(connId);
+    if (tunnel) {
+      this.tunnels.delete(connId);
+      tunnel.dispose();
     }
   }
 
@@ -85,6 +117,10 @@ export class ConnectionManager implements vscode.Disposable {
       void Promise.resolve(conn.dispose());
     }
     this.cache.clear();
+    for (const tunnel of this.tunnels.values()) {
+      tunnel.dispose();
+    }
+    this.tunnels.clear();
     this.statusEmitter.dispose();
   }
 }

@@ -10,6 +10,7 @@ window.__DBX_STUB__ = {
     params: { connId: 'c1', db: 'demo', obj: 'users', env: 'test', rowEstimate: '5000' },
   },
   handlers: {
+    'sys.copyText': (p) => ({ written: (p?.text ?? '').length }),
     'sys.handshake': () => ({
       protocolVersion: 1,
       viewId: 'preview-view',

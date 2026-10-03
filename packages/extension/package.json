@@ -95,6 +95,11 @@
         "category": "数据库"
       },
       {
+        "command": "dbExplorer.generateCode",
+        "title": "由表结构生成代码",
+        "category": "数据库"
+      },
+      {
         "command": "dbExplorer.copyName",
         "title": "复制名称",
         "category": "数据库"
@@ -226,6 +231,11 @@
           "group": "2_object@1"
         },
         {
+          "command": "dbExplorer.generateCode",
+          "when": "viewItem == table || viewItem == view",
+          "group": "2_object@4"
+        },
+        {
           "command": "dbExplorer.copyName",
           "when": "viewItem == table || viewItem == view || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
           "group": "2_object@2"
@@ -317,11 +327,13 @@
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*",
     "@db-explorer/driver-mysql": "workspace:*",
+    "@db-explorer/driver-redis": "workspace:*",
     "@db-explorer/protocol": "workspace:*",
-    "@db-explorer/driver-redis": "workspace:*"
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
+    "@types/ssh2": "^1.15.6",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.25.0"
   }
