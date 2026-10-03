@@ -6,7 +6,7 @@ import {
   isGlobPattern,
   keyContentColumns,
   patternColumns,
-  groupKeysToObjects,
+  groupKeysByType,
   redisTypeOf,
 } from './keys';
 
@@ -115,30 +115,46 @@ describe('列元数据虚拟化（驱动规范 §5.3）', () => {
   });
 });
 
-describe('groupKeysToObjects：Keys 目录前缀分组（概要 §5.1.3 三级）', () => {
-  const noTypes = new Map<string, string>();
-
-  it('≥3 个同前缀键合并为模式节点，其余键逐一列出', () => {
-    const keys = ['user:1', 'user:2', 'user:3', 'user:4', 'standalone', 'cf:x'];
-    const objs = groupKeysToObjects(keys, noTypes, { groupMin: 3, cap: 100 });
-    const pattern = objs.find((o) => o.name === 'user:*');
-    expect(pattern).toBeDefined();
-    expect(pattern!.kind).toBe('collection');
-    expect(objs.some((o) => o.name === 'standalone')).toBe(true);
-    expect(objs.some((o) => o.name === 'user:1')).toBe(false); // 已并入模式组
+describe('groupKeysByType：按数据类型分组目录（概要 §5.1.3 数据驱动）', () => {
+  it('每个键一条 ObjectMeta，schema = 所属类型目录标签；按标签定义顺序输出', () => {
+    const types = new Map([
+      ['k:str', 'string'],
+      ['k:h', 'hash'],
+      ['k:z', 'zset'],
+      ['k:l', 'list'],
+      ['k:s', 'set'],
+    ]);
+    const objs = groupKeysByType([...types.keys()], types);
+    expect(objs.filter((o) => o.name !== '*').map((o) => [o.name, o.schema])).toEqual([
+      ['k:str', '字符串'],
+      ['k:h', '哈希'],
+      ['k:l', '列表'],
+      ['k:s', '集合'],
+      ['k:z', '有序集合'],
+    ]);
+    for (const o of objs) {
+      expect(o.kind).toBe('collection');
+    }
   });
 
-  it('cap 截断：超出上限追加「其余键」模式节点', () => {
-    const keys = Array.from({ length: 30 }, (_, i) => `k${i}`);
-    const objs = groupKeysToObjects(keys, noTypes, { groupMin: 3, cap: 10 });
-    expect(objs.some((o) => o.name === '*')).toBe(true);
-    // 未分组的键仍逐条在前 cap 内
-    expect(objs.some((o) => o.name === 'k0')).toBe(true);
+  it('未知类型兜底「其他」，TYPE=none（已删除）跳过', () => {
+    const types = new Map([
+      ['k:weird', 'module'],
+      ['k:gone', 'none'],
+      ['k:str', 'string'],
+    ]);
+    const objs = groupKeysByType([...types.keys()], types);
+    expect(objs.filter((o) => o.name !== '*').map((o) => [o.name, o.schema])).toEqual([
+      ['k:str', '字符串'],
+      ['k:weird', '其他'],
+    ]);
   });
 
-  it('二前缀不分组（低于 groupMin）', () => {
-    const objs = groupKeysToObjects(['a:1', 'a:2', 'b'], noTypes, { groupMin: 3, cap: 100 });
-    expect(objs.some((o) => o.name === 'a:*')).toBe(false);
-    expect(objs.some((o) => o.name === 'a:1')).toBe(true);
+  it('末尾附加 * 模式浏览节点（无 schema → 树的 Keys 默认组）', () => {
+    const objs = groupKeysByType(['a'], new Map([['a', 'string']]));
+    const star = objs[objs.length - 1];
+    expect(star.name).toBe('*');
+    expect(star.schema).toBeUndefined();
+    expect(star.comment).toContain('模式浏览');
   });
 });

@@ -29,7 +29,7 @@ import {
   cursorOf,
   decodeCursorOrThrow,
   encodeRedisValue,
-  groupKeysToObjects,
+  groupKeysByType,
   isGlobPattern,
   keyContentColumns,
   patternColumns,
@@ -77,9 +77,8 @@ const formSchema: FormSchema = {
 /** bulk string → Buffer：二进制值保真（其余回复类型不受影响） */
 const BLOB_AS_BUFFER = { typeMapping: { [RESP_TYPES.BLOB_STRING]: Buffer } };
 
-/** Keys 目录采样：最多采样的键数 / 前缀分组的节点上限 */
+/** Keys 目录采样：最多采样的键数（按类型分组列出；全量浏览走 '*' 模式节点） */
 const SAMPLE_KEYS = 500;
-const LISTING_CAP = 200;
 /** SCAN/HSCAN/SSCAN 的 COUNT 提示 */
 const SCAN_COUNT = 200;
 
@@ -207,10 +206,11 @@ export class RedisConnection implements IConnection {
 
   async listObjects(db: string): Promise<ObjectMeta[]> {
     this.assertOpen();
-    // SCAN 采样（禁止 KEYS，§5.3）；树列表有界，键全量浏览走模式节点 → 表格分页
+    // SCAN 采样（禁止 KEYS，§5.3）→ 按数据类型分组为目录（schema=分组 id，树据此归组）；
+    // 末尾 '*' 模式节点 = 全键空间 SCAN 分页浏览入口
     const keys = await this.scanSample(db);
     const types = await this.pipelineTypes(db, keys);
-    return groupKeysToObjects(keys, types, { groupMin: 3, cap: LISTING_CAP });
+    return groupKeysByType(keys, types);
   }
 
   /** 最多 SAMPLE_KEYS 个键名的 SCAN 采样 */

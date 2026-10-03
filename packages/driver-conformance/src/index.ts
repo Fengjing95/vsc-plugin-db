@@ -54,12 +54,24 @@ async function firstTable(conn: IConnection): Promise<{ db: string; obj: string 
   const dbs = await conn.listDatabases();
   assert(dbs.length > 0, 'listDatabases 返回空数组');
   const objs = await conn.listObjects(dbs[0].name);
-  // 优先 table/view（SQL 数据源）；键值数据源退回 collection（M6）
-  const table =
-    objs.find((o) => o.kind === 'table' || o.kind === 'view') ??
-    objs.find((o) => o.kind === 'collection');
-  assert(table !== undefined, '首个库没有可取样的对象');
-  return { db: dbs[0].name, obj: table.name };
+  // 优先 table/view（SQL 数据源）；键值数据源退回 collection（M6）。
+  // 跳过取列失败（E_UNSUPPORTED，如 stream 键）或空列的条目
+  const candidates = [
+    ...objs.filter((o) => o.kind === 'table' || o.kind === 'view'),
+    ...objs.filter((o) => o.kind === 'collection'),
+  ];
+  for (const obj of candidates) {
+    try {
+      const cols = await conn.listColumns(dbs[0].name, obj.name);
+      if (cols.length > 0) {
+        return { db: dbs[0].name, obj: obj.name };
+      }
+    } catch {
+      continue; // 该条目不支持列展示，尝试下一个
+    }
+  }
+  assert(false, '首个库没有可取样的对象');
+  return { db: dbs[0].name, obj: '?' };
 }
 
 /** connection 组：ping、库列表非空、dispose 幂等 */
@@ -116,7 +128,13 @@ async function findSampleTable(conn: IConnection, minRows: number): Promise<Samp
       (o) => o.kind === 'table' || o.kind === 'view' || o.kind === 'collection',
     );
     for (const obj of candidates) {
-      const rs = await conn.fetchRows({ db: db.name, obj: obj.name, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      let rs;
+      try {
+        // 条目级容错：E_UNSUPPORTED（如 stream 键）跳过，不中断取样
+        rs = await conn.fetchRows({ db: db.name, obj: obj.name, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+      } catch {
+        continue;
+      }
       if (rs.rowCount < minRows) {
         continue;
       }
@@ -1036,7 +1054,31 @@ export async function runScanSemanticsChecks(
   }
   const conn = await create();
   try {
-    const sample = await findSampleTable(conn, 5);
+    // 键目录样例：需列含 key/type（模式节点）。findSampleTable 可能命中类型分组下的
+    // 单键内容表（无 key/type 列），此处按列形状自行探测
+    let sample: SampleTable | undefined;
+    const dbs = await conn.listDatabases();
+    outer: for (const db of dbs) {
+      const objs = await conn.listObjects(db.name);
+      for (const obj of objs.filter((o) => o.kind === 'collection')) {
+        let rs;
+        try {
+          rs = await conn.fetchRows({ db: db.name, obj: obj.name, limit: SAMPLE_LIMIT, timeoutMs: SAMPLE_TIMEOUT_MS });
+        } catch {
+          continue; // E_UNSUPPORTED 等条目（如 stream 键）跳过
+        }
+        if (rs.columns.some((c) => c.name === 'key') && rs.columns.some((c) => c.name === 'type')) {
+          sample = {
+            db: db.name,
+            obj: obj.name,
+            primaryKey: rs.primaryKey ?? [],
+            rows: rs.rows,
+            columns: rs.columns,
+          };
+          break outer;
+        }
+      }
+    }
     if (!sample || !sample.columns.some((c) => c.name === 'key') || !sample.columns.some((c) => c.name === 'type')) {
       await skip(results, 'scan-semantics', 'SCAN 语义组（样例无 key/type 列，跳过）', '样例不足');
       return summarize(results);

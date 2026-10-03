@@ -22,13 +22,17 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
 ```
 ▾ 连接
   ▾ db0
-    ▾ Keys
-      ▸ user:*        ← 模式分组节点（SCAN 采样 ≥3 同前缀键合并，采样基数见 comment）
-      ▸ myhash        ← 单键（description = 类型）
+    ▸ 字符串 (3)      ← 按数据类型分组（schema 字段 = 分组 id，驱动虚拟化）
+    ▸ 哈希 (1)
+    ▸ 列表 (1)
+    ▸ 集合 (1)
+    ▸ 有序集合 (1)
+    ▸ 流 (1)          ← stream 键可列出；单击打开内容表报 E_UNSUPPORTED（M6 未支持）
+    ▸ Keys (1)
+      ▸ *（模式浏览）  ← 全键空间 SCAN 分页表格（含 key/type/__ttl 列与筛选/搜索）
 ```
 
-- **模式节点**（名称含 `*`/`?`）→ 表格视图列出匹配键：列 `key / type / __ttl`（TTL 只读虚拟列，秒，-1=无过期）
-- **单键节点** → 类型化内容表：
+- **类型目录**下的键为单键节点（key 图标），单击打开该键的类型化内容表：
   | 类型 | 列 | 底层命令 |
   |---|---|---|
   | string | value | GET |
@@ -37,7 +41,12 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
   | set | member | SSCAN |
   | zset | member / score | ZRANGE WITHSCORES |
   | stream | 不支持（E_UNSUPPORTED，M6 范围外） | — |
+- **`*` 模式节点**：表格视图列出全部键（`key / type / __ttl`，TTL 只读虚拟列，-1=无过期），
+  支持结构化筛选/搜索/排序/翻页——大键空间浏览入口；也可在连接命令控制台用 SCAN 自查
+- 类型分组依据 SCAN 采样（≤500 键，COUNT 提示 200）；更大键空间用 `*` 模式浏览或精确模式
 - `primaryKey` 恒为 `['key']`（模式浏览）；内容表为 field/member/index（仅定位展示用，不可编辑）
+- 目录分组协议：键值驱动的 `ObjectMeta.schema` 复用为「所属分组 id」，树（extension 层）按
+  schema 值归组渲染目录、无 schema 条目归默认 Keys 目录——树不感知具体数据源类型（概要 §5.1.3）
 
 ## 值编码（驱动规范 §5.3，违反即契约失败）
 

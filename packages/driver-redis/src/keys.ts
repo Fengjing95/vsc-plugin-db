@@ -188,64 +188,44 @@ export function redisTypeOf(reply: string): string | undefined {
   return KNOWN_REDIS_TYPES.has(reply) ? reply : undefined;
 }
 
-// ───────────────────────── Keys 目录前缀分组（概要 §5.1.3 三级） ─────────────────────────
+// ───────────────────────── 类型分组目录（概要 §5.1.3 数据驱动） ─────────────────────────
 
-export interface GroupOptions {
-  /** 不少于 N 个同前缀键才合并为模式节点 */
-  groupMin: number;
-  /** 单次列出的节点上限；超出时追加「*」模式节点供表格分页浏览 */
-  cap: number;
-}
+/** 类型分组的目录标签（顺序即树中目录顺序） */
+export const TYPE_GROUP_LABELS: ReadonlyArray<{ type: string; label: string }> = [
+  { type: 'string', label: '字符串' },
+  { type: 'hash', label: '哈希' },
+  { type: 'list', label: '列表' },
+  { type: 'set', label: '集合' },
+  { type: 'zset', label: '有序集合' },
+  { type: 'stream', label: '流' },
+];
 
 /**
- * SCAN 采样的键名 → ObjectMeta[]（kind=collection）：
- * - 同前缀（首个 ':' 之前）≥ groupMin → 模式节点 `prefix:*`（comment 携带采样数）
- * - 其余键逐一列出（comment = 类型）
- * 树渲染（extension 层）只认 kind=collection，分组策略完全由驱动决定。
+ * 键目录按数据类型分组：
+ * - 每个键一条 ObjectMeta，`schema` 字段复用为「所属分组 id」（= 目录标签），
+ *   树（extension 层）按 schema 值归组渲染类型目录——树不感知 Redis 类型
+ * - 未收录类型兜底进「其他」；TYPE=none（取数间隙被删）跳过
+ * - 末尾附加 '*' 模式节点（无 schema → 树的 Keys 默认组）：全键空间 SCAN 分页浏览入口
+ *   （契约套件的样例对象与深分页都依赖它）
  */
-export function groupKeysToObjects(
-  keys: string[],
-  types: Map<string, string>,
-  opts: GroupOptions,
-): ObjectMeta[] {
-  const groups = new Map<string, number>();
-  for (const key of keys) {
-    const i = key.indexOf(':');
-    if (i > 0) {
-      groups.set(key.slice(0, i) + ':', (groups.get(key.slice(0, i) + ':') ?? 0) + 1);
-    }
-  }
-
+export function groupKeysByType(keys: string[], types: Map<string, string>): ObjectMeta[] {
   const out: ObjectMeta[] = [];
-  const consumed = new Set<string>();
-  for (const [prefix, count] of [...groups.entries()].sort((a, b) => b[1] - a[1])) {
-    if (count < opts.groupMin) {
-      continue;
-    }
-    out.push({
-      name: `${prefix.slice(0, -1)}:*`,
-      kind: 'collection',
-      comment: `模式分组 · 采样 ${count} 键`,
-    });
+  const grouped = new Set<string>();
+  for (const { type, label } of TYPE_GROUP_LABELS) {
     for (const key of keys) {
-      if (key.startsWith(prefix)) {
-        consumed.add(key);
+      if (types.get(key) === type) {
+        out.push({ name: key, kind: 'collection', schema: label });
+        grouped.add(key);
       }
     }
-    if (out.length >= opts.cap) {
-      return out.slice(0, opts.cap);
-    }
   }
-
   for (const key of keys) {
-    if (out.length >= opts.cap - 1) {
-      // 留 1 位给「其余键」模式节点
-      out.push({ name: '*', kind: 'collection', comment: '其余键（模式浏览）' });
-      return out;
-    }
-    if (!consumed.has(key)) {
-      out.push({ name: key, kind: 'collection', comment: types.get(key) });
+    const t = types.get(key);
+    if (!grouped.has(key) && t && t !== 'none') {
+      out.push({ name: key, kind: 'collection', schema: '其他' });
     }
   }
+  out.push({ name: '*', kind: 'collection', comment: '全部键（模式浏览 · SCAN 分页）' });
   return out;
 }
+

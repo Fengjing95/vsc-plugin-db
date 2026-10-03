@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { MetadataCache } from '@db-explorer/core';
+import type { MetadataCache, ObjectMeta } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
 
 export type TreeNodeType =
@@ -35,6 +35,8 @@ export interface DbTreeNode {
     db?: string;
     obj?: string;
     kind?: FolderKind;
+    /** collection 目录的分组 id（= ObjectMeta.schema，键值数据源按类型归组） */
+    group?: string;
     column?: string;
     rowEstimate?: number;
   };
@@ -166,16 +168,44 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
       }
 
       case 'database': {
-        // 目录节点按 listObjects 实际返回的 kind 数据驱动生成（M6：Redis 仅 Keys 目录，
-        // 概要设计 §5.1.3 —— UI 经 capabilities/数据决定渲染层级，不做数据源硬编码）
+        // 目录节点按 listObjects 实际返回的 kind 数据驱动生成（M6：Redis 类型目录，
+        // 概要设计 §5.1.3 —— UI 经数据决定渲染层级，不做数据源硬编码）。
+        // collection 条目按 ObjectMeta.schema 归组（驱动虚拟化的分组 id）；
+        // 无 schema 条目归入默认 Keys 目录（如 '*' 模式浏览节点）
         const connId = node.payload.connId!;
         const db = node.payload.db!;
         const conn = await this.connections.ensureConnected(connId);
         const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
-        return KIND_FOLDERS.filter((k) => objs.some((o) => o.kind === k.kind)).map((k) => {
-          const count = objs.filter((o) => o.kind === k.kind).length;
-          return this.folderNode(node, k.kind, k.label, k.iconId, countLabel(count));
-        });
+        const folders: DbTreeNode[] = [];
+        for (const k of KIND_FOLDERS) {
+          if (k.kind === 'collection') {
+            const groups = new Map<string, ObjectMeta[]>();
+            for (const o of objs) {
+              if (o.kind === 'collection') {
+                const g = o.schema ?? '';
+                groups.set(g, [...(groups.get(g) ?? []), o]);
+              }
+            }
+            for (const [group, members] of groups) {
+              folders.push(
+                this.folderNode(
+                  node,
+                  'collection',
+                  group === '' ? 'Keys' : group,
+                  'folder',
+                  countLabel(members.length),
+                  group,
+                ),
+              );
+            }
+          } else {
+            const members = objs.filter((o) => o.kind === k.kind);
+            if (members.length > 0) {
+              folders.push(this.folderNode(node, k.kind, k.label, k.iconId, countLabel(members.length)));
+            }
+          }
+        }
+        return folders;
       }
 
       case 'table': {
@@ -233,10 +263,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     }
 
     if (kind === 'collection') {
-      // M6 键值数据源：模式分组节点（名称含 glob）与单键（comment=类型）都打开表格视图
+      // M6 键值数据源：仅列出该分组（payload.group = ObjectMeta.schema）的条目；
+      // 模式分组节点（名称含 glob）与单键都打开表格视图
+      const group = node.payload.group ?? '';
       const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
       return objs
-        .filter((o) => o.kind === 'collection')
+        .filter((o) => o.kind === 'collection' && (o.schema ?? '') === group)
         .map((o) => ({
           id: `${node.id}:${o.name}`,
           type: 'collection' as const,
@@ -307,16 +339,23 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     }));
   }
 
-  private folderNode(parent: DbTreeNode, kind: FolderKind, label: string, iconId: string, count?: string): DbTreeNode {
+  private folderNode(
+    parent: DbTreeNode,
+    kind: FolderKind,
+    label: string,
+    iconId: string,
+    count?: string,
+    group?: string,
+  ): DbTreeNode {
     return {
-      id: `${parent.id}:folder-${kind}`,
+      id: `${parent.id}:folder-${kind}-${group || 'default'}`,
       type: 'folder',
       label,
       description: count,
       collapsibleState: Collapsed,
       contextValue: `folder-${kind}`,
       iconId,
-      payload: { ...parent.payload, kind },
+      payload: { ...parent.payload, kind, ...(group !== undefined ? { group } : {}) },
     };
   }
 }
