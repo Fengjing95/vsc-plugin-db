@@ -47,18 +47,23 @@ const { Collapsed, None } = vscode.TreeItemCollapsibleState;
 export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNode> {
   private readonly emitter = new vscode.EventEmitter<DbTreeNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
-  /** 最近一次构建的连接根节点（断开后收起节点用：reveal 需要「当前」元素对象，重建后旧引用失效） */
+  /** 最近一次构建的连接根节点（断开收起用：元素级刷新需要「当前」元素对象） */
   private connectionNodes = new Map<string, DbTreeNode>();
-  private view?: vscode.TreeView<DbTreeNode>;
+  /**
+   * 连接节点的 TreeItem id 代数（P-33）：VSCode 按 TreeItem.id 记忆展开状态，
+   * 且 reveal({expand:false}) 收不起已展开节点（实测）。断开时递增代数并元素级刷新，
+   * 视图将其视为新节点 → 按构建时的 Collapsed 渲染，收起为确定性行为。
+   */
+  private readonly collapseEpoch = new Map<string, number>();
 
   constructor(
     private readonly connections: ConnectionManager,
     private readonly cache: MetadataCache,
   ) {}
 
-  /** extension.ts 创建 treeView 后回挂（reveal 收起节点需要视图句柄） */
-  attachView(view: vscode.TreeView<DbTreeNode>): void {
-    this.view = view;
+  /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
+  attachView(_view: vscode.TreeView<DbTreeNode>): void {
+    // P-33 起收起不再依赖 reveal（按 id 代数方案），句柄暂无消费方——保留挂载点
   }
 
   refresh(): void {
@@ -67,21 +72,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   /**
    * 断开连接后收起该连接节点（断开 = 回到空闲态，展开内容已失效）。
-   * 两头竞态（P-33）：
-   * - 树刷新（状态事件触发）会恢复节点展开状态，必须等重建完成后再收起——收起早于刷新会被覆盖；
-   * - 重建后的子级拉取若先到，会经 ensureConnected 把连接拉回（ConnectionManager 断开保护窗口兜底）。
-   * reveal 重试至多 10 次（每次取最新节点引用，重建后旧引用失效），失败静默。
+   * P-33：VSCode 按 TreeItem.id 记忆展开状态，reveal({expand:false}) 收不起已展开节点（实测）。
+   * 方案：递增该连接的 id 代数 + 元素级刷新 → 视图按新建节点（Collapsed）渲染，确定性行为；
+   * 刷新期间子级拉取由 ConnectionManager 断开保护窗口兜底（不自动重连）。
    */
   collapseConnection(connId: string): void {
-    const attempts = 10;
-    for (let i = 0; i < attempts; i++) {
-      setTimeout(() => {
-        const node = this.connectionNodes.get(`conn:${connId}`); // 每次取最新引用
-        if (!node || !this.view) {
-          return;
-        }
-        void Promise.resolve(this.view.reveal(node, { expand: false })).catch(() => undefined);
-      }, 120 * i);
+    this.collapseEpoch.set(connId, (this.collapseEpoch.get(connId) ?? 0) + 1);
+    const node = this.connectionNodes.get(`conn:${connId}`);
+    if (node) {
+      this.emitter.fire(node);
+    } else {
+      this.refresh(); // 兜底：根重建同样带新代数 id
     }
   }
 
@@ -104,7 +105,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   getTreeItem(node: DbTreeNode): vscode.TreeItem {
     const item = new vscode.TreeItem(node.label, node.collapsibleState);
-    item.id = node.id;
+    // 连接节点 id 带代数：断开收起时递增代数 → 视图展开缓存（按 id 记忆）失效 → 按新节点渲染
+    const epoch = node.type === 'connection' ? this.collapseEpoch.get(node.payload.connId ?? '') ?? 0 : null;
+    item.id = epoch !== null ? `${node.id}#${epoch}` : node.id;
     item.contextValue = node.contextValue;
     item.iconPath = new vscode.ThemeIcon(node.iconId);
     if (node.description) {

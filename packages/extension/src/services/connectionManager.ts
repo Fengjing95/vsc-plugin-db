@@ -46,8 +46,12 @@ export class ConnectionManager implements vscode.Disposable {
     return this.cache.has(connId);
   }
 
-  /** 最近的用户主动断开（窗口期内树刷新不得自动重连，P-33：展开节点刷新会拉子级触发建连） */
-  recentlyDisconnected(connId: string, withinMs = 2000): boolean {
+  /**
+   * 最近的用户主动断开（窗口期内树刷新不得自动重连，P-33）。
+   * 窗口只需覆盖瞬态：断开触发根刷新 → 刷新处理中会拉取「尚展开着」的节点的子级；
+   * 随后 collapseConnection 的 id 代数方案已确定性地收起节点，用户手动展开总是放行建连。
+   */
+  recentlyDisconnected(connId: string, withinMs = 800): boolean {
     const at = this.disconnectedAt.get(connId);
     return at !== undefined && Date.now() - at < withinMs;
   }
