@@ -94,18 +94,16 @@ SSH 隧道：M7 范围，未实现。
 
 ## 本地测试
 
-本机（macOS）已永久安装并 launchd 自启（AGENTS.md P-28）：`~/tools/redis/redis-server`，
-端口 6379（常规）与 6390（`requirepass m6cipass`），开机自动运行，无需手动启动。
-**TLS 实例**（M7 起，同一 P-28 机制）：`~/tools/redis-tls/`（BUILD_TLS=yes 重编译的二进制 +
-自签证书），TLS 端口 6392（`dev.redis.tls.6392.plist` 常驻），供 ssl.test.ts 集成用例使用——
-测试自动探测 6392，实例不在时集成用例跳过（`REDIS_TLS_PORT=0` 强制跳过；
-端口不得用 6391，契约组「不可达端口」用例固定占用该号）。
-其他环境若需手动起实例：
+**即起即用（M7 起，launchd 常驻已移除，AGENTS.md P-28）**：契约测试经 `src/testEnv.ts` 探测端口——
+空闲则自动 spawn 本地二进制（含 TLS 实例起 TLS 版），测试结束后停掉；已有服务（CI service /
+手起）直接复用，不重复启停。本地二进制保留：`~/tools/redis/`（常规）与 `~/tools/redis-tls/`
+（BUILD_TLS=yes + 自签证书，TLS 端口 6392；端口避开契约组「不可达端口」占用的 6391）。
+手动起实例（可选，测试自起自停一般不需要）：
 
 ```bash
-redis-server --port 6379 --daemonize yes --save '' --appendonly no        # 常规契约
-redis-server --port 6390 --requirepass m6cipass --daemonize yes           # 错误密码用例
-# TLS 集成用例：需 BUILD_TLS=yes 编译的实例（自签证书 + --tls-port，--tls-auth-clients no）
+~/tools/redis/redis-server --port 6379 --save '' --appendonly no --daemonize yes   # 常规契约
+~/tools/redis/redis-server --port 6390 --requirepass m6cipass --daemonize yes      # 错误密码用例
+~/tools/redis-tls/redis-server ~/tools/redis-tls/redis-tls.conf                    # TLS 6392
 pnpm vitest run packages/driver-redis
 ```
 

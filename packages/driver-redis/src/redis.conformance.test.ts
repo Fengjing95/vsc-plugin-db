@@ -12,12 +12,15 @@ import {
   runValueEncodingChecks,
 } from '@db-explorer/driver-conformance';
 import { createRedisDriver, REDIS_DRIVER_ID, type RedisConnection } from './index';
+import { ensureLocalRedis } from './testEnv';
 
 /**
  * Redis 契约测试（驱动规范 §11）：需真实 Redis。
  * - 默认 127.0.0.1:6379（REDIS_HOST/REDIS_PORT 可覆盖）；实例应专用，测试只触碰 cf:* 与 fixture 键
  * - 错误密码用例需第二个带 requirepass 的实例（REDIS_AUTH_HOST/REDIS_AUTH_PORT，默认 6379:6390），
- *   CI 矩阵以 redis:7 --requirepass 提供；不可达时该用例跳过（本地开发可缺省）
+ *   CI 矩阵以 redis:7 --requirepass 提供
+ * - 即起即用（M7 起，P-28：launchd 常驻已移除）：beforeAll 经 testEnv.ensureLocalRedis 探测端口，
+ *   空闲则自起本地二进制（~/tools/redis），afterAll 停掉；已有服务直接复用不启停
  * - CI：services.redis（见 .github/workflows/ci.yml，评审 P2-3 矩阵补齐）
  */
 
@@ -106,12 +109,22 @@ async function cleanup(): Promise<void> {
   }
 }
 
+/** 即起即用（P-28）：端口已有服务则复用（CI service / 本地手起），否则测试自起自停 */
+const localProcs: Array<Awaited<ReturnType<typeof ensureLocalRedis>>> = [];
+
 beforeAll(async () => {
+  localProcs.push(
+    await ensureLocalRedis({ port: PORT }),
+    await ensureLocalRedis({ port: AUTH_PORT, requirepass: 'm6cipass' }),
+  );
   await seed();
 });
 
 afterAll(async () => {
   await cleanup();
+  for (const p of localProcs) {
+    await p.stop();
+  }
 });
 
 function assertGroup(name: string, failed: number, results: Array<{ name: string; ok: boolean; error?: string; skipped?: boolean }>): void {

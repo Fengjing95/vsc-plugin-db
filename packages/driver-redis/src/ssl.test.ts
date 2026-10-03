@@ -1,15 +1,16 @@
 import * as tls from 'node:tls';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { DriverError } from '@db-explorer/core';
 import { connectWithTimeout, createRedisDriver, type RedisClient, type RedisConnection } from './index';
 import { toRedisError } from './errors';
+import { ensureLocalRedis } from './testEnv';
 
 /**
  * SSL/TLS 契约（驱动规范 §10：默认校验证书；跳过校验须标注风险）。
  * - FormSchema 断言常驻（字段是驱动公共 API，§3.1 只增不减）
  * - TLS 集成用例需要 BUILD_TLS=yes 的 Redis 实例：默认探测 127.0.0.1:6392（AGENTS P-28
- *   本地 ~/tools/redis-tls，launchd 常驻自签证书实例；端口避开 6391——契约组把
- *   「不可达端口」固定用 6391，TLS 实例不得占用），探测不通自动跳过；REDIS_TLS_PORT=0 强制跳过
+ *   即起即用：~/tools/redis-tls 空闲自起自停；端口避开 6391——契约组把「不可达端口」固定用
+ *   6391，TLS 实例不得占用），探测不通自动跳过；REDIS_TLS_PORT=0 强制跳过
  */
 
 const driver = createRedisDriver();
@@ -109,7 +110,15 @@ async function tlsProbeOpen(): Promise<boolean> {
   });
 }
 
-const tlsOpen = await tlsProbeOpen();
+const tlsOpen = await (async () => {
+  // 即起即用（P-28）：6392 空闲且本地有 TLS 二进制则自起自停；缺实例/缺二进制 → 集成组跳过
+  const proc = await ensureLocalRedis({ port: TLS_PORT, tls: true }).catch(() => undefined);
+  const open = await tlsProbeOpen();
+  if (proc?.spawned) {
+    afterAll(() => proc.stop());
+  }
+  return open;
+})();
 
 function makeConn(options: Record<string, unknown>): Promise<RedisConnection> {
   return driver.connect(
