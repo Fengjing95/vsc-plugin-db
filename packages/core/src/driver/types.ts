@@ -83,6 +83,8 @@ export interface FormSchema {
     default?: unknown;
     options?: Array<{ label: string; value: unknown }>;
     placeholder?: string;
+    /** 字段旁的辅助/风险说明（如 sslInsecure 的证书校验风险，驱动规范 §10）；表单渲染在控件下方 */
+    hint?: string;
     /** 折叠分组，如 '高级' */
     group?: string;
     validator?: 'port' | 'host' | 'path' | 'regex';

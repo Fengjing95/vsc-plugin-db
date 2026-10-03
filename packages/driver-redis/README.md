@@ -79,18 +79,33 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
 
 ## 连接参数（FormSchema）
 
-host / port / username（ACL，可选）/ password（SecretStorage）/ 默认库编号（database）/ 连接超时（高级）。
-SSL/SSH 隧道：M7 范围，未实现。
+host / port / username（ACL，可选）/ password（SecretStorage）/ 默认库编号（database）/
+**ssl（SSL/TLS 加密连接，默认关）** / **sslInsecure（跳过证书校验，高级，默认关）** / 连接超时（高级）。
+SSH 隧道：M7 范围，未实现。
+
+### SSL/TLS（M7）
+
+- 云托管 Redis（Upstash / Redis Cloud / Aiven Valkey 等）强制 TLS：开启 `ssl` 即可（证书有效时无需其他配置）
+- 自签/私有 CA 证书的实例须同时开启 `sslInsecure`——**不校验服务器证书，存在中间人风险**，
+  表单该项旁已按规范 §10 标注风险提示，仅限受信内网使用
+- 默认严格校验：证书不通过 → `E_CONN`（错误文案给出指引），不静默降级为明文
+- 驱动内置建连死线（connectTimeout，默认 10s）：node-redis 在明文连 TLS 端口等场景 connect()
+  永不 resolve（P-30），死线兜底报 `E_CONN` 连接超时
 
 ## 本地测试
 
 本机（macOS）已永久安装并 launchd 自启（AGENTS.md P-28）：`~/tools/redis/redis-server`，
 端口 6379（常规）与 6390（`requirepass m6cipass`），开机自动运行，无需手动启动。
-其他环境若需手动起两个实例：
+**TLS 实例**（M7 起，同一 P-28 机制）：`~/tools/redis-tls/`（BUILD_TLS=yes 重编译的二进制 +
+自签证书），TLS 端口 6392（`dev.redis.tls.6392.plist` 常驻），供 ssl.test.ts 集成用例使用——
+测试自动探测 6392，实例不在时集成用例跳过（`REDIS_TLS_PORT=0` 强制跳过；
+端口不得用 6391，契约组「不可达端口」用例固定占用该号）。
+其他环境若需手动起实例：
 
 ```bash
 redis-server --port 6379 --daemonize yes --save '' --appendonly no        # 常规契约
 redis-server --port 6390 --requirepass m6cipass --daemonize yes           # 错误密码用例
+# TLS 集成用例：需 BUILD_TLS=yes 编译的实例（自签证书 + --tls-port，--tls-auth-clients no）
 pnpm vitest run packages/driver-redis
 ```
 

@@ -363,6 +363,8 @@ export const FormFieldSchema = z.object({
   default: z.unknown().optional(),
   options: z.array(z.object({ label: z.string(), value: z.unknown() })).optional(),
   placeholder: z.string().optional(),
+  /** 字段旁的辅助/风险说明（驱动 FormSchema 透传，表单渲染在控件下方） */
+  hint: z.string().optional(),
   group: z.string().optional(),
   validator: z.enum(['port', 'host', 'path', 'regex']).optional(),
   validationRegex: z.string().optional(),

@@ -8,6 +8,7 @@ import {
   type ConnectionConfig,
   type DatabaseMeta,
   type DriverCapabilities,
+  type DialectInfo,
   type FetchRowsRequest,
   type FormSchema,
   type IConnection,
@@ -90,6 +91,11 @@ interface RawColumnRow {
 export class MysqlConnection implements IConnection {
   readonly connectionId: string;
   private readonly pool: Pool;
+
+  /** 方言信息（驱动规范 §3 DialectInfo）：Console SQL 格式化按 formatter 路由（M7） */
+  get dialect(): DialectInfo {
+    return { id: 'mysql', quote: ['`', '`'], formatter: 'mysql', keywords: KEYWORDS };
+  }
 
   constructor(private readonly cfg: ConnectionConfig, secret: string) {
     const o = cfg.options;

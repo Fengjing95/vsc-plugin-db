@@ -5,6 +5,8 @@ import type { ConnectionManager } from './services/connectionManager';
 import type { ConsoleService } from './services/consoleService';
 import { pickHistoryItem } from './services/consoleHistory';
 import type { EditGuard, ViewStateStore } from './services/editGuard';
+import { formatSql } from '@db-explorer/core';
+import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
 import { openConnectionForm } from './views/connectionFormPanel';
@@ -148,6 +150,59 @@ export function registerCommands(
       if (item) {
         await services.console.rerunHistory(item);
       }
+    }),
+
+    // 保存查询（概要 §5.5.2 P1）：活动 SQL 文档 → .vscode/db-queries/*.sql
+    vscode.commands.registerCommand('dbExplorer.saveQuery', () => {
+      void saveActiveQuery(services.console);
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.openSavedQuery', () => {
+      void pickSavedQuery();
+    }),
+
+    // SQL 格式化（概要 §5.5.2 P1）：按绑定连接的方言格式化整个文档/选区（sql-formatter，T-10）
+    vscode.commands.registerCommand('dbExplorer.formatSql', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const doc = editor?.document;
+      if (!doc || doc.languageId !== 'sql') {
+        void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+        return;
+      }
+      let dialectId: string | undefined;
+      const binding = services.console.bindingForDocument(doc);
+      if (binding) {
+        const connDriver = services.connections.getDriver(binding.connId);
+        if (connDriver && !connDriver.capabilities.supportsSQL) {
+          void vscode.window.showInformationMessage('命令控制台为命令模式，不适用 SQL 格式化。');
+          return;
+        }
+        try {
+          // 方言随连接（懒连接 D-10：格式化按操作语义按需建连；失败则退标准 SQL 兜底）
+          const conn = await services.connections.ensureConnected(binding.connId);
+          dialectId = conn.dialect?.id;
+        } catch {
+          dialectId = undefined;
+        }
+      }
+      const selection = editor.selection;
+      const range = selection.isEmpty
+        ? new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length))
+        : selection;
+      const text = doc.getText(range);
+      if (!text.trim()) {
+        void vscode.window.showInformationMessage('没有可格式化的内容。');
+        return;
+      }
+      const formatted = formatSql(text, dialectId);
+      if (formatted === text) {
+        return; // 无变化（含格式化失败原样返回），不打断输入状态
+      }
+      await editor.edit((builder) => builder.replace(range, formatted));
+      void vscode.window.setStatusBarMessage(
+        dialectId ? `已按 ${dialectId} 方言格式化` : '已格式化（标准 SQL）',
+        2500,
+      );
     }),
 
     vscode.commands.registerCommand('dbExplorer.openTable', async (node?: DbTreeNode) => {

@@ -332,6 +332,7 @@ function FieldRow({ field, value, error, passwordState, onChange }: FieldRowProp
       {label}
       {input}
       {error && <span className="field-error">{error}</span>}
+      {!error && field.hint && <span className="hint">{field.hint}</span>}
     </div>
   );
 }

@@ -29,6 +29,12 @@ export function toRedisError(err: unknown): DriverError {
   if (DriverError.is(err)) {
     return err;
   }
+  // 重连耗尽包装（P-26 同族）：node-redis 重连次数用尽抛 ReconnectStrategyError，
+  // message 是策略自撰文案，真实原因在 socketError——解包后按原生错误映射
+  const socketErr = (err as { socketError?: unknown } | null)?.socketError;
+  if (socketErr instanceof Error) {
+    return toRedisError(socketErr);
+  }
   const e = (err ?? {}) as RawError;
   const raw = e.message ?? String(err);
   const detail = [e.code, raw].filter(Boolean).join(' ');
@@ -62,6 +68,20 @@ export function toRedisError(err: unknown): DriverError {
   // node-redis 客户端层错误
   if (e.code !== undefined && CONN_CODES.has(e.code)) {
     return new DriverError('E_CONN', '无法连接到 Redis 服务器（网络不可达或拒绝连接）', { detail });
+  }
+  // TLS 握手失败（OpenSSL 错误：证书校验不通过 / 明文连到 TLS 端口等）→ 建连类错误（E_CONN），
+  // 文案给出可操作建议；detail 保留原始摘要（已不含凭证）
+  if (e.code !== undefined && /^(ERR_SSL|ERR_TLS|ERR_OSSL|ERR_CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|CERT_HAS_EXPIRED)/i.test(e.code)) {
+    return new DriverError(
+      'E_CONN',
+      /insecure|self[- ]signed|unable to verify|certificate/i.test(raw)
+        ? 'TLS 证书校验未通过：服务器使用了自签/私有 CA 证书。受信内网可在连接的高级选项开启「跳过证书校验」'
+        : 'TLS 握手失败：请确认端口为 TLS 端口且已开启「SSL/TLS 加密连接」',
+      { detail },
+    );
+  }
+  if (/self signed certificate|unable to verify the first certificate|certificate verify failed|wrong version number/i.test(raw)) {
+    return new DriverError('E_CONN', 'TLS 握手失败：证书校验未通过或端口非 TLS', { detail });
   }
   if (e.name === 'ClientClosedError' || e.name === 'SocketClosedUnexpectedlyError' || /client is closed|connection (is )?closed|socket closed/i.test(raw)) {
     return new DriverError('E_CONN', 'Redis 连接已关闭或中断', { detail });

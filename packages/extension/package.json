@@ -146,9 +146,34 @@
         "title": "断开连接",
         "category": "数据库",
         "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "dbExplorer.saveQuery",
+        "title": "保存查询",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.openSavedQuery",
+        "title": "打开保存的查询",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.formatSql",
+        "title": "格式化 SQL",
+        "category": "数据库"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "dbExplorer.saveQuery",
+          "when": "editorLangId == sql"
+        },
+        {
+          "command": "dbExplorer.formatSql",
+          "when": "editorLangId == sql"
+        }
+      ],
       "view/title": [
         {
           "command": "dbExplorer.newConnection",

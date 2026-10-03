@@ -70,6 +70,21 @@ const formSchema: FormSchema = {
     { key: 'username', label: '用户名（ACL，可选）', type: 'string' },
     { key: 'password', label: '密码', type: 'password' },
     { key: 'database', label: '默认库编号', type: 'number', default: 0 },
+    {
+      key: 'ssl',
+      label: 'SSL/TLS 加密连接',
+      type: 'boolean',
+      default: false,
+      hint: '云托管 Redis（Upstash / Redis Cloud / Aiven 等）强制 TLS，须开启',
+    },
+    {
+      key: 'sslInsecure',
+      label: '跳过证书校验',
+      type: 'boolean',
+      default: false,
+      group: '高级',
+      hint: '⚠ 风险：不校验服务器证书，连接可被中间人窃听/篡改。仅限自签证书的受信内网环境使用',
+    },
     { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级' },
   ],
 };
@@ -101,13 +116,48 @@ function reconnectStrategy(retries: number): number | Error {
 }
 
 /** createClient 默认实例化类型（避免手写泛型参数） */
-type RedisClient = ReturnType<typeof createClient>;
+export type RedisClient = ReturnType<typeof createClient>;
+
+/**
+ * socket 选项统一构建（连接 / testConnection 同源，规范 §8-6 同源精神）：
+ * ssl 开启 → TLS（RedisTlsOptions）；sslInsecure → 跳过证书校验（FormSchema 已标注风险，§10）。
+ */
+function buildSocketOptions(o: Record<string, unknown>): RedisClientOptions['socket'] {
+  const base = {
+    host: String(o.host ?? '127.0.0.1'),
+    port: Number(o.port ?? 6379),
+    connectTimeout: Number(o.connectTimeout ?? 10_000),
+  };
+  if (!o.ssl) {
+    return base;
+  }
+  return { ...base, tls: true, rejectUnauthorized: !o.sslInsecure };
+}
 
 function createRedisClient(options: RedisClientOptions): RedisClient {
   return createClient({
     ...options,
     socket: { ...options.socket, reconnectStrategy },
   });
+}
+
+/**
+ * 建连死线：node-redis 在「明文连 TLS 端口」等场景 connect() 永不 resolve
+ * （重连循环卡死，P-30），必须 race 超时后由调用方 destroy()，否则懒连接首条命令永久挂起。
+ */
+export async function connectWithTimeout(client: RedisClient, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new DriverError('E_CONN', `连接超时（${timeoutMs}ms）：请检查主机/端口与 SSL 配置`)),
+      timeoutMs,
+    );
+  });
+  try {
+    await Promise.race([client.connect(), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export class RedisConnection implements IConnection {
@@ -144,17 +194,13 @@ export class RedisConnection implements IConnection {
     const task = (async () => {
       const o = this.cfg.options;
       const client = createRedisClient({
-        socket: {
-          host: String(o.host ?? '127.0.0.1'),
-          port: Number(o.port ?? 6379),
-          connectTimeout: Number(o.connectTimeout ?? 10_000),
-        },
+        socket: buildSocketOptions(o),
         username: o.username ? String(o.username) : undefined,
         password: this.secret || undefined,
         database: index,
       });
       try {
-        await client.connect();
+        await connectWithTimeout(client, Number(o.connectTimeout ?? 10_000));
       } catch (err) {
         client.destroy(); // 重连等待态下 quit() 会永久挂起（QUIT 排在重连之后）
         throw toRedisError(err);
@@ -750,17 +796,13 @@ export function createRedisDriver(): IDatabaseDriver {
     testConnection: async (cfg: ConnectionConfig, secret: string): Promise<TestResult> => {
       const started = Date.now();
       const client = createRedisClient({
-        socket: {
-          host: String(cfg.options.host ?? '127.0.0.1'),
-          port: Number(cfg.options.port ?? 6379),
-          connectTimeout: Number(cfg.options.connectTimeout ?? 10_000),
-        },
+        socket: buildSocketOptions(cfg.options),
         username: cfg.options.username ? String(cfg.options.username) : undefined,
         password: secret || undefined,
         database: Number(cfg.options.database ?? 0),
       });
       try {
-        await client.connect();
+        await connectWithTimeout(client, Number(cfg.options.connectTimeout ?? 10_000));
         const info = await client.info('server');
         const version = /redis_version:([^\r\n]+)/.exec(info)?.[1]?.trim();
         await client.quit().catch(() => client.destroy()); // 不复用连接（驱动规范 §7）
