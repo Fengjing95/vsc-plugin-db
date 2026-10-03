@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/button';
 import {
   IconCheck,
   IconColumns,
+  IconCopy,
   IconDownload,
   IconEye,
   IconMinus,
@@ -68,6 +69,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   });
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
   const supportsDdl = useTableStore((s) => s.capabilities.supportsDdl);
+  const supportsSQL = useTableStore((s) => s.capabilities.supportsSQL);
   // 复制为多种格式（概要 §6 #6）：选中行 × 可见列，webview 内联生成（≤ 单页行数）
   const rows = useTableStore((s) => s.rows);
   const columns = useTableStore((s) => s.columns);
@@ -305,27 +307,39 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           />
         </div>
 
-        {/* 复制为多种格式（概要 §6 #6）：选中行 × 可见列；未选中行置灰（不隐藏） */}
+        {/* 复制为多种格式（概要 §6 #6）：选中行 × 可见列；无选区置灰不隐藏。
+            SQL 类格式（IN 列表 / TS 类型 / INSERT）按 supportsSQL 能力降级——
+            键值源（Redis）无 SQL 语义、列是驱动虚拟列，复制出 SQL/类型不可用，仅留纯数据格式 */}
         <Menu
           trigger={
             <Button
               variant="secondary"
               size="md"
-              className="gap-0.5 px-2"
+              className={`${iconBtn} gap-0.5`}
               disabled={selectedCount === 0}
               aria-label="复制选中行"
-              title={selectedCount > 0 ? `复制选中行（${selectedCount}）：IN 列表 / JSON / Markdown / TS 类型 / INSERT` : '复制为多种格式（先选中行）'}
+              title={
+                selectedCount > 0
+                  ? supportsSQL
+                    ? `复制选中行（${selectedCount}）：IN 列表 / JSON / Markdown / TS 类型 / INSERT`
+                    : `复制选中行（${selectedCount}）：JSON / Markdown（键值源无 SQL 语义，SQL 类格式不可用）`
+                  : '复制为多种格式（先选中行）'
+              }
             >
-              <span className="text-[11px] font-medium tracking-tight">复制</span>
+              <IconCopy size={14} />
               <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
             </Button>
           }
           items={[
-            { key: 'inList', label: `IN 列表（${primaryKey.length > 0 ? primaryKey[0] : '首列'}）`, onSelect: () => void onCopyAs('inList') },
+            ...(supportsSQL
+              ? [
+                  { key: 'inList', label: `IN 列表（${primaryKey.length > 0 ? primaryKey[0] : '首列'}）`, onSelect: () => void onCopyAs('inList') },
+                  { key: 'tsType', label: 'TS 类型定义', onSelect: () => void onCopyAs('tsType') },
+                  { key: 'insert', label: 'INSERT 语句', onSelect: () => void onCopyAs('insert') },
+                ]
+              : []),
             { key: 'json', label: 'JSON', onSelect: () => void onCopyAs('json') },
             { key: 'markdown', label: 'Markdown 表格', onSelect: () => void onCopyAs('markdown') },
-            { key: 'tsType', label: 'TS 类型定义', onSelect: () => void onCopyAs('tsType') },
-            { key: 'insert', label: 'INSERT 语句', onSelect: () => void onCopyAs('insert') },
           ]}
         />
 

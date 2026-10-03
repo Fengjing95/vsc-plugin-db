@@ -134,7 +134,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             .filter(Boolean)
             .join(' · '),
           collapsibleState: Collapsed,
-          contextValue: 'connection',
+          // 已连接节点附加 connected 令牌：package.json when 据此隐藏未连接时的
+          // 新建 Console/刷新/断开按钮（M7 评审：未连接时这三个操作要么强制建连要么无意义）
+          contextValue: this.connections.isConnected(c.id) ? 'connection connected' : 'connection',
           iconId: 'database',
           payload: { connId: c.id },
         };
