@@ -53,6 +53,19 @@ function matchTxnVerb(sql: string): 'begin' | 'commit' | 'rollback' | undefined 
   return undefined;
 }
 
+/**
+ * USE 语句目标库解析（P-36）：连接池上执行 USE 只改写单个物理连接，后续语句可能拿到
+ * 别的连接——Console 里的 USE 必须改绑定而不是下发。undefined = 非 USE 语句；
+ * null = 是 USE 但目标库名无法解析。
+ */
+function parseUseStatement(sql: string): string | null | undefined {
+  const m = /^\s*USE\s+`?([A-Za-z0-9_$]+)`?\s*;?\s*$/i.exec(sql);
+  if (!m) {
+    return /^\s*USE\b/i.test(sql) ? null : undefined;
+  }
+  return m[1];
+}
+
 /** 事务动作的消息型结果（进「消息」Tab） */
 function txnMessageRs(message: string): import('@db-explorer/core').ResultSet {
   return { columns: [], rows: [], rowCount: 0, affectedRows: 0, messages: [message], executionMs: 0 };
@@ -250,8 +263,33 @@ export class ConsoleService implements vscode.Disposable {
     this.updateStatusBar();
   }
 
-  private async pickConnection(): Promise<{ connId: string; db: string | null } | undefined> {
-    const configs = await this.connections.listConfigs();
+  /**
+   * 执行时的库选择（§7.1 延伸）：绑定库为空时兜底。
+   * 返回：string = 用户选择；null = 数据源无库概念（放行）；undefined = 用户取消（终止执行）。
+   */
+  private async pickDatabaseForConsole(
+    conn: Awaited<ReturnType<ConnectionManager['ensureConnected']>>,
+  ): Promise<string | null | undefined> {
+    let databases: string[] = [];
+    try {
+      databases = (await conn.listDatabases()).map((d) => d.name);
+    } catch {
+      // 列库失败不阻塞（无库概念数据源）
+    }
+    if (databases.length === 0) {
+      return null;
+    }
+    if (databases.length === 1) {
+      return databases[0];
+    }
+    const picked = await vscode.window.showQuickPick(
+      databases.map((d) => ({ label: d, db: d })),
+      { title: '选择数据库', placeHolder: '本次执行使用的库（将更新 Console 绑定）' },
+    );
+    return picked?.db;
+  }
+
+  private async pickConnection(): Promise<{ connId: string; db: string | null } | undefined> {    const configs = await this.connections.listConfigs();
     if (configs.length === 0) {
       void vscode.window.showInformationMessage('尚无连接，请先新建连接。');
       return undefined;
@@ -486,7 +524,7 @@ export class ConsoleService implements vscode.Disposable {
     }
 
     const connId = override?.connId ?? state.connId;
-    const db = (override ? override.db : state.db) ?? undefined;
+    let db = (override ? override.db : state.db) ?? undefined;
     const cfg = this.connections.getConfig(connId);
     if (!cfg) {
       void vscode.window.showErrorMessage(`连接 "${connId}" 不存在，请重新绑定。`);
@@ -511,6 +549,24 @@ export class ConsoleService implements vscode.Disposable {
       return;
     }
     const dialectId = conn.dialect?.id;
+
+    // 库绑定保障（§7.1 延伸）：SQL 模式未绑定库时执行 → 提示选择（单库自动绑定），否则
+    // 语句落在无库上下文（MySQL 报 No database selected）。取消选择 = 取消执行。
+    // 返回 null 表示数据源无库概念（listDatabases 空），放行由驱动自决。
+    if (!commandMode && db === undefined) {
+      const picked = await this.pickDatabaseForConsole(conn);
+      if (picked === undefined) {
+        void vscode.window.showInformationMessage('未选择数据库，已取消执行（可点击状态栏绑定库）。');
+        return;
+      }
+      if (picked !== null) {
+        state.db = picked;
+        db = picked;
+        this.bindingsChangedEmitter.fire();
+        this.updateStatusBar();
+        this.output.appendLine(`[console] ${state.consoleId} 绑定库 → ${picked}（执行时选择）`);
+      }
+    }
 
     // 只读连接 fail-closed（概要 §5.8）：SQL 无法证明是读 → 拒绝；命令模式下用命令白名单
     if (cfg.readOnly) {
@@ -612,12 +668,24 @@ export class ConsoleService implements vscode.Disposable {
             }
             try {
               // 交互式事务（§4.6/D-09）：事务动词由 SessionManager 接管；会话内语句走连接级事务上下文
+              // USE 语句改绑定不下发（P-36：池化连接上 USE 只改写单个物理连接，不可靠）
               const txnVerb =
                 !commandMode && driver.capabilities.supportsInteractiveTransaction
                   ? matchTxnVerb(sqlText)
                   : undefined;
+              const useTarget =
+                !commandMode && driver.capabilities.supportsSQL ? parseUseStatement(sqlText) : undefined;
               let resultSets: import('@db-explorer/core').ResultSet[];
-              if (txnVerb === 'begin') {
+              if (useTarget !== undefined) {
+                if (useTarget === null) {
+                  throw new DriverError('E_VALIDATION', '无法解析 USE 语句的目标库名');
+                }
+                state.db = useTarget;
+                db = useTarget;
+                this.bindingsChangedEmitter.fire();
+                this.updateStatusBar();
+                resultSets = [txnMessageRs(`已切换到数据库 ${useTarget}（Console 绑定已更新）`)];
+              } else if (txnVerb === 'begin') {
                 await this.sessions.begin(connId);
                 resultSets = [txnMessageRs('事务已开启（COMMIT 提交 / ROLLBACK 回滚；空闲超时自动回滚）')];
               } else if (txnVerb === 'commit') {
