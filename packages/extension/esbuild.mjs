@@ -7,9 +7,9 @@ const options = {
   entryPoints: ['src/extension.ts'],
   bundle: true,
   outfile: 'dist/extension.js',
-  // ssh2：可选 native 加速 cpu-features（try/catch require，缺省纯 JS 降级）——
-  // native .node 无法打包，二者一律 external 从 node_modules 运行时加载
-  external: ['vscode', 'ssh2', 'cpu-features'],
+  // ssh2 / exceljs：external 从 node_modules 运行时加载——ssh2 含可选 native 加速
+  // （cpu-features，try/catch 降级），exceljs 体积大且含动态 require，打包无收益
+  external: ['vscode', 'ssh2', 'cpu-features', 'exceljs'],
   format: 'cjs',
   platform: 'node',
   target: 'node18',

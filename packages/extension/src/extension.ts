@@ -11,6 +11,7 @@ import { ConsoleService } from './services/consoleService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
+import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
@@ -40,7 +41,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const changesets = new ChangeSetService();
   const viewStates = new ViewStateStore();
   const editGuard = new EditGuard(connections, cache, output);
-  const tree = new ConnectionsTreeProvider(connections, cache);
+  // M7 交互式事务（§4.6/D-09）：空闲超时自动回滚（默认 5min，可配置）；树徽标经 onDidChange 联动
+  const sessions = new SessionManager(
+    connections,
+    () => vscode.workspace.getConfiguration('dbExplorer').get('transaction.idleTimeoutMs', 300_000),
+    (message) => void vscode.window.showWarningMessage(message),
+  );
+  const tree = new ConnectionsTreeProvider(connections, cache, sessions);
   const treeView = vscode.window.createTreeView('dbExplorer.connections', {
     treeDataProvider: tree,
     showCollapseAll: true,
@@ -55,6 +62,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     cache,
     editGuard,
     history,
+    sessions,
     output,
     () => tree.refresh(),
   );
@@ -65,6 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registry,
     connections,
     output,
+    sessions,
     treeView,
     consoleService,
     registerConsoleResultView(context, { connections, output, console: consoleService }),
@@ -72,6 +81,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     store.onDidChange(() => tree.refresh()),
     // 连接状态变化（建连/断开）→ 树刷新连接节点徽标（概要 §8.1）
     connections.onDidChangeStatus(() => tree.refresh()),
+    // 交互式事务开始/结束 → 树刷新「事务进行中」徽标（§4.6）
+    sessions.onDidChange(() => tree.refresh()),
     ...registerCommands(
       context,
       {

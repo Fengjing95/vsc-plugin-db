@@ -1,6 +1,7 @@
 import type {
   ApplyChangesResult,
   EditOpPayload,
+  ExportFormat,
   GetDdlResult,
   HandshakeResult,
   PreviewChangesResult,
@@ -138,7 +139,7 @@ interface TableState {
   clearFilters(): Promise<void>;
   applySearch(text: string): Promise<void>;
   setVisibleColumns(cols: string[] | null): Promise<void>;
-  runExport(format: 'csv' | 'json', scope: 'page' | 'result'): Promise<void>;
+  runExport(format: ExportFormat, scope: 'page' | 'result'): Promise<void>;
   setExportProgress(p: ExportProgress | null): void;
 
   // ── M4 编辑动作 ──

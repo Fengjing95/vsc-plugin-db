@@ -210,7 +210,9 @@ describe('方法参数校验', () => {
   it('export.run：format/scope 枚举校验', () => {
     const base = { connId: 'c1', db: 'demo', obj: 'users' };
     expect(ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'result' }).format).toBe('csv');
-    expect(() => ExportRunParamsSchema.parse({ ...base, format: 'xlsx', scope: 'result' })).toThrow();
+    // M7/D-14：xlsx 成为合法导出格式
+    expect(ExportRunParamsSchema.parse({ ...base, format: 'xlsx', scope: 'result' }).format).toBe('xlsx');
+    expect(() => ExportRunParamsSchema.parse({ ...base, format: 'pdf', scope: 'result' })).toThrow();
     expect(() => ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'all' })).toThrow();
   });
 

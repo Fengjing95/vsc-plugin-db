@@ -1205,3 +1205,120 @@ export async function runValueEncodingChecks(
   }
   return summarize(results);
 }
+
+// ───────────────────────── M7：交互式事务（D-09 / 概要 §4.6）─────────────────────────
+
+/**
+ * 交互式事务契约组（capabilities.supportsInteractiveTransaction = true 的驱动必须通过）：
+ * - openSession 可用；单连接同时最多 1 个会话（重复开启须拒绝）
+ * - 会话内写入未提交对其他连接不可见（隔离性）
+ * - commit 落库；rollback 丢弃
+ * SQL 由调用方按方言/fixture 提供三个模板（key 为本次检查的隔离标记）。
+ */
+export async function runInteractiveTransactionChecks(
+  create: () => Promise<IConnection>,
+  sql: {
+    insertSql: (key: string) => string;
+    countSql: (key: string) => string;
+    cleanupSql: (key: string) => string;
+  },
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    if (typeof conn.openSession !== 'function') {
+      await skip(results, 'interactive-transaction', 'openSession 未实现', '驱动未实现交互式事务');
+      return summarize(results);
+    }
+
+    const countVia = async (reader: IConnection, k: string): Promise<number> => {
+      const rs = await reader.query({ sql: sql.countSql(k), maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+      const v = rs[0]?.rows[0]?.[0];
+      assert(Number.isFinite(Number(v)), `COUNT(*) 返回非数值: ${String(v)}`);
+      return Number(v);
+    };
+    const run = async (session: { execute(req: { sql: string; maxRows: number; timeoutMs: number }): Promise<unknown> }, sql: string) => {
+      await session.execute({ sql, maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+    };
+
+    await check(results, 'interactive-transaction', 'openSession 可开启会话', async () => {
+      const session = await conn.openSession!();
+      await session.dispose(); // 立即结束（实现应回滚未提交内容）
+    });
+
+    await check(results, 'interactive-transaction', '单连接重复 openSession 须拒绝', async () => {
+      const session = await conn.openSession!();
+      try {
+        let rejected = false;
+        try {
+          await conn.openSession!();
+        } catch {
+          rejected = true;
+        }
+        assert(rejected, '已有会话时第二次 openSession 应抛错（单连接最多 1 会话，§4.6）');
+      } finally {
+        await session.dispose();
+      }
+    });
+
+    await check(
+      results,
+      'interactive-transaction',
+      '会话内写入未提交对其他连接不可见',
+      async () => {
+        const key = 'txn-uncommitted';
+        const session = await conn.openSession!();
+        try {
+          await run(session, sql.insertSql(key));
+          const reader = await create();
+          try {
+            assert((await countVia(reader, key)) === 0, '未提交写入对其他连接可见（隔离性破坏）');
+          } finally {
+            await reader.dispose();
+          }
+        } finally {
+          await session.dispose();
+        }
+      },
+    );
+
+    await check(results, 'interactive-transaction', 'commit 落库', async () => {
+      const key = 'txn-commit';
+      const session = await conn.openSession!();
+      try {
+        await run(session, sql.insertSql(key));
+        await session.commit();
+        const reader = await create();
+        try {
+          assert((await countVia(reader, key)) === 1, 'commit 后其他连接应读到该行');
+        } finally {
+          await reader.dispose();
+        }
+      } finally {
+        await session.dispose();
+        await conn.query({ sql: sql.cleanupSql(key), maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+      }
+    });
+
+    await check(results, 'interactive-transaction', 'rollback 丢弃', async () => {
+      const key = 'txn-rollback';
+      const session = await conn.openSession!();
+      try {
+        await run(session, sql.insertSql(key));
+        await session.rollback();
+        const reader = await create();
+        try {
+          assert((await countVia(reader, key)) === 0, 'rollback 后不应读到该行');
+        } finally {
+          await reader.dispose();
+        }
+      } finally {
+        await session.dispose();
+        await conn.query({ sql: sql.cleanupSql(key), maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+      }
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}

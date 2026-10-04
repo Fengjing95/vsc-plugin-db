@@ -4,6 +4,7 @@ import {
   runChangesetChecks,
   runConnectionChecks,
   runFilterPushdownChecks,
+  runInteractiveTransactionChecks,
   runMetadataChecks,
   runPaginationChecks,
 } from './index';
@@ -53,5 +54,20 @@ it('conformance: mock 驱动通过 changeset 组（M4）', async () => {
     console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
   }
   expect(summary.failed).toBe(0);
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+});
+
+it('conformance: mock 驱动通过 interactive-transaction 组（M7，D-09）', async () => {
+  const summary = await runInteractiveTransactionChecks(mockConnection, {
+    insertSql: (k) =>
+      `INSERT INTO demo.users (name, email) VALUES ('txn:${k}', 'txn:${k}@conformance')`,
+    countSql: (k) => `SELECT COUNT(*) FROM demo.users WHERE email = 'txn:${k}@conformance'`,
+    cleanupSql: (k) => `DELETE FROM demo.users WHERE email = 'txn:${k}@conformance'`,
+  });
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  // C-3：组必须实跑（mock 已实现交互式事务）而非静默跳过
   expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
 });

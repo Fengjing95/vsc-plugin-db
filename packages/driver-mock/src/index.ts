@@ -14,6 +14,7 @@ import {
   type IConnection,
   type IDatabaseDriver,
   type IndexMeta,
+  type ISession,
   type KeyMeta,
   type ObjectMeta,
   type PreviewItem,
@@ -40,7 +41,7 @@ export const MOCK_DRIVER_ID = 'mock';
 const capabilities: DriverCapabilities = {
   supportsSQL: true, // M5 起支持最小 SQL 子集（Console 本地自测）；Redis 类 supportsSQL=false 走命令白名单
   supportsTransaction: true, // applyChanges 整体回滚（内存快照恢复）
-  supportsInteractiveTransaction: false,
+  supportsInteractiveTransaction: true, // M7：openSession（缓冲写 + commit/rollback），交互式事务契约组覆盖
   supportsMultipleDatabases: true,
   supportsMultiStatement: false,
   supportsCancel: false,
@@ -898,7 +899,56 @@ export class MockConnection implements IConnection {
   }
 
   dispose(): void {
-    // 内存驱动无资源需要释放
+    // 内存驱动无资源需要释放；未提交会话随连接丢弃（dispose = 放弃）
+    this.activeSession = null;
+  }
+
+  /**
+   * 交互式事务会话（M7，概要 §4.6 / D-09）：写语句缓冲、commit 依序落库、rollback 丢弃。
+   * 简化：会话内 SELECT 读基线数据（自身未提交写不可见）；单连接最多 1 会话（重复开启拒绝）。
+   */
+  private activeSession: { writes: string[] } | null = null;
+
+  openSession(): Promise<ISession> {
+    if (this.activeSession) {
+      return Promise.reject(new DriverError('E_VALIDATION', '已有进行中的事务会话（单连接最多 1 个）'));
+    }
+    const state = { writes: [] as string[] };
+    this.activeSession = state;
+    const assertLive = (): void => {
+      if (this.activeSession !== state) {
+        throw new DriverError('E_CONN', '事务会话已结束（dispose/重复开启）');
+      }
+    };
+    const session: ISession = {
+      execute: async (req: QueryRequest): Promise<ResultSet[]> => {
+        assertLive();
+        const head = /^\s*([A-Za-z]+)/.exec(req.sql)?.[1]?.toUpperCase() ?? '';
+        if (head === 'SELECT') {
+          return this.query(req);
+        }
+        state.writes.push(req.sql);
+        return [{ columns: [], rows: [], rowCount: 0, affectedRows: 0, executionMs: 0 }];
+      },
+      commit: async () => {
+        assertLive();
+        const pending = [...state.writes];
+        for (const sql of pending) {
+          await this.query({ sql, maxRows: 1, timeoutMs: 15_000 });
+        }
+        state.writes.length = 0;
+      },
+      rollback: async () => {
+        assertLive();
+        state.writes.length = 0;
+      },
+      dispose: async () => {
+        if (this.activeSession === state) {
+          this.activeSession = null; // 未提交写随会话丢弃（dispose = 放弃）
+        }
+      },
+    };
+    return Promise.resolve(session);
   }
 }
 

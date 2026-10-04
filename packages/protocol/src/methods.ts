@@ -303,7 +303,7 @@ export const RowErrorEventSchema = z.object({
 export type RowErrorEvent = z.infer<typeof RowErrorEventSchema>;
 
 // ── export.run / export.cancel（概要设计 5.7：Host 流式写，不进 Webview）──
-export const ExportFormatSchema = z.enum(['csv', 'json']);
+export const ExportFormatSchema = z.enum(['csv', 'json', 'xlsx']);
 export type ExportFormat = z.infer<typeof ExportFormatSchema>;
 
 export const ExportScopeSchema = z.enum(['page', 'result']);

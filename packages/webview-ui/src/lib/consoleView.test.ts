@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ConsoleRun, ConsoleRunItem } from '@db-explorer/protocol';
-import { deriveTabs, messageLines, oneLineSql, resultStatusLine, runStatusText } from './consoleView';
+import {
+  deriveTabs,
+  explainIndentLevels,
+  explainIndentPrefix,
+  isExplainResultSet,
+  messageLines,
+  oneLineSql,
+  resultStatusLine,
+  runStatusText,
+} from './consoleView';
 
 function resultSetItem(seq: number, sql: string, rowCount: number, executionMs = 10): ConsoleRunItem {
   return {
@@ -108,3 +117,44 @@ describe('状态行', () => {
 function resultItem(rowCount: number, ms: number): ConsoleRunItem {
   return resultSetItem(1, 'SELECT * FROM users', rowCount, ms);
 }
+
+describe('isExplainResultSet（D-13：EXPLAIN 判定）', () => {
+  const cols = ['id', 'select_type', 'table', 'type', 'rows', 'Extra'].map((name) => ({ name }));
+
+  it('EXPLAIN 语句 + 经典列形状 → true（大小写/前导空白不敏感）', () => {
+    expect(isExplainResultSet('EXPLAIN SELECT * FROM t', cols)).toBe(true);
+    expect(isExplainResultSet('  explain analyze SELECT 1', cols)).toBe(true);
+  });
+  it('非 EXPLAIN / 缺关键列 → false', () => {
+    expect(isExplainResultSet('SELECT * FROM t', cols)).toBe(false);
+    expect(isExplainResultSet('EXPLAIN SELECT 1', [{ name: 'a' }])).toBe(false);
+  });
+});
+
+describe('explainIndentLevels（D-13：按 id 列推导嵌套层级）', () => {
+  const columns = ['id', 'table', 'Extra'];
+
+  it('id 升序 distinct 序位 = 层级（同 id 同层）', () => {
+    const rows = [
+      [1, 't1', ''],
+      [1, 't2', 'Using where'],
+      [2, 'sub1', ''],
+      [3, 'sub2', ''],
+      [2, 'sub1b', ''],
+    ];
+    expect(explainIndentLevels(rows, columns)).toEqual([0, 0, 1, 2, 1]);
+  });
+
+  it('id 缺失/非数值 → 全 0（退化为普通表格）', () => {
+    expect(explainIndentLevels([[1, 't']], ['a', 'b'])).toEqual([0]);
+    expect(explainIndentLevels([['x', 't']], columns)).toEqual([0]);
+  });
+});
+
+describe('explainIndentPrefix', () => {
+  it('0 级无前缀，n 级按等宽字形缩进', () => {
+    expect(explainIndentPrefix(0)).toBe('');
+    expect(explainIndentPrefix(1)).toBe('└─ ');
+    expect(explainIndentPrefix(2)).toBe('│ └─ ');
+  });
+});

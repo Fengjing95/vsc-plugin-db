@@ -59,6 +59,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   constructor(
     private readonly connections: ConnectionManager,
     private readonly cache: MetadataCache,
+    /** 交互式事务会话（§4.6）：「事务进行中」树徽标数据源 */
+    private readonly sessions?: { hasActive(connId: string): boolean },
   ) {}
 
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
@@ -136,6 +138,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             c.driverId,
             c.env ?? 'dev',
             c.readOnly ? '只读' : undefined,
+            this.sessions?.hasActive(c.id) ? '事务进行中' : undefined,
             this.connections.isConnected(c.id) ? '已连接' : '未连接',
           ]
             .filter(Boolean)

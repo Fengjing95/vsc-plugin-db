@@ -90,3 +90,43 @@ export function runStatusText(run: ConsoleRun): string {
       return `出错（${run.durationMs}ms）`;
   }
 }
+
+// ── 执行计划树形缩进（D-13：表格 + 树形缩进，关闭遗留 #2）──────────────────
+
+/** MySQL 表格式 EXPLAIN 判定：语句 EXPLAIN 开头 + 结果列含 id 与 Extra（经典 12 列形状） */
+export function isExplainResultSet(sql: string, columns: Array<{ name: string }>): boolean {
+  if (!/^\s*EXPLAIN\b/i.test(sql)) {
+    return false;
+  }
+  const names = new Set(columns.map((c) => c.name));
+  return names.has('id') && names.has('Extra');
+}
+
+/**
+ * EXPLAIN 行的缩进级别：按 `id` 列 distinct 升序的序位推导嵌套深度
+ * （MySQL 约定：id 越大嵌套越深；同 id 为同一 JOIN 行序列）。
+ * id 缺失/非数值的行视为顶层。返回与 rows 等长的级别数组。
+ */
+export function explainIndentLevels(rows: unknown[][], columns: string[]): number[] {
+  const idIdx = columns.indexOf('id');
+  if (idIdx < 0) {
+    return rows.map(() => 0);
+  }
+  const ids: number[] = [];
+  const rowNums = rows.map((row) => {
+    const n = Number(row[idIdx]);
+    return Number.isFinite(n) ? n : null;
+  });
+  for (const n of rowNums) {
+    if (n !== null && !ids.includes(n)) {
+      ids.push(n);
+    }
+  }
+  ids.sort((a, b) => a - b);
+  return rowNums.map((n) => (n === null ? 0 : ids.indexOf(n)));
+}
+
+/** 缩进级别 → 首列树形前缀（等宽字形；0 级无前缀） */
+export function explainIndentPrefix(level: number): string {
+  return level <= 0 ? '' : `${'│ '.repeat(level - 1)}└─ `;
+}

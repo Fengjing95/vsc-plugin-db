@@ -24,6 +24,8 @@ import type { ConnectionManager } from './connectionManager';
 import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePanel';
 import type { ConsoleHistory } from './consoleHistory';
 import type { EditGuard } from './editGuard';
+import type { SessionManager } from './sessionManager';
+import { writeXlsxFile } from './xlsxWriter';
 
 /**
  * M5 SQL Console 服务（概要设计 §5.5 / 交互稿 §7）：
@@ -36,6 +38,25 @@ import type { EditGuard } from './editGuard';
 const FILE_BINDINGS_KEY = 'dbExplorer.console.fileBindings';
 /** C-9：单次传输行数上限 */
 const MAX_RESULT_ROWS = 5000;
+
+/** 事务动词识别（§4.6）：BEGIN/START TRANSACTION、COMMIT、ROLLBACK（仅 SQL 模式且驱动具备能力时接管） */
+function matchTxnVerb(sql: string): 'begin' | 'commit' | 'rollback' | undefined {
+  if (/^\s*(BEGIN|START\s+TRANSACTION)\b/i.test(sql)) {
+    return 'begin';
+  }
+  if (/^\s*COMMIT\b/i.test(sql)) {
+    return 'commit';
+  }
+  if (/^\s*ROLLBACK\b/i.test(sql)) {
+    return 'rollback';
+  }
+  return undefined;
+}
+
+/** 事务动作的消息型结果（进「消息」Tab） */
+function txnMessageRs(message: string): import('@db-explorer/core').ResultSet {
+  return { columns: [], rows: [], rowCount: 0, affectedRows: 0, messages: [message], executionMs: 0 };
+}
 
 export interface FileBinding {
   consoleId: string;
@@ -83,6 +104,8 @@ export class ConsoleService implements vscode.Disposable {
     private readonly cache: MetadataCache,
     private readonly editGuard: EditGuard,
     private readonly history: ConsoleHistory,
+    /** M7 交互式事务（§4.6/D-09）：BEGIN/COMMIT/ROLLBACK 接管与会话内语句路由 */
+    private readonly sessions: SessionManager,
     private readonly output: vscode.OutputChannel,
     /** DDL 执行后联动树刷新（概要 §7.5） */
     private readonly refreshTree: () => void,
@@ -588,11 +611,30 @@ export class ConsoleService implements vscode.Disposable {
               throw new DriverError('E_CANCELED', '已取消');
             }
             try {
-              const resultSets = await this.host.query(
-                conn,
-                { sql: sqlText, db, maxRows, timeoutMs },
-                { signal: controller.signal },
-              );
+              // 交互式事务（§4.6/D-09）：事务动词由 SessionManager 接管；会话内语句走连接级事务上下文
+              const txnVerb =
+                !commandMode && driver.capabilities.supportsInteractiveTransaction
+                  ? matchTxnVerb(sqlText)
+                  : undefined;
+              let resultSets: import('@db-explorer/core').ResultSet[];
+              if (txnVerb === 'begin') {
+                await this.sessions.begin(connId);
+                resultSets = [txnMessageRs('事务已开启（COMMIT 提交 / ROLLBACK 回滚；空闲超时自动回滚）')];
+              } else if (txnVerb === 'commit') {
+                await this.sessions.commit(connId);
+                resultSets = [txnMessageRs('事务已提交')];
+              } else if (txnVerb === 'rollback') {
+                await this.sessions.rollback(connId);
+                resultSets = [txnMessageRs('事务已回滚')];
+              } else if (!commandMode && this.sessions.hasActive(connId)) {
+                resultSets = await this.sessions.execute(connId, { sql: sqlText, db, maxRows, timeoutMs });
+              } else {
+                resultSets = await this.host.query(
+                  conn,
+                  { sql: sqlText, db, maxRows, timeoutMs },
+                  { signal: controller.signal },
+                );
+              }
               for (const rs of resultSets) {
                 const item = this.itemFromResultSet(sqlText, rs);
                 item.seq = run.items.length + 1;
@@ -767,7 +809,7 @@ export class ConsoleService implements vscode.Disposable {
   async exportResult(
     consoleId: string,
     itemSeq: number,
-    format: 'csv' | 'json',
+    format: 'csv' | 'json' | 'xlsx',
   ): Promise<{ filePath: string; rows: number; bytes: number; canceled?: boolean }> {
     const state = this.consoles.get(consoleId);
     const rs = state?.run?.items.find((i) => i.seq === itemSeq)?.resultSet;
@@ -776,25 +818,41 @@ export class ConsoleService implements vscode.Disposable {
     }
     const wsFolder = vscode.workspace.workspaceFolders?.[0];
     const defaultDir = wsFolder ? vscode.Uri.file(`${wsFolder.uri.fsPath}/.db-export`) : undefined;
+    const defaultUri = defaultDir
+      ? vscode.Uri.joinPath(defaultDir, `结果-${itemSeq}.${format}`)
+      : undefined;
     const target = await vscode.window.showSaveDialog({
-      defaultUri: defaultDir ? vscode.Uri.joinPath(defaultDir, `结果-${itemSeq}.${format}`) : undefined,
+      defaultUri,
       saveLabel: '导出',
-      filters: format === 'csv' ? { CSV: ['csv'] } : { JSON: ['json'] },
+      filters:
+        format === 'csv' ? { CSV: ['csv'] } : format === 'xlsx' ? { Excel: ['xlsx'] } : { JSON: ['json'] },
     });
     if (!target) {
       return { filePath: '', rows: 0, bytes: 0, canceled: true };
     }
     const names = rs.columns.map((c) => c.name);
     let content: string;
-    if (format === 'csv') {
+    let bytes: number;
+    if (format === 'xlsx') {
+      // D-14：exceljs 写出（结果集已在内存，非流式路径足够）
+      const out = await writeXlsxFile(
+        target.fsPath,
+        names.map((name) => ({ name })),
+        [rs.rows],
+      );
+      bytes = out.bytes;
+    } else if (format === 'csv') {
       content = rs.rows.map((row) => csvRow(row)).join('');
       content = csvRow(names) + content;
+      bytes = Buffer.byteLength(content);
+      await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
     } else {
       content = JSON.stringify(rs.rows.map((row) => toJsonObject(names, row)), null, 2);
+      bytes = Buffer.byteLength(content);
+      await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
     }
-    await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
     this.output.appendLine(`[console] 结果 ${itemSeq} 已导出：${target.fsPath}（${rs.rowCount} 行）`);
-    return { filePath: target.fsPath, rows: rs.rowCount, bytes: Buffer.byteLength(content) };
+    return { filePath: target.fsPath, rows: rs.rowCount, bytes };
   }
 
   /** 连接删除/编辑后清理其 Console 状态与绑定（防悬空引用） */

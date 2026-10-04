@@ -311,9 +311,15 @@
           "default": "csv",
           "enum": [
             "csv",
-            "json"
+            "json",
+            "xlsx"
           ],
           "description": "导出默认格式"
+        },
+        "dbExplorer.transaction.idleTimeoutMs": {
+          "type": "number",
+          "default": 300000,
+          "description": "交互式事务空闲超时（毫秒，超时自动 ROLLBACK，D-09/§4.6，默认 5 分钟）"
         },
         "dbExplorer.edit.allowNoPrimaryKey": {
           "type": "boolean",
@@ -329,6 +335,7 @@
     "@db-explorer/driver-mysql": "workspace:*",
     "@db-explorer/driver-redis": "workspace:*",
     "@db-explorer/protocol": "workspace:*",
+    "exceljs": "^4.4.0",
     "ssh2": "^1.17.0"
   },
   "devDependencies": {

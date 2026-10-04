@@ -401,6 +401,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             { key: 'csv-result', label: 'CSV · 全部结果', onSelect: () => onExport('csv', 'result') },
             { key: 'json-page', label: 'JSON · 当前页', onSelect: () => onExport('json', 'page') },
             { key: 'json-result', label: 'JSON · 全部结果', onSelect: () => onExport('json', 'result') },
+            { key: 'xlsx-page', label: 'Excel (xlsx) · 当前页', onSelect: () => onExport('xlsx', 'page') },
+            { key: 'xlsx-result', label: 'Excel (xlsx) · 全部结果', onSelect: () => onExport('xlsx', 'result') },
           ]}
         />
       </div>

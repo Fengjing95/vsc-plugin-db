@@ -54,7 +54,7 @@ interface ConsoleStoreState {
   resolveBanner(action: 'proceed' | 'cancel'): Promise<void>;
   cancelRun(): Promise<void>;
   rerun(sql: string): Promise<void>;
-  exportItem(seq: number, format: 'csv' | 'json'): Promise<void>;
+  exportItem(seq: number, format: 'csv' | 'json' | 'xlsx'): Promise<void>;
   closePanel(): Promise<void>;
   showToast(t: ToastState, autoDismissMs?: number): void;
   dismissToast(): void;

@@ -13,6 +13,7 @@ import {
   type FormSchema,
   type IConnection,
   type IDatabaseDriver,
+  type ISession,
   type IndexMeta,
   type KeyMeta,
   type NormalizedType,
@@ -36,7 +37,7 @@ export const MYSQL_DRIVER_ID = 'mysql';
 const capabilities: DriverCapabilities = {
   supportsSQL: true,
   supportsTransaction: true,
-  supportsInteractiveTransaction: false, // P2：openSession
+  supportsInteractiveTransaction: true, // M7：openSession（SessionManager 空闲超时回收，§4.6/D-09）
   supportsMultipleDatabases: true,
   supportsMultiStatement: false, // 收紧注入面；Console 按单语句执行
   supportsCancel: false, // mysql2 无法可靠中止已下发语句，契约如实声明
@@ -292,45 +293,7 @@ export class MysqlConnection implements IConnection {
   }
 
   async query(req: QueryRequest): Promise<ResultSet[]> {
-    try {
-      const started = Date.now();
-      const [rows, fields] = await this.pool.query({ sql: req.sql, values: req.params ?? [] });
-      const executionMs = Date.now() - started;
-
-      if (Array.isArray(rows)) {
-        const all = rows as Record<string, unknown>[];
-        const sliced = all.slice(0, req.maxRows);
-        const rawFields = (fields ?? []) as RawField[];
-        const cols = rawFields.map((f) => ({
-          name: f.name ?? '',
-          type: guessType(f.type, all[0]?.[f.name ?? '']),
-        }));
-        return [
-          {
-            columns: cols,
-            rows: sliced.map((r) => cols.map((c) => encodeValue(r[c.name]))),
-            rowCount: sliced.length,
-            executionMs,
-            truncated: all.length > req.maxRows,
-          },
-        ];
-      }
-
-      const ok = rows as { affectedRows?: number; insertId?: number; message?: string };
-      return [
-        {
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          affectedRows: ok.affectedRows ?? 0,
-          messages: ok.message ? [ok.message] : undefined,
-          executionMs,
-          truncated: false,
-        },
-      ];
-    } catch (err) {
-      throw toDriverError(err);
-    }
+    return runQueryOn(this.pool, req);
   }
 
   previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
@@ -451,7 +414,118 @@ export class MysqlConnection implements IConnection {
   }
 
   dispose(): void | Promise<void> {
-    return this.pool.end().catch(() => undefined);
+    // 活动交互式事务会话随连接 dispose 一起回滚释放（防连接泄漏/悬挂事务）
+    return Promise.resolve(this.disposeSession())
+      .catch(() => undefined)
+      .then(() => this.pool.end().catch(() => undefined));
+  }
+
+  // ── 交互式事务会话（M7，概要 §4.6 / D-09）：单连接最多 1 个；空闲超时由 Host 侧 SessionManager 管理 ──
+
+  private sessionConn: PoolConnection | null = null;
+
+  /** 回滚并释放活动会话连接（幂等） */
+  private async disposeSession(): Promise<void> {
+    const conn = this.sessionConn;
+    if (!conn) {
+      return;
+    }
+    this.sessionConn = null;
+    await conn.query('ROLLBACK').catch(() => undefined);
+    conn.release();
+  }
+
+  openSession(): Promise<ISession> {
+    if (this.sessionConn) {
+      return Promise.reject(new DriverError('E_VALIDATION', '已有进行中的事务会话（单连接最多 1 个）'));
+    }
+    return (async () => {
+      const conn = await this.pool.getConnection();
+      try {
+        await conn.query('BEGIN');
+      } catch (err) {
+        conn.release();
+        throw toDriverError(err);
+      }
+      this.sessionConn = conn;
+      let ended = false;
+      const assertLive = (): void => {
+        if (ended || this.sessionConn !== conn) {
+          throw new DriverError('E_CONN', '事务会话已结束');
+        }
+      };
+      const end = async (stmt: 'COMMIT' | 'ROLLBACK'): Promise<void> => {
+        assertLive();
+        ended = true;
+        this.sessionConn = null;
+        try {
+          await conn.query(stmt);
+        } finally {
+          conn.release();
+        }
+      };
+      const session: ISession = {
+        execute: async (req) => {
+          assertLive();
+          return runQueryOn(conn, req);
+        },
+        commit: () => end('COMMIT'),
+        rollback: () => end('ROLLBACK'),
+        dispose: () => {
+          if (!ended) {
+            return this.disposeSession(); // 未提交即放弃 → 回滚
+          }
+          return Promise.resolve();
+        },
+      };
+      return session;
+    })();
+  }
+}
+
+/** 单连接上的查询执行（池连接与会话连接共用同一 ResultSet 构建路径） */
+async function runQueryOn(
+  executor: { query(opts: { sql: string; values?: unknown[] }): Promise<[unknown, unknown]> },
+  req: QueryRequest,
+): Promise<ResultSet[]> {
+  try {
+    const started = Date.now();
+    const [rows, fields] = await executor.query({ sql: req.sql, values: req.params ?? [] });
+    const executionMs = Date.now() - started;
+
+    if (Array.isArray(rows)) {
+      const all = rows as Record<string, unknown>[];
+      const sliced = all.slice(0, req.maxRows);
+      const rawFields = (fields ?? []) as RawField[];
+      const cols = rawFields.map((f) => ({
+        name: f.name ?? '',
+        type: guessType(f.type, all[0]?.[f.name ?? '']),
+      }));
+      return [
+        {
+          columns: cols,
+          rows: sliced.map((r) => cols.map((c) => encodeValue(r[c.name]))),
+          rowCount: sliced.length,
+          executionMs,
+          truncated: all.length > req.maxRows,
+        },
+      ];
+    }
+
+    const ok = rows as { affectedRows?: number; insertId?: number; message?: string };
+    return [
+      {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        affectedRows: ok.affectedRows ?? 0,
+        messages: ok.message ? [ok.message] : undefined,
+        executionMs,
+        truncated: false,
+      },
+    ];
+  } catch (err) {
+    throw toDriverError(err);
   }
 }
 

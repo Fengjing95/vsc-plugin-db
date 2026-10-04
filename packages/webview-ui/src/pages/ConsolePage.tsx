@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Button } from '../components/ui/button';
-import { messageLines, resultStatusLine, runStatusText } from '../lib/consoleView';
+import { messageLines, resultStatusLine, runStatusText, isExplainResultSet, explainIndentLevels } from '../lib/consoleView';
 import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
@@ -125,6 +125,16 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             >
               ⇩ JSON
             </button>
+            <button
+              type="button"
+              aria-label="导出 Excel"
+              title="导出 Excel (xlsx)"
+              disabled={exporting}
+              className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              onClick={() => void exportItem(activeItem.seq, 'xlsx')}
+            >
+              ⇩ Excel
+            </button>
           </>
         )}
         <button
@@ -139,8 +149,16 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
       </div>
 
       {/* 内容区：结果网格 / 消息 Tab */}
+      {/* D-13：EXPLAIN 结果按 id 列推导层级，首列树形缩进（其余形状退化为普通表格） */}
       {activeResultSet ? (
-        <ConsoleGrid resultSet={activeResultSet} />
+        <ConsoleGrid
+          resultSet={activeResultSet}
+          planLevels={
+            activeItem && isExplainResultSet(activeItem.sql, activeResultSet.columns)
+              ? explainIndentLevels(activeResultSet.rows, activeResultSet.columns.map((c) => c.name))
+              : undefined
+          }
+        />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-[13px] leading-6">
           {!run || run.items.length === 0 ? (

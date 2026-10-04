@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import type { ResultSetPayload } from '@db-explorer/protocol';
 import { ContextMenu, type ContextMenuItem } from '../../components/ui/contextMenu';
 import { cellView } from '../../lib/cellDisplay';
+import { explainIndentPrefix } from '../../lib/consoleView';
 import { defaultWidth } from '../table/DataGrid';
 
 const ROW_HEIGHT = 28;
@@ -13,8 +14,15 @@ const OVERSCAN = 12;
  * Console 只读结果网格（交互稿 §7.3：只读表格，同 §4.2 视觉）：
  * 复用 cellDisplay 渲染契约与虚拟滚动骨架；无编辑/选择/排序（结果集只读）。
  * P-21：虚拟列表与滚动容器同组件挂载（ref 就绪先于 layout effect）。
+ * planLevels（D-13）：EXPLAIN 结果的首列树形缩进级别（与行一一对应）。
  */
-export function ConsoleGrid({ resultSet }: { resultSet: ResultSetPayload }) {
+export function ConsoleGrid({
+  resultSet,
+  planLevels,
+}: {
+  resultSet: ResultSetPayload;
+  planLevels?: number[];
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
 
@@ -116,7 +124,14 @@ export function ConsoleGrid({ resultSet }: { resultSet: ResultSetPayload }) {
                         });
                       }}
                     >
-                      <div className={`truncate ${view.className ?? ''}`}>{view.text}</div>
+                      <div className={`truncate ${view.className ?? ''}`}>
+                        {planLevels?.[rowIndex] !== undefined && colIdx === 0 && (
+                          <span aria-hidden className="whitespace-pre text-muted-foreground">
+                            {explainIndentPrefix(planLevels[rowIndex] ?? 0)}
+                          </span>
+                        )}
+                        {view.text}
+                      </div>
                     </div>
                   );
                 })}
