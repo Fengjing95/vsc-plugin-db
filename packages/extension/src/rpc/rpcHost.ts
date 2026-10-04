@@ -142,6 +142,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
               capabilities: {
                 supportsSQL: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsSQL ?? true,
                 supportsDdl: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsDdl ?? false,
+                pagination: deps.connections?.getDriver(deps.params.connId)?.capabilities.pagination,
               },
             },
           });
@@ -162,6 +163,8 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
                 obj: p.obj,
                 limit: Math.min(p.limit, maxRows),
                 offset: p.offset,
+                // M7 cursor 透传：pagination=cursor 驱动的深页直取（opaque 游标）
+                cursor: p.cursor,
                 columns: p.columns,
                 filters: p.filters,
                 sorts: p.sorts,

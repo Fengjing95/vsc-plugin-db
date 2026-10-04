@@ -129,10 +129,12 @@ export const HandshakeResultSchema = z.object({
   uiState: ViewUiStateSchema.optional(),
   edit: EditPermissionSchema,
   /** 驱动能力子集（概要 §5.1.3：UI 按 capabilities 降级渲染，不感知数据库类型）。
-   *  来自 driver.capabilities（registry 侧读取，握手不触发建连，D-10） */
+   *  来自 driver.capabilities（registry 侧读取，握手不触发建连，D-10）。
+   *  pagination：分页模型下行（M7 cursor 透传），缺省按 offset 处理（旧驱动兼容） */
   capabilities: z.object({
     supportsSQL: z.boolean(),
     supportsDdl: z.boolean(),
+    pagination: z.enum(['offset', 'cursor', 'none']).optional(),
   }),
 });
 export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
@@ -143,6 +145,9 @@ export const FetchRowsParamsSchema = z.object({
   obj: z.string().min(1),
   limit: z.number().int().positive().max(5000),
   offset: z.number().int().min(0).optional(),
+  /** opaque 分页游标（pagination=cursor 驱动；来自上一页 ResultSet.nextCursor）。
+   *  携带游标时 offset 必须缺省（M7 cursor 透传，深页免 O(offset) 重扫） */
+  cursor: z.string().optional(),
   /** 列投影（列显示/隐藏），缺省 = 全部列 */
   columns: z.array(z.string().min(1)).optional(),
   filters: z.array(FilterConditionSchema).max(20).optional(),
@@ -162,6 +167,8 @@ export const ResultSetSchema = z.object({
   rowCount: z.number().int(),
   totalCount: z.number().int().optional(),
   primaryKey: z.array(z.string()).optional(),
+  /** pagination=cursor 驱动的下一页游标（opaque；undefined = 已到尽头） */
+  nextCursor: z.string().optional(),
   executionMs: z.number(),
   truncated: z.boolean().optional(),
 });

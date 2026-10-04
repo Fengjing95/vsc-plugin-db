@@ -350,7 +350,7 @@ export class RedisConnection implements IConnection {
     const allCols = patternColumns();
     const colNames = allCols.map((c) => c.name);
     const guard = this.guard(req);
-    const skip = req.offset ?? 0;
+    const skip = req.cursor ? 0 : (req.offset ?? 0); // cursor 路径位置语义由游标唯一承载
     const cap = skip + req.limit;
     const state: ScanState = req.cursor ? decodeCursorOrThrow(req.cursor) : { scan: '0', pending: [] };
 
@@ -444,7 +444,7 @@ export class RedisConnection implements IConnection {
     }
     const colNames = cols.map((c) => c.name);
     const guard = this.guard(req);
-    const skip = req.offset ?? 0;
+    const skip = req.cursor ? 0 : (req.offset ?? 0); // cursor 路径位置语义由游标唯一承载
     const limit = req.limit;
     const cap = skip + limit;
     const collected: unknown[][] = [];

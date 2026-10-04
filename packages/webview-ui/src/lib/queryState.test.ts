@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeMultiValues, encodeScalar, opsForType, opValueShape } from './filterOps';
-import { buildQueryParams, formatEstimate, paginationLabel } from './queryState';
+import { buildQueryParams, formatEstimate, maxExploredPage, paginationLabel, updateCursorStack } from './queryState';
 
 describe('opsForType（交互稿 §4.4：操作符按列类型过滤）', () => {
   it('文本列含 like，不含 between', () => {
@@ -105,5 +105,53 @@ describe('paginationLabel（交互稿 §4.7 分页栏细则）', () => {
     expect(formatEstimate(50000)).toBe('50k');
     expect(formatEstimate(12300)).toBe('12.3k');
     expect(formatEstimate(999)).toBe('999');
+  });
+});
+
+
+describe('buildQueryParams cursor 模式（M7 透传）', () => {
+  const base = { connId: 'c1', db: 'db0', obj: '*', pageSize: 50, where: '', orderBy: '', search: '', visibleColumns: null };
+
+  it('offset 模式（缺省）：offset = page × pageSize，不下发 cursor', () => {
+    const p = buildQueryParams({ ...base, page: 3, pagination: 'offset' });
+    expect(p.offset).toBe(150);
+    expect(p.cursor).toBeUndefined();
+  });
+
+  it('cursor 模式：下发游标且省略 offset（两者互斥）', () => {
+    const p = buildQueryParams({ ...base, page: 2, pagination: 'cursor', cursor: 'cur-2' });
+    expect(p.cursor).toBe('cur-2');
+    expect(p.offset).toBeUndefined();
+  });
+
+  it('cursor 模式首页（无游标）：不下发 cursor 与 offset', () => {
+    const p = buildQueryParams({ ...base, page: 0, pagination: 'cursor' });
+    expect(p.cursor).toBeUndefined();
+    expect(p.offset).toBeUndefined();
+  });
+});
+
+describe('updateCursorStack / maxExploredPage（游标栈）', () => {
+  it('推进下一页游标，不破坏既有栈', () => {
+    const s1 = updateCursorStack([undefined], 0, 'c1');
+    expect(s1).toEqual([undefined, 'c1']);
+    const s2 = updateCursorStack(s1, 1, 'c2');
+    expect(s2).toEqual([undefined, 'c1', 'c2']);
+  });
+
+  it('尽头（无 nextCursor）：下一页槽位记 undefined', () => {
+    const s = updateCursorStack([undefined, 'c1'], 1, undefined);
+    expect(s).toEqual([undefined, 'c1', undefined]);
+  });
+
+  it('不可变更新（原栈不受影响）', () => {
+    const original = [undefined];
+    updateCursorStack(original, 0, 'c1');
+    expect(original).toEqual([undefined]);
+  });
+
+  it('maxExploredPage：cursors.length - 1，空栈为 0', () => {
+    expect(maxExploredPage([undefined])).toBe(0);
+    expect(maxExploredPage([undefined, 'c1', 'c2'])).toBe(2);
   });
 });

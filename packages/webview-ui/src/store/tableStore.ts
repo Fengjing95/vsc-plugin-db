@@ -10,6 +10,7 @@ import type {
   SortSpecPayload,
 } from '@db-explorer/protocol';
 import { create } from 'zustand';
+import { maxExploredPage, updateCursorStack } from '../lib/queryState';
 import { request, RpcError } from '../rpc/client';
 import { errorCodeToMessage } from '../lib/errors';
 import { cellInputText, parseCellInput } from '../lib/editValues';
@@ -70,7 +71,9 @@ interface TableState {
   readOnly: boolean;
   rowEstimate?: number;
   /** 驱动能力子集（握手下行，概要 §5.1.3）：UI 按能力降级渲染，不感知数据库类型 */
-  capabilities: { supportsSQL: boolean; supportsDdl: boolean };
+  capabilities: { supportsSQL: boolean; supportsDdl: boolean; pagination?: 'offset' | 'cursor' | 'none' };
+  /** cursor 分页（M7 透传）：每页取数游标（cursors[0] = undefined 首页；仅 cursor 模式使用） */
+  cursors: Array<string | undefined>;
 
   phase: 'loading' | 'ready' | 'error';
   errorMsg: string;
@@ -218,6 +221,8 @@ export const useTableStore = create<TableState>((set, get) => ({
 
   exportProgress: null,
 
+  cursors: [undefined],
+
   editEnabled: false,
   updates: {},
   deletes: {},
@@ -234,7 +239,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   selectionAnchor: null,
 
   init({ connId, db, obj, rowEstimate, readOnly }) {
-    set({ connId, db, obj, rowEstimate, readOnly: readOnly ?? false, page: 0 });
+    set({ connId, db, obj, rowEstimate, readOnly: readOnly ?? false, page: 0, cursors: [undefined] });
     void get().refresh();
   },
 
@@ -253,6 +258,9 @@ export const useTableStore = create<TableState>((set, get) => ({
           where: s.appliedWhere,
           orderBy: s.appliedOrderBy,
           search: s.searchApplied,
+          // M7 cursor 透传：cursor 模式下发当前页游标（buildQueryParams 同时省略 offset）
+          pagination: s.capabilities.pagination,
+          cursor: s.cursors[s.page],
           // 编辑态保障：投影列 ∪ 主键列（P-7）；无主键全列匹配必须取全行（D-03）
           visibleColumns: s.editEnabled
             ? (effectiveFetchColumns(s.visibleColumns, s.primaryKey, s.allColumns.length > 0 ? s.allColumns : s.columns) ?? null)
@@ -276,7 +284,12 @@ export const useTableStore = create<TableState>((set, get) => ({
         totalCount: rs.totalCount,
         executionMs: rs.executionMs,
         truncated: rs.truncated ?? false,
-        hasMore: rs.rows.length === s.pageSize,
+        // cursor 模式：尽头以 nextCursor 缺失判定（比满页启发式精确）
+        hasMore: s.capabilities.pagination === 'cursor' ? rs.nextCursor !== undefined : rs.rows.length === s.pageSize,
+        cursors:
+          s.capabilities.pagination === 'cursor'
+            ? updateCursorStack(s.cursors, s.page, rs.nextCursor)
+            : s.cursors,
         // 行数据已更替，选中集失效
         selectedRows: {},
         selectionAnchor: null,
@@ -304,17 +317,20 @@ export const useTableStore = create<TableState>((set, get) => ({
   },
 
   async setPage(page) {
-    set({ page: Math.max(0, page), editing: null });
+    // cursor 模式：只允许回到已探明页（游标栈深度），跳过式跳转会退回首取语义
+    const maxPage =
+      get().capabilities.pagination === 'cursor' ? maxExploredPage(get().cursors) : Number.MAX_SAFE_INTEGER;
+    set({ page: Math.min(Math.max(0, page), maxPage), editing: null });
     await get().refresh();
   },
 
   async setPageSize(size) {
-    set({ pageSize: size, page: 0, editing: null });
+    set({ pageSize: size, page: 0, cursors: [undefined], editing: null });
     await get().refresh();
   },
 
   async applyQuery(where, orderBy) {
-    set({ appliedWhere: where, appliedOrderBy: orderBy, page: 0 });
+    set({ appliedWhere: where, appliedOrderBy: orderBy, page: 0, cursors: [undefined] });
     get().syncOrderMirror();
     await get().refresh();
   },
@@ -347,7 +363,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   },
 
   async clearFilters() {
-    set({ appliedWhere: '', appliedOrderBy: '', page: 0 });
+    set({ appliedWhere: '', appliedOrderBy: '', page: 0, cursors: [undefined] });
     await get().refresh();
   },
 
@@ -355,7 +371,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     if (text === get().searchApplied) {
       return;
     }
-    set({ searchApplied: text, page: 0 });
+    set({ searchApplied: text, page: 0, cursors: [undefined] });
     await get().refresh();
   },
 
@@ -405,7 +421,13 @@ export const useTableStore = create<TableState>((set, get) => ({
   // ── M4 编辑动作 ──────────────────────────────────────────
 
   applyHandshake(hs) {
-    set({ editEnabled: hs.edit.enabled, editReason: hs.edit.reason, capabilities: hs.capabilities });
+    set({
+      editEnabled: hs.edit.enabled,
+      editReason: hs.edit.reason,
+      capabilities: hs.capabilities,
+      // M7 cursor 透传：游标栈不进崩溃快照（opaque 且跨会话无意义），恢复回第 0 页
+      cursors: [undefined],
+    });
     const snapshot = hs.changeSet;
     const hasSnapshot = snapshot.inserts.length + snapshot.updates.length + snapshot.deletes.length > 0;
     if (hasSnapshot) {
@@ -415,7 +437,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     if (hs.uiState) {
       const ui = hs.uiState;
       set({
-        page: ui.page,
+        page: hs.capabilities.pagination === 'cursor' ? 0 : ui.page,
         pageSize: ui.pageSize,
         searchApplied: ui.search,
         // drafts 为旧版构造器遗留（协议兼容保留），恒忽略；恢复 WHERE/ORDER BY 自由条件

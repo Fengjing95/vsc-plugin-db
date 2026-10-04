@@ -60,8 +60,9 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
 
 - **cursor 分页**：`nextCursor` 闭环（沿游标走完 = 全量，无重复无遗漏，契约测试覆盖）。SCAN 一批可能
   覆盖整个 keyspace，批内位置随游标携带（base64 不透明串）。
-- **offset 翻页**：翻译为「SCAN 起始跳过」，深页复杂度 O(offset)；webview 分页栏（offset 语义）零改动兼容。
-  大库深页性能不足时，后续在 protocol/webview 增加 cursor 透传（增量适配，不动 core 契约）。
+- **cursor 透传（M7）**：webview 按 `capabilities.pagination='cursor'` 走游标翻页（每页取数携带
+  上一页 nextCursor，offset 缺省）——深页免 O(offset) 重扫；游标栈不进崩溃快照（恢复回第 1 页）。
+- **offset 翻页**：非 cursor 客户端（旧协议）仍兼容，翻译为「SCAN 起始跳过」，深页复杂度 O(offset)。
 - **排序为页内局部排序**（`sorts: 'page'` 契约语义）：SCAN 无服务端排序，且 C-9 禁止取全表——
   只对已取回的页排序，全局序以 SCAN 稳定序为准。契约组合用例（filters+sorts+offset 全局序）按此跳过。
 - **list/zset 位置分页无法下推筛选**：过滤后行数可能少于页大小（筛过的行跳过显示）。
