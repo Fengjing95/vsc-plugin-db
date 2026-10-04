@@ -1,6 +1,14 @@
 import { useEffect } from 'react';
 import { Button } from '../components/ui/button';
-import { messageLines, resultStatusLine, runStatusText, isExplainResultSet, explainIndentLevels } from '../lib/consoleView';
+import {
+  messageLines,
+  resultStatusLine,
+  runStatusText,
+  isExplainResultSet,
+  explainIndentLevels,
+  sessionTabLabel,
+  sessionTabBadge,
+} from '../lib/consoleView';
 import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
@@ -20,6 +28,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const run = useConsoleStore((s) => s.run);
   const banner = useConsoleStore((s) => s.banner);
   const running = useConsoleStore((s) => s.running);
+  const consoles = useConsoleStore((s) => s.consoles);
+  const switchConsole = useConsoleStore((s) => s.switchConsole);
   const activeTab = useConsoleStore((s) => s.activeTab);
   const setActiveTab = useConsoleStore((s) => s.setActiveTab);
   const resolveBanner = useConsoleStore((s) => s.resolveBanner);
@@ -72,6 +82,42 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             取消
           </Button>
           <Button onClick={() => void resolveBanner('proceed')}>仍要执行</Button>
+        </div>
+      )}
+
+      {/* 会话 Tab 栏（M8 #11，交互稿 §7.3）：≥2 个会话时显示，点击切换跟随（结果/横幅/运行态保持）。
+          单会话不显示（与既有形态一致，零噪音）；执行自动切换跟随由 evt:console.activated 承担 */}
+      {consoles.length >= 2 && (
+        <div
+          className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2"
+          style={{ height: 28 }}
+          role="tablist"
+          aria-label="会话"
+        >
+          {consoles.map((c) => {
+            const badge = sessionTabBadge(c);
+            const active = c.consoleId === consoleId;
+            return (
+              <button
+                key={c.consoleId}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-label={sessionTabLabel(c)}
+                className={`shrink-0 rounded-sm px-3 py-0.5 text-[12px] ${
+                  active
+                    ? 'bg-selected text-selected-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+                onClick={() => void switchConsole(c.consoleId)}
+              >
+                {badge && (
+                  <span className={`mr-1 ${badge.includes('事务') ? 'text-warning' : ''}`}>{badge}</span>
+                )}
+                {sessionTabLabel(c)}
+              </button>
+            );
+          })}
         </div>
       )}
 

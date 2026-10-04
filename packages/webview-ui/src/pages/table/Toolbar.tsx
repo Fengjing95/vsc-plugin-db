@@ -39,6 +39,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const refresh = useTableStore((s) => s.refresh);
   const fetching = useTableStore((s) => s.fetching);
   const runExport = useTableStore((s) => s.runExport);
+  const cancelExport = useTableStore((s) => s.cancelExport);
   const exportProgress = useTableStore((s) => s.exportProgress);
   const visibleColumns = useTableStore((s) => s.visibleColumns);
   const setVisibleColumns = useTableStore((s) => s.setVisibleColumns);
@@ -282,8 +283,17 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           <span className="shrink-0 text-[12px] text-muted-foreground">{copyHint}</span>
         )}
         {exportProgress && (
-          <span className="shrink-0 text-[12px] text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
             导出中… {exportProgress.rows} 行
+            <button
+              type="button"
+              aria-label="取消导出"
+              title="取消导出"
+              className="rounded-sm px-1 hover:bg-accent hover:text-accent-foreground"
+              onClick={() => void cancelExport()}
+            >
+              ✕
+            </button>
           </span>
         )}
         <div className="relative w-44 shrink-0">
@@ -388,9 +398,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
               variant="secondary"
               size="md"
               className={`${iconBtn} gap-0.5`}
-              disabled={exportProgress !== null}
               aria-label="导出"
-              title="导出（CSV/JSON）"
+              title="导出（后台任务，可并发）"
             >
               <IconDownload size={14} />
               <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>

@@ -115,7 +115,7 @@
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
 | Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（P1-1 隔离） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
-| Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts` |
+| Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行/会话 Tab 标签徽标纯函数）+ `store/consoleStore.ts`（M8 会话 Tab：consoles 列表 + switchConsole）；Host 侧会话列表推导 `packages/extension/src/services/consoleTabs.ts`（纯函数有单测） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |
 | Redis 契约测试 | `packages/driver-redis/src/redis.conformance.test.ts`（需本地 Redis，环境见 P-28；D-05 评估 `D05_EVAL=1` 跑 `d05.eval.test.ts`） |
 | Redis SSL/TLS 契约 | `packages/driver-redis/src/ssl.test.ts`（schema 断言常驻；TLS 集成探测 6392，环境见 P-28/P-30） |
@@ -124,9 +124,10 @@
 | 由表结构生成代码（TS/Java/Go/Prisma） | `packages/extension/src/services/codegen.ts`（纯函数有单测）+ 树右键命令 `dbExplorer.generateCode` |
 | SQL 格式化 | `packages/core/src/services/sqlFormat.ts`（sql-formatter 封装，P-31 选项名；命令 `dbExplorer.formatSql` 在 commands.ts） |
 | 交互式事务（SessionManager / BEGIN-COMMIT-ROLLBACK） | `packages/extension/src/services/sessionManager.ts`（空闲超时自动回滚，单连接 1 会话，§4.6/D-09）；契约组 `runInteractiveTransactionChecks`（driver-conformance，mock+mysql 实现）；Console 拦截在 consoleService.runStatements |
-| Excel 导出（xlsx） | `packages/extension/src/services/xlsxWriter.ts`（exceljs 流式，D-14）+ ResultExporter/导出菜单；P-35 |
+| Excel 导出（xlsx） | `packages/extension/src/services/xlsxWriter.ts`（exceljs 流式，D-14）+ 导出菜单；P-35 |
+| 导出任务引擎（M8 后台化 #16） | `packages/extension/src/services/exportTasks.ts`（纯层：调度即回执/后台流式写/终态回执，有单测）+ `resultExporter.ts`（vscode 胶水 createResultExporter）；协议 `ExportRunResult={exportId}` + `evt:export.done` |
 | 执行计划树形缩进（D-13） | `webview-ui/src/lib/consoleView.ts`（isExplainResultSet/explainIndentLevels 纯函数）+ ConsoleGrid 首列缩进 |
 | 保存查询 | `packages/extension/src/services/savedQueries.ts`（纯函数）+ `savedQueryActions.ts`（VSCode 交互），落盘 `.vscode/db-queries/*.sql` |
-| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
+| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20，**单实例串行**，两实例并行争输出目录互崩，见 pitfalls），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js` / `console-sessions.js`（M8 会话 Tab）、表格导出场景 `scripts/table-export.js`（M8 导出 chip）、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |

@@ -9,6 +9,8 @@ import {
   oneLineSql,
   resultStatusLine,
   runStatusText,
+  sessionTabBadge,
+  sessionTabLabel,
 } from './consoleView';
 
 function resultSetItem(seq: number, sql: string, rowCount: number, executionMs = 10): ConsoleRunItem {
@@ -156,5 +158,19 @@ describe('explainIndentPrefix', () => {
     expect(explainIndentPrefix(0)).toBe('');
     expect(explainIndentPrefix(1)).toBe('└─ ');
     expect(explainIndentPrefix(2)).toBe('│ └─ ');
+  });
+});
+
+describe('sessionTabLabel / sessionTabBadge（M8 会话 Tab）', () => {
+  it('标签：连接名 · 库；未绑库只显示连接名', () => {
+    expect(sessionTabLabel({ connLabel: '本地 MySQL', db: 'myapp' })).toBe('本地 MySQL · myapp');
+    expect(sessionTabLabel({ connLabel: '本地 MySQL', db: null })).toBe('本地 MySQL');
+  });
+
+  it('徽标：执行中 ⟳ 优先于事务中', () => {
+    expect(sessionTabBadge({ running: true, txnActive: false })).toBe('⟳');
+    expect(sessionTabBadge({ running: true, txnActive: true })).toBe('⟳');
+    expect(sessionTabBadge({ running: false, txnActive: true })).toBe('● 事务');
+    expect(sessionTabBadge({ running: false, txnActive: false })).toBe('');
   });
 });

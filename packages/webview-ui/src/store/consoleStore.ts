@@ -2,10 +2,12 @@ import type {
   ConsoleBanner,
   ConsoleRun,
   ConsoleStateResult,
+  ConsoleTabInfo,
 } from '@db-explorer/protocol';
 import {
   ConsoleActivatedEventSchema,
   ConsoleBannerEventSchema,
+  ConsoleListResultSchema,
   ConsoleRunningEventSchema,
   ConsoleStateResultSchema,
   ConsoleUpdatedEventSchema,
@@ -41,6 +43,9 @@ interface ConsoleStoreState {
   banner: ConsoleBanner | null;
   running: { runId: string; total: number } | null;
 
+  /** M8 #11 会话 Tab：全部可达会话（console.list / evt:console.list 维护） */
+  consoles: ConsoleTabInfo[];
+
   activeTab: string;
   /** 用户在运行期间手动点过 Tab → 停止自动跟随 */
   manualTab: boolean;
@@ -51,6 +56,8 @@ interface ConsoleStoreState {
   applyState(state: ConsoleStateResult): void;
   handleEvent(evt: RpcEvent): void;
   setActiveTab(id: string): void;
+  switchConsole(consoleId: string): Promise<void>;
+  refreshConsoles(): Promise<void>;
   resolveBanner(action: 'proceed' | 'cancel'): Promise<void>;
   cancelRun(): Promise<void>;
   rerun(sql: string): Promise<void>;
@@ -73,6 +80,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
   run: null,
   banner: null,
   running: null,
+  consoles: [],
 
   activeTab: 'msg',
   manualTab: false,
@@ -92,6 +100,25 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       set({ phase: 'ready' });
     } catch (err) {
       set({ phase: 'error', errorMsg: err instanceof Error ? err.message : String(err) });
+    }
+    // 会话 Tab 列表独立拉取（失败不阻塞主状态）
+    void get().refreshConsoles();
+  },
+
+  async refreshConsoles() {
+    try {
+      const raw = await request<unknown>('console.list', {}, 10_000);
+      const parsed = ConsoleListResultSchema.safeParse(raw);
+      if (!parsed.success) {
+        return;
+      }
+      set({ consoles: parsed.data.consoles });
+      // 面板引导（consoleId 仍为空串）时跟随 Host 侧活动会话
+      if (get().consoleId === '' && parsed.data.activeConsoleId) {
+        void get().bootstrap(parsed.data.activeConsoleId);
+      }
+    } catch {
+      // 列表失败静默（Tab 栏隐藏，主状态不受影响）
     }
   },
 
@@ -145,6 +172,17 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       }
       return;
     }
+    if (evt.event === RpcEvents.consoleList) {
+      const parsed = ConsoleListResultSchema.safeParse(evt.payload);
+      if (parsed.success) {
+        set({ consoles: parsed.data.consoles });
+        // 面板尚未跟随任何会话（引导空串）时跟随 Host 侧活动会话
+        if (get().consoleId === '' && parsed.data.activeConsoleId) {
+          void get().bootstrap(parsed.data.activeConsoleId);
+        }
+      }
+      return;
+    }
     if (evt.event === RpcEvents.consoleBanner) {
       const parsed = ConsoleBannerEventSchema.safeParse(evt.payload);
       if (parsed.success && parsed.data.consoleId === get().consoleId) {
@@ -162,6 +200,13 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
 
   setActiveTab(id: string): void {
     set({ activeTab: id, manualTab: true });
+  },
+
+  async switchConsole(consoleId) {
+    if (consoleId === get().consoleId) {
+      return;
+    }
+    await get().bootstrap(consoleId); // 重新拉全量状态（结果/横幅/运行态一并恢复——会话保持）
   },
 
   async resolveBanner(action) {

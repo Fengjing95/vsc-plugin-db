@@ -15,6 +15,7 @@ import {
 import {
   RpcEvents,
   type ConsoleBanner,
+  type ConsoleListResult,
   type ConsoleRun,
   type ConsoleRunItem,
   type ConsoleStateResult,
@@ -25,6 +26,7 @@ import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePan
 import type { ConsoleHistory } from './consoleHistory';
 import type { EditGuard } from './editGuard';
 import type { SessionManager } from './sessionManager';
+import { deriveConsoleTabs, type ConsoleTabSource } from './consoleTabs';
 import { writeXlsxFile } from './xlsxWriter';
 
 /**
@@ -140,6 +142,8 @@ export class ConsoleService implements vscode.Disposable {
     this.disposables.push(
       this.statusItem,
       this.bindingsChangedEmitter,
+      // 事务徽标联动（M8 #11）：begin/commit/rollback/空闲自动回滚统一经 SessionManager 事件刷新
+      this.sessions.onDidChange(() => this.pushList()),
       vscode.window.onDidChangeActiveTextEditor(() => this.updateStatusBar()),
       vscode.workspace.onDidOpenTextDocument((doc) => this.onDocumentOpened(doc)),
       vscode.workspace.onDidCloseTextDocument((doc) => this.onDocumentClosed(doc)),
@@ -165,6 +169,47 @@ export class ConsoleService implements vscode.Disposable {
     for (const d of this.disposables) {
       d.dispose();
     }
+  }
+
+  // ── 会话 Tab（M8 #11：结果面板会话标签，交互稿 §7.3）──────
+
+  /** 会话列表（Tab 栏数据源）：绑定可达恒收，绑定失但有结果/执行中的保留（会话保持） */
+  listConsoles(): ConsoleListResult {
+    const addressable = new Set<string>();
+    for (const id of this.untitledBindings.values()) {
+      addressable.add(id);
+    }
+    for (const b of this.fileBindings.values()) {
+      addressable.add(b.consoleId);
+    }
+    const sources: ConsoleTabSource[] = [...this.consoles.values()].map((s) => ({
+      consoleId: s.consoleId,
+      connId: s.connId,
+      db: s.db,
+      running: Boolean(s.controller),
+      hasRun: Boolean(s.run),
+      lastRunAt: s.run?.startedAt ?? null,
+    }));
+    const consoles = deriveConsoleTabs(sources, {
+      connLabelOf: (connId) => this.connections.getConfig(connId)?.name,
+      addressable: (id) => addressable.has(id),
+      txnActive: (connId) => this.sessions.hasActive(connId),
+    });
+    return { consoles, activeConsoleId: this.lastActiveConsoleId };
+  }
+
+  /** 会话 Tab 列表推送（执行开始/结束、事务动词等非绑定变化也需刷新徽标） */
+  private pushList(): void {
+    pushToConsolePanel('', {
+      event: RpcEvents.consoleList,
+      payload: this.listConsoles(),
+    });
+  }
+
+  /** 绑定/会话集合变化：事件（补全 provider 动态注册）+ 会话 Tab 列表推送 */
+  private notifyListChanged(): void {
+    this.bindingsChangedEmitter.fire();
+    this.pushList();
   }
 
   // ── 绑定（§7.1）──────────────────────────────────────────
@@ -259,7 +304,7 @@ export class ConsoleService implements vscode.Disposable {
     state.db = picked.db;
     this.output.appendLine(`[console] ${state.consoleId} 重新绑定 → ${picked.connId}${picked.db ? `/${picked.db}` : ''}`);
     this.preheatCompletions(state);
-    this.bindingsChangedEmitter.fire();
+    this.notifyListChanged();
     this.updateStatusBar();
   }
 
@@ -350,7 +395,7 @@ export class ConsoleService implements vscode.Disposable {
       this.lastActiveConsoleId = consoleId;
     }
     this.preheatCompletions(state);
-    this.bindingsChangedEmitter.fire();
+    this.notifyListChanged();
     return state;
   }
 
@@ -360,13 +405,13 @@ export class ConsoleService implements vscode.Disposable {
       FILE_BINDINGS_KEY,
       Object.fromEntries(this.fileBindings.entries()),
     );
-    this.bindingsChangedEmitter.fire();
+    this.notifyListChanged();
   }
 
   private onDocumentOpened(doc: vscode.TextDocument): void {
     if (doc.uri.scheme === 'file' && doc.languageId === 'sql' && this.fileBindings.has(doc.uri.fsPath)) {
       this.updateStatusBar();
-      this.bindingsChangedEmitter.fire();
+      this.notifyListChanged();
     }
   }
 
@@ -379,10 +424,11 @@ export class ConsoleService implements vscode.Disposable {
       const timer = setTimeout(() => {
         this.pendingTimers.delete(timer);
         this.untitledBindings.delete(key);
+        this.notifyListChanged(); // 回收窗口到期：会话 Tab 移除该 untitled
       }, 10_000);
       this.pendingTimers.add(timer);
       this.updateStatusBar();
-      this.bindingsChangedEmitter.fire();
+      this.notifyListChanged();
     }
   }
 
@@ -562,7 +608,7 @@ export class ConsoleService implements vscode.Disposable {
       if (picked !== null) {
         state.db = picked;
         db = picked;
-        this.bindingsChangedEmitter.fire();
+        this.notifyListChanged();
         this.updateStatusBar();
         this.output.appendLine(`[console] ${state.consoleId} 绑定库 → ${picked}（执行时选择）`);
       }
@@ -657,6 +703,7 @@ export class ConsoleService implements vscode.Disposable {
         payload: { consoleId: state.consoleId, runId, total: texts.length },
       });
       this.pushRun(state);
+      this.pushList(); // 会话 Tab：running 徽标亮起
 
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: commandMode ? '执行命令…' : '执行 SQL…', cancellable: true },
@@ -682,7 +729,7 @@ export class ConsoleService implements vscode.Disposable {
                 }
                 state.db = useTarget;
                 db = useTarget;
-                this.bindingsChangedEmitter.fire();
+                this.notifyListChanged();
                 this.updateStatusBar();
                 resultSets = [txnMessageRs(`已切换到数据库 ${useTarget}（Console 绑定已更新）`)];
               } else if (txnVerb === 'begin') {
@@ -751,6 +798,7 @@ export class ConsoleService implements vscode.Disposable {
       run.durationMs = Date.now() - run.startedAt;
       state.controller = undefined;
       this.pushRun(state);
+      this.pushList(); // 会话 Tab：running 徽标熄灭（hasRun 亮起）
       this.recordHistory(state, run);
     }
   }
@@ -942,7 +990,7 @@ export class ConsoleService implements vscode.Disposable {
         payload: { consoleId: '' },
       });
     }
-    this.bindingsChangedEmitter.fire();
+    this.notifyListChanged();
     this.updateStatusBar();
   }
 

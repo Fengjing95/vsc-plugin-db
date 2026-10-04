@@ -3,7 +3,7 @@ import { InProcessDriverHost, type ChangeSetService } from '@db-explorer/core';
 import { attachRpcHost } from '../rpc/rpcHost';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
-import { ResultExporter } from '../services/resultExporter';
+import { createResultExporter } from '../services/resultExporter';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 
 export interface TableTarget {
@@ -93,7 +93,7 @@ export async function openTablePanel(
     viewStates: services.viewStates,
     editGuard: services.editGuard,
     applyTimeoutMs: Math.max(cfg.get('query.timeoutMs', 15000), 30_000),
-    exporter: new ResultExporter({
+    exporter: createResultExporter({
       webview: panel.webview,
       connections: services.connections,
       host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15000)),

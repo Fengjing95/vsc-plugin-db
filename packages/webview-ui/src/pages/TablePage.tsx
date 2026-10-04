@@ -1,6 +1,7 @@
 import type { HandshakeResult } from '@db-explorer/protocol';
 import {
   ChangesetUpdatedEventSchema,
+  ExportDoneEventSchema,
   ExportProgressEventSchema,
   RowErrorEventSchema,
   RPC_PROTOCOL_VERSION,
@@ -55,7 +56,22 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       if (evt.event === RpcEvents.exportProgress) {
         const parsed = ExportProgressEventSchema.safeParse(evt.payload);
         if (parsed.success) {
-          setExportProgress({ rows: parsed.data.rows, bytes: parsed.data.bytes });
+          // M8 后台化：只跟随本视图发起的导出（exportId 匹配）；其它视图/后台任务不打扰
+          const tracked = useTableStore.getState().exportProgress;
+          if (tracked && tracked.exportId === parsed.data.exportId) {
+            setExportProgress({ exportId: tracked.exportId, rows: parsed.data.rows, bytes: parsed.data.bytes });
+          }
+        }
+        return;
+      }
+      if (evt.event === RpcEvents.exportDone) {
+        const parsed = ExportDoneEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          // 终态回执（成功/取消/失败三路）：清除本视图进度 chip（失败详情由 Host Toast 呈现）
+          const tracked = useTableStore.getState().exportProgress;
+          if (tracked && tracked.exportId === parsed.data.exportId) {
+            setExportProgress(null);
+          }
         }
         return;
       }

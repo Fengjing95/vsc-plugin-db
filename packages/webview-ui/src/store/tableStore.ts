@@ -40,6 +40,8 @@ import { PAGE_SIZES } from '../lib/queryState';
 export type SortDir = 'asc' | 'desc';
 
 export interface ExportProgress {
+  /** M8 后台化：本视图追踪的导出任务 id（evt:export.progress/done 按 id 过滤） */
+  exportId: string;
   rows: number;
   bytes: number;
 }
@@ -143,6 +145,7 @@ interface TableState {
   applySearch(text: string): Promise<void>;
   setVisibleColumns(cols: string[] | null): Promise<void>;
   runExport(format: ExportFormat, scope: 'page' | 'result'): Promise<void>;
+  cancelExport(): Promise<void>;
   setExportProgress(p: ExportProgress | null): void;
 
   // ── M4 编辑动作 ──
@@ -382,7 +385,7 @@ export const useTableStore = create<TableState>((set, get) => ({
 
   async runExport(format, scope) {
     const s = get();
-    set({ exportProgress: { rows: 0, bytes: 0 } });
+    set({ exportProgress: null });
     try {
       const params = buildQueryParams(
         {
@@ -398,7 +401,8 @@ export const useTableStore = create<TableState>((set, get) => ({
         },
       );
       // scope=page 只取当前页；scope=result 由 Host 循环取尽（概要设计 5.7）
-      await request<unknown>(
+      // M8 后台化：SaveDialog 后立即回执 exportId，导出在 Host 后台继续（不阻塞本视图）
+      const ack = await request<{ exportId: string; canceled?: boolean }>(
         'export.run',
         {
           ...params,
@@ -407,10 +411,29 @@ export const useTableStore = create<TableState>((set, get) => ({
           limit: s.pageSize,
           offset: s.page * s.pageSize,
         },
-        0,
+        0, // SaveDialog 是用户交互，不设限
       );
-    } finally {
-      set({ exportProgress: null });
+      if (ack.canceled) {
+        return; // 用户取消保存对话框：静默（无任务）
+      }
+      set({ exportProgress: { exportId: ack.exportId, rows: 0, bytes: 0 } });
+    } catch (err) {
+      get().showToast({
+        kind: 'error',
+        text: `导出失败：${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  },
+
+  async cancelExport() {
+    const { exportProgress } = get();
+    if (!exportProgress) {
+      return;
+    }
+    try {
+      await request('export.cancel', { exportId: exportProgress.exportId });
+    } catch {
+      // 取消失败静默（任务有超时/流自然结束兜底）
     }
   },
 

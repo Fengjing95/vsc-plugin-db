@@ -6,10 +6,10 @@ import {
   ConsoleCloseParamsSchema,
   ConsoleExecuteParamsSchema,
   ConsoleExportParamsSchema,
+  ConsoleListParamsSchema,
   ConsoleResolveBannerParamsSchema,
   ConsoleStateParamsSchema,
-  CopyTextParamsSchema,
-  EditChangesParamsSchema,
+  CopyTextParamsSchema,  EditChangesParamsSchema,
   FetchRowsParamsSchema,
   GetDdlParamsSchema,
   HandshakeParamsSchema,
@@ -22,7 +22,7 @@ import {
   type EditPermission,
   type RpcError,
 } from '@db-explorer/protocol';
-import type { ResultExporter } from '../services/resultExporter';
+import type { ExportTaskRunner } from '../services/exportTasks';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ChangeSetService } from '@db-explorer/core';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
@@ -30,6 +30,8 @@ import type { EditGuard, ViewStateStore } from '../services/editGuard';
 /** M5 Console 面板方法门面（console.*，rpcHost 完成 zod 校验后调用） */
 export interface ConsoleRpcFacade {
   getState(params: unknown): Promise<unknown>;
+  /** M8 #11 会话 Tab：会话列表（console.list） */
+  list(params: unknown): Promise<unknown>;
   execute(params: unknown): Promise<unknown>;
   cancel(params: unknown): Promise<unknown>;
   resolveBanner(params: unknown): Promise<unknown>;
@@ -44,7 +46,7 @@ export interface RpcHostDeps {
   connections?: ConnectionManager;
   host?: InProcessDriverHost;
   /** 表格导出（export.run / export.cancel），仅表格视图注入 */
-  exporter?: ResultExporter;
+  exporter?: ExportTaskRunner;
   /** 页面自有方法（conn.* 等），命中后优先于内置分发 */
   handlers?: Record<string, (params: unknown) => Promise<unknown>>;
   /** M4 表格编辑：ChangeSet 权威副本（ADR D-06），表格视图注入 */
@@ -314,6 +316,15 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           if (deps.console) {
             const p = ConsoleStateParamsSchema.parse(req.params ?? {});
             respond(true, { result: await deps.console.getState(p.consoleId) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.consoleList: {
+          if (deps.console) {
+            ConsoleListParamsSchema.parse(req.params ?? {});
+            respond(true, { result: await deps.console.list(req.params) });
             return;
           }
           break;

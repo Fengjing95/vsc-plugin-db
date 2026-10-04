@@ -53,3 +53,11 @@ window.ResizeObserver = class extends OrigRO {
 - 请求帧 `{ kind: 'req', id, method, params }`；响应帧 `{ kind: 'res', id, ok, result | error }` 通过 `window.dispatchEvent(new MessageEvent('message', { data: frame }))` 回放（rpc/client 监听 window message）。
 - 桩延迟 60ms 足够让 loading 态可见；要测竞态可调 `delayMs` 或在 handler 里返回 Promise。
 - `evt:` 推送事件（export.progress / changeset.updated / row.error）默认不发；需要时在 handler 里 `window.dispatchEvent(new MessageEvent('message', { data: { kind: 'evt', event: 'evt:changeset.updated', payload: { counts: {...} } } }))`——注意 changeset.updated 计数全 0 会清空本地覆盖层（TablePage 语义），可用来测"提交成功清空"路径。
+
+## stub 单实例（M8 踩）
+
+`make-stub.mjs` 输出目录固定（`$TMPDIR/dbx-webview-preview`），启动时 `rmSync` 清空——**两个实例并行启动会 ENOTEMPTY 崩掉其中一个**。多场景验证必须串行：起一个 → 测完停 → 再起下一个（换端口没用，争的是目录不是端口）。
+
+## 场景数据要过 webview zod 校验（M8 踩）
+
+handler 返回值会按 `@db-explorer/protocol` schema 在 webview 侧 `safeParse`，形状不符走错误路径（如 Console 页显示「插件与视图版本不一致」，看似构建产物过期，实为数据形状错）。典型：`ConsoleStateResult.running` 是 `.optional()`（缺省=undefined）**不是 nullable**，场景里写 `running: null` 必炸——可选字段的"无"一律省略键或给 undefined，对照 `methods.ts` schema 写场景。

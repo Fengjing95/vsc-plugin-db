@@ -66,7 +66,8 @@ export function subscribeEvents(listener: (evt: RpcEvent) => void): () => void {
   return () => eventListeners.delete(listener);
 }
 
-/** timeoutMs = 0 表示不限时（如 export.run，靠进度事件保活） */
+/** timeoutMs = 0 表示不限时（console.execute 靠 evt 推送；export.run 含 SaveDialog 用户交互，
+ *  M8 起导出本体在 Host 后台执行，回执即时，此处不限时只为对话框留时间） */
 export function request<T>(method: string, params?: unknown, timeoutMs = 30_000): Promise<T> {
   const id = `wv-${++seq}`;
   return new Promise<T>((resolve, reject) => {
