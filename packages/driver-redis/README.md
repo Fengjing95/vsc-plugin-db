@@ -27,7 +27,7 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
     ▸ 列表 (1)
     ▸ 集合 (1)
     ▸ 有序集合 (1)
-    ▸ 流 (1)          ← stream 键可列出；单击打开内容表报 E_UNSUPPORTED（M6 未支持）
+    ▸ 流 (1)          ← stream 键内容表：entry / fields（json），XRANGE 位置分页（M7）
     ▸ Keys (1)
       ▸ *（模式浏览）  ← 全键空间 SCAN 分页表格（含 key/type/__ttl 列与筛选/搜索）
 ```
@@ -40,7 +40,7 @@ Redis 驱动（node-redis v5）。M6 交付：Key 树、SCAN 分页、类型化�
   | list | index / value | LRANGE |
   | set | member | SSCAN |
   | zset | member / score | ZRANGE WITHSCORES |
-  | stream | 不支持（E_UNSUPPORTED，M6 范围外） | — |
+  | stream | entry / fields（json 对象，一行 = 一个条目） | XRANGE（位置游标 = 最后消费条目 id，M7） |
 - **`*` 模式节点**：表格视图列出全部键（`key / type / __ttl`，TTL 只读虚拟列，-1=无过期），
   支持结构化筛选/搜索/排序/翻页——大键空间浏览入口；也可在连接命令控制台用 SCAN 自查
 - 类型分组依据 SCAN 采样（≤500 键，COUNT 提示 200）；更大键空间用 `*` 模式浏览或精确模式

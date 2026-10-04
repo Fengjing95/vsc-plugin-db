@@ -51,6 +51,7 @@ const FIXTURES = {
   list: 'cf:list',
   set: 'cf:set',
   zset: 'cf:zset',
+  stream: 'cf:stream',
 };
 
 const SEEDED_BINARY = Buffer.from([0xff, 0xfe, 0x00, 0x01]);
@@ -94,6 +95,10 @@ async function seed(): Promise<void> {
       { score: 2.5, value: 'two' },
       { score: 3.5, value: 'three' },
     ]);
+    // stream 条目：XADD 顺序即 id 序（同毫秒用递增序号区分）；fields 覆盖多字段与 JSON 值
+    multi.xAdd(FIXTURES.stream, '*', { event: 'created', payload: '{"n":1}' });
+    multi.xAdd(FIXTURES.stream, '*', { event: 'updated', payload: 'plain' });
+    multi.xAdd(FIXTURES.stream, '*', { event: 'deleted', payload: '{"n":3}' });
     await multi.exec();
   } finally {
     await admin.quit();
@@ -328,5 +333,60 @@ describe('redis 连接与错误映射（真实 Redis）', () => {
   it('只读连接约束不在此层（ConnectionManager/E-SQL 路径不适用）——命令白名单在 core 判定', () => {
     // core 侧 redisCommands.test.ts 已覆盖 provablyRead/dangerous；此处防遗漏导入检查
     expect(new DriverError('E_READONLY', 'x').code).toBe('E_READONLY');
+  });
+
+  // ── stream 内容展示（M7 收尾：XRANGE 位置分页，entry/fields 列）──────────
+  it('stream 内容：列虚拟化（entry 主键 + fields json）', async () => {
+    const conn = await makeConn();
+    try {
+      const cols = await conn.listColumns('db0', FIXTURES.stream);
+      expect(cols.map((c) => c.name)).toEqual(['entry', 'fields']);
+      // 内容列 PK 经 ResultSet.primaryKey 表达（与其他类型同口径，ColumnMeta.isPrimaryKey 恒 false）
+      const rs = await conn.fetchRows({ db: 'db0', obj: FIXTURES.stream, limit: 5, offset: 0, timeoutMs: 5000 });
+      expect(rs.primaryKey).toEqual(['entry']);
+      expect(cols[1].normalizedType).toBe('json');
+    } finally {
+      await conn.dispose();
+    }
+  });
+
+  it('stream 内容：XRANGE 顺序分页 + 游标闭环（offset 与 cursor 双路径）', async () => {
+    const conn = await makeConn();
+    try {
+      // offset 路径（webview 现状）：首页 2 条
+      const page1 = await conn.fetchRows({ db: 'db0', obj: FIXTURES.stream, limit: 2, offset: 0, timeoutMs: 5000 });
+      expect(page1.rowCount).toBe(2);
+      expect(page1.nextCursor).toBeTruthy();
+      const fields1 = page1.rows[0][1] as Record<string, unknown>;
+      expect(fields1.event).toBe('created');
+      expect(fields1.payload).toEqual({ n: 1 }); // json 列已解析对象（C-7）
+      // 第二页（offset=2）
+      const page2 = await conn.fetchRows({ db: 'db0', obj: FIXTURES.stream, limit: 2, offset: 2, timeoutMs: 5000 });
+      expect(page2.rowCount).toBe(1);
+      expect((page2.rows[0][1] as Record<string, unknown>).event).toBe('deleted');
+      // cursor 路径（透传预留）：游标推进不重复不遗漏
+      const c1 = await conn.fetchRows({ db: 'db0', obj: FIXTURES.stream, limit: 2, offset: 0, timeoutMs: 5000 });
+      const c2 = await conn.fetchRows({
+        db: 'db0', obj: FIXTURES.stream, limit: 2, offset: 0, timeoutMs: 5000,
+        cursor: c1.nextCursor,
+      });
+      expect(c2.rowCount).toBe(1);
+      expect(c2.nextCursor).toBeUndefined(); // 走完 = 尽头
+      const ids = [...c1.rows.map((r) => String(r[0])), ...c2.rows.map((r) => String(r[0]))];
+      expect(new Set(ids).size).toBe(3);
+    } finally {
+      await conn.dispose();
+    }
+  });
+
+  it('stream 内容：搜索命中 fields 内容', async () => {
+    const conn = await makeConn();
+    try {
+      const rs = await conn.fetchRows({ db: 'db0', obj: FIXTURES.stream, limit: 10, offset: 0, timeoutMs: 5000, search: 'updated' });
+      expect(rs.rowCount).toBe(1);
+      expect((rs.rows[0][1] as Record<string, unknown>).event).toBe('updated');
+    } finally {
+      await conn.dispose();
+    }
   });
 });

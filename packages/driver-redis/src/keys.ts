@@ -161,6 +161,9 @@ export function keyContentColumns(redisType: string): ColumnMeta[] | undefined {
       return [col('member', 'string', 'string', 1)];
     case 'zset':
       return [col('member', 'string', 'string', 1), col('score', 'double', 'float', 2)];
+    case 'stream':
+      // 流条目建模（M7 收尾）：一行 = 一个条目，fields 整体为 json 对象（C-7 已解析对象）
+      return [col('entry', 'stream-entry-id', 'string', 1), col('fields', 'json', 'json', 2)];
     default:
       return undefined;
   }
@@ -176,6 +179,8 @@ export function contentPrimaryKey(redisType: string): string[] | undefined {
       return ['member'];
     case 'list':
       return ['index'];
+    case 'stream':
+      return ['entry'];
     default:
       return undefined;
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  contentPrimaryKey,
   cursorOf,
   decodeCursor,
   encodeRedisValue,
@@ -103,7 +104,9 @@ describe('列元数据虚拟化（驱动规范 §5.3）', () => {
     expect(keyContentColumns('set')!.map((c) => c.name)).toEqual(['member']);
     expect(keyContentColumns('zset')!.map((c) => c.name)).toEqual(['member', 'score']);
     expect(keyContentColumns('string')!.map((c) => c.name)).toEqual(['value']);
-    expect(keyContentColumns('stream')).toBeUndefined();
+    // M7 收尾：stream 内容展示（一行 = 一个条目，fields 为 json 对象列）
+    expect(keyContentColumns('stream')!.map((c) => c.name)).toEqual(['entry', 'fields']);
+    expect(contentPrimaryKey('stream')).toEqual(['entry']);
   });
 
   it('redisTypeOf：TYPE 回复归一（none 表示不存在）', () => {

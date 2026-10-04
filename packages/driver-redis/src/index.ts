@@ -516,9 +516,47 @@ export class RedisConnection implements IConnection {
       if (start + reply.length / 2 < zcard && reply.length > 0) {
         next = { scan: String(start + limit) };
       }
+    } else if (type === 'stream') {
+      // 流内容（M7 收尾）：XRANGE 位置分页——游标 = 最后消费条目 id（独占起始 `(id`）；
+      // 无游标时 offset 翻译为「取回后跳过」（O(offset)，与 SCAN 跳过同口径的已知限制）。
+      // 取 limit+1 探测尽头；行 = [entry, fields(json 对象)]
+      const lastId = req.cursor ? decodeCursorOrThrow(req.cursor).scan : null;
+      const fetchCount = (lastId ? limit : skip + limit) + 1;
+      const start = lastId ? `(${lastId}` : '-';
+      const reply = (await this.raw(req.db, [
+        'XRANGE', req.obj, start, '+', 'COUNT', String(fetchCount),
+      ])) as unknown[];
+      const entries = (reply as Array<[Buffer, Buffer[]]>).map(([id, pairs]) => {
+        const fields: Record<string, unknown> = {};
+        for (let i = 0; i + 1 < pairs.length; i += 2) {
+          fields[utf8(pairs[i])] = encodeRedisValue(pairs[i + 1]);
+        }
+        return [utf8(id), fields] as unknown[];
+      });
+      const window = lastId ? entries.slice(0, limit) : entries.slice(skip, skip + limit);
+      const hasNext = lastId ? entries.length > limit : entries.length > skip + limit;
+      for (const row of window) {
+        await guard();
+        if (!matchRow(row, colNames, req.filters)) {
+          continue;
+        }
+        if (
+          req.search &&
+          !(String(row[0]).includes(req.search) || JSON.stringify(row[1]).includes(req.search))
+        ) {
+          continue;
+        }
+        collected.push(row);
+      }
+      if (hasNext && window.length > 0) {
+        next = { scan: String(window[window.length - 1]![0]) };
+      }
     }
 
-    const page = collected.slice(skip, type === 'string' ? undefined : skip + limit);
+    // stream 的窗口切分已在分支内完成（offset/cursor 双路径），不再走通用 slice
+    const page = collected.slice(
+      ...(type === 'string' || type === 'stream' ? [0, undefined] : [skip, skip + limit]),
+    );
     const outCols = this.project(cols, req.columns);
     const idx = new Map(outCols.map((c) => [c.name, colNames.indexOf(c.name)]));
     return {
