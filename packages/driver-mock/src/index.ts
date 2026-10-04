@@ -904,16 +904,17 @@ export class MockConnection implements IConnection {
   }
 
   /**
-   * 交互式事务会话（M7，概要 §4.6 / D-09）：写语句缓冲、commit 依序落库、rollback 丢弃。
-   * 简化：会话内 SELECT 读基线数据（自身未提交写不可见）；单连接最多 1 会话（重复开启拒绝）。
+   * 交互式事务会话（M7，概要 §4.6 / D-09）：写语句缓冲（含 req.db，回放不丢库）、
+   * commit 依序落库、rollback 丢弃。简化：会话内 SELECT 读基线数据（自身未提交写不可见）；
+   * 单连接最多 1 会话（重复开启拒绝）。
    */
-  private activeSession: { writes: string[] } | null = null;
+  private activeSession: { writes: Array<{ sql: string; db?: string }> } | null = null;
 
   openSession(): Promise<ISession> {
     if (this.activeSession) {
       return Promise.reject(new DriverError('E_VALIDATION', '已有进行中的事务会话（单连接最多 1 个）'));
     }
-    const state = { writes: [] as string[] };
+    const state = { writes: [] as Array<{ sql: string; db?: string }> };
     this.activeSession = state;
     const assertLive = (): void => {
       if (this.activeSession !== state) {
@@ -927,14 +928,14 @@ export class MockConnection implements IConnection {
         if (head === 'SELECT') {
           return this.query(req);
         }
-        state.writes.push(req.sql);
+        state.writes.push({ sql: req.sql, db: req.db });
         return [{ columns: [], rows: [], rowCount: 0, affectedRows: 0, executionMs: 0 }];
       },
       commit: async () => {
         assertLive();
         const pending = [...state.writes];
-        for (const sql of pending) {
-          await this.query({ sql, maxRows: 1, timeoutMs: 15_000 });
+        for (const w of pending) {
+          await this.query({ sql: w.sql, db: w.db, maxRows: 1, timeoutMs: 15_000 });
         }
         state.writes.length = 0;
       },

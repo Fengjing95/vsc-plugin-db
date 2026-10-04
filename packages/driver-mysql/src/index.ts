@@ -98,9 +98,13 @@ export class MysqlConnection implements IConnection {
     return { id: 'mysql', quote: ['`', '`'], formatter: 'mysql', keywords: KEYWORDS };
   }
 
+  /** 连接默认库（池建立时的 database）：Console 绑定库 ≠ 默认库时按 req.db 切库执行 */
+  private readonly defaultDb: string | undefined;
+
   constructor(private readonly cfg: ConnectionConfig, secret: string) {
     const o = cfg.options;
     this.connectionId = cfg.id;
+    this.defaultDb = o.database ? String(o.database) : undefined;
     this.pool = createPool({
       host: String(o.host ?? '127.0.0.1'),
       port: Number(o.port ?? 3306),
@@ -293,7 +297,18 @@ export class MysqlConnection implements IConnection {
   }
 
   async query(req: QueryRequest): Promise<ResultSet[]> {
-    return runQueryOn(this.pool, req);
+    // Console 绑定库（QueryRequest.db，规范 §4）≠ 连接默认库 → 池内专用连接 USE 后执行；
+    // 相同（或未绑定）直接走池，避免每语句多一次 USE 往返
+    if (!req.db || req.db === this.defaultDb) {
+      return runQueryOn(this.pool, req);
+    }
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.query(`USE ${quoteMysqlIdentifier(req.db)}`);
+      return await runQueryOn(conn, req);
+    } finally {
+      conn.release();
+    }
   }
 
   previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
@@ -448,6 +463,8 @@ export class MysqlConnection implements IConnection {
         throw toDriverError(err);
       }
       this.sessionConn = conn;
+      // 会话连接当前选中的库 = 池默认库；req.db 不同则切库（USE 不影响已开启的事务）
+      let appliedDb = this.defaultDb;
       let ended = false;
       const assertLive = (): void => {
         if (ended || this.sessionConn !== conn) {
@@ -467,6 +484,10 @@ export class MysqlConnection implements IConnection {
       const session: ISession = {
         execute: async (req) => {
           assertLive();
+          if (req.db && req.db !== appliedDb) {
+            await conn.query(`USE ${quoteMysqlIdentifier(req.db)}`);
+            appliedDb = req.db;
+          }
           return runQueryOn(conn, req);
         },
         commit: () => end('COMMIT'),
