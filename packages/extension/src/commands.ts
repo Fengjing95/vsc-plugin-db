@@ -340,16 +340,35 @@ export function registerCommands(
       }
     }),
 
-    vscode.commands.registerCommand('dbExplorer.truncateTable', async (node?: DbTreeNode) => {
+    // 列操作（M8-B2 交互稿 §12 修订）：新增/编辑列复用表结构编辑器（focus 到指定列）；删除列确认后直删
+    vscode.commands.registerCommand('dbExplorer.addColumn', (node?: DbTreeNode) => {
       const { connId, db, obj } = node?.payload ?? {};
       if (!connId || !db || !obj) {
+        void vscode.window.showInformationMessage('请先在具体表上新增列。');
+        return;
+      }
+      // 表目录（obj 为表）或列节点（payload 同时带 obj 与 column）均可：都追加空列
+      openTableDesignPanel(context, services, { connId, db, obj, appendColumn: true });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.editColumn', (node?: DbTreeNode) => {
+      const { connId, db, obj, column } = node?.payload ?? {};
+      if (!connId || !db || !obj || !column) {
+        return;
+      }
+      openTableDesignPanel(context, services, { connId, db, obj, focusColumn: column });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.dropColumn', async (node?: DbTreeNode) => {
+      const { connId, db, obj, column } = node?.payload ?? {};
+      if (!connId || !db || !obj || !column) {
         return;
       }
       try {
-        await services.ddl.truncateTable(connId, db, obj);
+        await services.ddl.dropColumn(connId, db, obj, column);
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `清空表失败：${err instanceof Error ? err.message : String(err)}`,
+          `删除列失败：${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }),

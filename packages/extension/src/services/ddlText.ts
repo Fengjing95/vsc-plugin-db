@@ -5,16 +5,12 @@ import type { IConnection } from '@db-explorer/core';
  * vscode 胶水在 ddlService.ts，此处只放可独立测试的判定/格式化。
  */
 
-/** §6 确认规则（纯函数）：输入与表名完全匹配（trim 后）才放行；undefined = 用户取消 */
-export function confirmTreeDdlInput(
-  action: '删除表' | '清空表',
-  obj: string,
-  input: string | undefined,
-): boolean {
+/** §6 确认规则（纯函数）：输入与名称完全匹配（trim 后）才放行；undefined = 用户取消 */
+export function confirmNameMatch(name: string, input: string | undefined): boolean {
   if (input === undefined) {
     return false;
   }
-  return input.trim() === obj;
+  return input.trim() === name;
 }
 
 /** 标识符引用：驱动 quoteIdentifier 优先，dialect.quote 兜底（驱动规范 §3） */

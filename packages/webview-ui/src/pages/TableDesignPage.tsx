@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Button } from '../components/ui/button';
 import { highlightSql } from '../lib/sqlHighlight';
 import { destructiveCount } from '../lib/tableDesign';
@@ -38,10 +38,27 @@ export function TableDesignPage() {
   const diffText = useTableDesignStore((s) => s.diffText);
   const canExecute = useTableDesignStore((s) => s.canExecute);
   const validationError = useTableDesignStore((s) => s.validationError);
+  const focusRowId = useTableDesignStore((s) => s.focusRowId);
+  const clearFocus = useTableDesignStore((s) => s.clearFocus);
+  const nameInputRefs = useRef(new Map<string, HTMLInputElement>());
 
   useEffect(() => {
     void useTableDesignStore.getState().bootstrap();
   }, []);
+
+  // §12 修订：编辑列/新增列入口打开时聚焦到指定列的列名输入框（滚动可见），聚焦后清除状态
+  useEffect(() => {
+    if (!focusRowId) {
+      return;
+    }
+    const input = nameInputRefs.current.get(focusRowId);
+    if (input) {
+      input.scrollIntoView({ block: 'center' });
+      input.focus();
+      input.select();
+      clearFocus();
+    }
+  }, [focusRowId, rows, clearFocus]);
 
   if (phase === 'loading') {
     return <div className="flex h-screen items-center justify-center text-muted-foreground">加载中…</div>;
@@ -109,11 +126,19 @@ export function TableDesignPage() {
                 return (
                   <tr
                     key={r.rowId}
+                    data-row={r.rowId}
                     className={`border-t border-border ${r.deleted ? 'bg-destructive/10 opacity-60' : ''}`}
                   >
                     <td className="px-2 py-1 text-muted-foreground">{i + 1}</td>
                     <td className="px-2 py-1">
                       <input
+                        ref={(el) => {
+                          if (el) {
+                            nameInputRefs.current.set(r.rowId, el);
+                          } else {
+                            nameInputRefs.current.delete(r.rowId);
+                          }
+                        }}
                         aria-label={`列名 ${i + 1}`}
                         className={`h-6 w-full rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-transparent'}`}
                         value={r.col.name}

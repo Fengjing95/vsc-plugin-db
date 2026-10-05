@@ -21,7 +21,7 @@ const panels = new Map<string, vscode.WebviewPanel>();
 export function openTableDesignPanel(
   context: vscode.ExtensionContext,
   deps: TableDesignPanelDeps,
-  target: { connId: string; db: string; obj?: string },
+  target: { connId: string; db: string; obj?: string; focusColumn?: string; appendColumn?: boolean },
 ): void {
   const viewId = `tableDesign:${target.connId}/${target.db}/${target.obj ?? ':new'}`;
   const existing = panels.get(viewId);
@@ -56,6 +56,8 @@ export function openTableDesignPanel(
       connId: target.connId,
       db: target.db,
       obj: target.obj ?? '',
+      focusColumn: target.focusColumn ?? '',
+      appendColumn: target.appendColumn ? 'true' : '',
     },
   });
 

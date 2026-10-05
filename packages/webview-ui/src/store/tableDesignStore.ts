@@ -48,6 +48,8 @@ interface TableDesignState {
 
   dirty: boolean;
   executing: boolean;
+  /** 初始聚焦的列行（§12 修订：编辑列 focus 到指定列 / 新增列 focus 到新空行），聚焦后清空 */
+  focusRowId: string | null;
   /** 预览面板：语句集 + destructive 红条 */
   preview: { statements: DdlStatementPayload[] } | null;
   /** 执行失败定位（交互稿 §12.2：失败不关面板，明示中间态） */
@@ -55,6 +57,7 @@ interface TableDesignState {
   toast: { kind: 'info' | 'error'; text: string } | null;
 
   bootstrap(): Promise<void>;
+  clearFocus(): void;
   setTableName(name: string): void;
   setTableComment(comment: string): void;
   editColumn(rowId: string, patch: Partial<ColumnSpecPayload>): void;
@@ -87,6 +90,7 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
 
   dirty: false,
   executing: false,
+  focusRowId: null,
   preview: null,
   executeError: null,
   toast: null,
@@ -96,6 +100,8 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
     const connId = boot?.params.connId ?? '';
     const db = boot?.params.db ?? '';
     const obj = boot?.params.obj || undefined;
+    const appendColumn = boot?.params.appendColumn === 'true';
+    const focusColumn = boot?.params.focusColumn || undefined;
     set({ connId, db, obj, kind: obj ? 'alter' : 'create', readOnly: boot?.params.readOnly === 'true' });
     try {
       const raw = await request<unknown>(RpcMethods.ddlLoad, { connId, db, obj }, 30_000);
@@ -106,12 +112,23 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
       }
       if (parsed.data.kind === 'alter' && parsed.data.spec) {
         const spec = parsed.data.spec;
+        const rows = spec.columns.map((c) => newRow({ ...c }));
+        // §12 修订：编辑列 focus 到指定列；新增列追加空行并 focus（找不到目标列则不聚焦）
+        let focusRowId: string | null = null;
+        if (appendColumn) {
+          const fresh = emptyColumn(nextOrdinal(rows));
+          rows.push(fresh);
+          focusRowId = fresh.rowId;
+        } else if (focusColumn) {
+          focusRowId = rows.find((r) => r.col.name === focusColumn)?.rowId ?? null;
+        }
         set({
           phase: 'ready',
           baseline: spec,
           tableName: spec.name,
           tableComment: spec.comment ?? '',
-          rows: spec.columns.map((c) => newRow({ ...c })),
+          rows,
+          focusRowId,
         });
       } else {
         set({ phase: 'ready', rows: [emptyColumn(1)] });
@@ -119,6 +136,10 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
     } catch (err) {
       set({ phase: 'error', errorMsg: err instanceof Error ? err.message : String(err) });
     }
+  },
+
+  clearFocus() {
+    set({ focusRowId: null });
   },
 
   setTableName(name) {

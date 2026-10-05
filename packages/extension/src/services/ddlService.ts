@@ -17,7 +17,7 @@ import {
   type DdlPreviewResult,
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
-import { confirmTreeDdlInput, quoteWith } from './ddlText';
+import { confirmNameMatch, quoteWith } from './ddlText';
 
 /**
  * 表结构编辑服务（M8-B2，概要 §5.9 / 交互稿 §12）：
@@ -113,21 +113,52 @@ export class DdlService {
 
   /** 树操作：删除表（交互稿 §12 入口；§6 输入名称匹配确认） */
   async dropTable(connId: string, db: string, obj: string): Promise<boolean> {
-    return this.runTreeDdl(connId, db, obj, '删除表', (q) => `DROP TABLE ${q(db)}.${q(obj)}`, true);
+    return this.runTreeDdl(connId, db, obj, '删除表', (q) => `DROP TABLE ${q(db)}.${q(obj)}`);
   }
 
   /** 树操作：清空表 */
-  async truncateTable(connId: string, db: string, obj: string): Promise<boolean> {
-    return this.runTreeDdl(connId, db, obj, '清空表', (q) => `TRUNCATE TABLE ${q(db)}.${q(obj)}`, false);
+  /** 树操作：删除列（交互稿 §12 修订：确认后直删，不经过表结构编辑器；
+   *  语句经驱动 buildAlterTable 同源 diff 生成——自动处理删主键列需先 DROP PRIMARY KEY 的顺序） */
+  async dropColumn(connId: string, db: string, obj: string, column: string): Promise<boolean> {
+    const cfg = this.deps.connections.getConfig(connId);
+    if (!cfg) {
+      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+    }
+    if (cfg.readOnly) {
+      throw new DriverError('E_READONLY', '只读连接，写操作被拒绝');
+    }
+    const conn = await this.requireDdlConnection(connId);
+    const current = specFromColumns(obj, await conn.listColumns(db, obj));
+    if (!current.columns.some((c) => c.name === column)) {
+      throw new DriverError('E_NOT_FOUND', `列 "${column}" 不存在（表结构可能已变更，请刷新后重试）`);
+    }
+    const target: TableSpec = {
+      ...current,
+      columns: current.columns.filter((c) => c.name !== column),
+    };
+    const statements = await conn.buildAlterTable!(db, obj, target, current);
+    if (statements.length === 0) {
+      return false; // 无可执行语句（防御性：上方已确认列存在）
+    }
+    if (!confirmNameMatch(column, await this.promptText('删除列', column))) {
+      return false;
+    }
+    this.deps.output.appendLine(`[ddl] ${connId}/${db}.${obj} 删除列 ${column}（${statements.length} 条语句）`);
+    for (const s of statements) {
+      await this.host.query(conn, { sql: s.sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
+    }
+    this.deps.cache.invalidateDb(connId, db);
+    this.deps.refreshTree();
+    void vscode.window.showInformationMessage(`列 "${column}" 已删除`);
+    return true;
   }
 
   private async runTreeDdl(
     connId: string,
     db: string,
     obj: string,
-    action: '删除表' | '清空表',
+    action: '删除表',
     buildSql: (quote: (n: string) => string) => string,
-    destructive: boolean,
   ): Promise<boolean> {
     const cfg = this.deps.connections.getConfig(connId);
     if (!cfg) {
@@ -136,7 +167,7 @@ export class DdlService {
     if (cfg.readOnly) {
       throw new DriverError('E_READONLY', '只读连接，写操作被拒绝');
     }
-    if (!confirmTreeDdlInput(action, obj, await this.promptText(action, obj))) {
+    if (!confirmNameMatch(obj, await this.promptText(action, obj))) {
       return false;
     }
     const conn = await this.deps.connections.ensureConnected(connId);
@@ -145,16 +176,16 @@ export class DdlService {
     await this.host.query(conn, { sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
     this.deps.cache.invalidateDb(connId, db);
     this.deps.refreshTree();
-    void (destructive ? vscode.window.showInformationMessage(`表 "${obj}" 已删除`) : vscode.window.showInformationMessage(`表 "${obj}" 已清空`));
+    void vscode.window.showInformationMessage(`表 "${obj}" 已删除`);
     return true;
-  }  // ── 确认流（§6 / 交互稿 §12.2）────────────────────────────
+  } // ── 确认流（§6 / 交互稿 §12.2）────────────────────────────
 
   /** 树直操作确认文案（§6）：输入名称完全匹配才放行 */
-  private async promptText(action: '删除表' | '清空表', obj: string): Promise<string | undefined> {
+  private async promptText(action: '删除表' | '删除列', name: string): Promise<string | undefined> {
     return vscode.window.showInputBox({
       title: `${action}确认`,
-      prompt: `即将${action === '删除表' ? '删除表及其全部数据' : '清空表内全部数据'}："${obj}"。此操作不可撤销，请输入表名以确认`,
-      placeHolder: obj,
+      prompt: `即将${action === '删除表' ? '删除表及其全部数据' : '删除该列及其数据'}："${name}"。此操作不可撤销，请输入${action === '删除表' ? '表名' : '列名'}以确认`,
+      placeHolder: name,
       ignoreFocusOut: true,
     });
   }

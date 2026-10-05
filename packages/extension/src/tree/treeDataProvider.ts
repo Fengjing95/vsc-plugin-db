@@ -312,7 +312,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           .filter(Boolean)
           .join(' '),
         collapsibleState: None,
-        contextValue: 'column',
+        // M8-B2：支持表结构编辑的驱动追加 ddl 令牌（编辑列/新增列/删除列入口显隐）
+        contextValue: this.ddlCapable(connId) ? 'column ddl' : 'column',
         iconId: 'symbol-field',
         payload: { connId, db, obj, column: c.name },
       }));
@@ -373,8 +374,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
       label,
       description: count,
       collapsibleState: Collapsed,
-      // M8-B2：表目录在支持表结构编辑的驱动上追加 ddl 令牌（新建表入口显隐）
-      contextValue: kind === 'table' && this.ddlCapable(parent.payload.connId!) ? `folder-${kind} ddl` : `folder-${kind}`,
+      // M8-B2：表/列目录在支持表结构编辑的驱动上追加 ddl 令牌（新建表/新增列入口显隐）
+      contextValue:
+        (kind === 'table' || kind === 'columns') && this.ddlCapable(parent.payload.connId!)
+          ? `folder-${kind} ddl`
+          : `folder-${kind}`,
       iconId,
       payload: { ...parent.payload, kind, ...(group !== undefined ? { group } : {}) },
     };
