@@ -76,7 +76,7 @@
 - **P-35 exceljs 接入要点**（M7/D-14）→ ① `Row.values` 类型是 `CellValue[] | { [key]: CellValue }` 联合，读回侧先 `Array.isArray` 收窄；且它是**稀疏数组**（空单元格为洞），`Array.prototype.map` 跳过洞——补齐用 `Array.from`。② 流式写用 `stream.xlsx.WorkbookWriter`（逐行 commit 落盘，大导出内存有界），与 ResultExporter 的批量生成器对接。③ esbuild 必须标 `exceljs` external（体积大 + 动态 require，打包无收益且易碎），运行时从 node_modules 加载。
 - **P-36 池化连接 + `USE` 语句 = 随机改写单个物理连接**（M7 踩）→ 连接池上执行 `USE db` 只影响当次抢到的那个连接，后续语句大概率拿到别的连接——**Console 里的 USE 语句不能下发驱动**。→ consoleService 拦截 `USE` 语句解析目标库、更新 Console 绑定（`state.db`），配合 mysql `query()` 按 `req.db` 切库（池内专用连接 USE 后执行）。同族坑：连接「默认库」留空时树节点新建的 Console 以 `db=null` 绑定（状态栏只显示连接名，用户误以为绑定了库）——执行前经 `pickDatabaseForConsole` 兜底选择。排查 No database selected 先看 dist 是否含修复（esbuild 非 ASCII 转义成 `\uXXXX`，中文 grep 会假阴性，用符号名 grep）。
 - **P-37 带按钮的通知 Toast 会卡住 `finally` 里的终态清理**（M8 踩，F5 实机反馈）→ `showInformationMessage(msg, action)` 返回的 Promise **await 到用户点击/关闭为止**；后台任务若把「关进度通知」放进 `finally` 而前面 await 了回执 Toast，进度通知就驻留到 Toast 被处理——用户看到「成功提示弹出后原进度通知一直在」。→ 终态清理（关 withProgress / 出任务表）必须在任何 `await showMessage` **之前**完成，`finally` 只作幂等兜底（exportTasks.executeDetached）。
-- **P-38 React 组件 prop 与 store 状态同名遮蔽**（M8 踩，F5 实机反馈）→ ConsolePage 的 prop `consoleId`（URL 引导参数，恒空串）与 store 的 `consoleId` 同名——组件内新代码写 `c.consoleId === consoleId` 引用的是 **prop** 而非 store 订阅，会话 Tab 选中高亮永不显示，点击除内容外零视觉反馈，实机观感即「点了没反应」。→ 同名场景一律给 store 订阅起独立名（`storeConsoleId`）；回看手段：stub 验证要断言 `aria-selected` 迁移而非只看内容切换（DOM 快照的 `[active]` 标记是焦点不是选中态）。
+- **P-38 React 组件 prop 与 store 状态同名遮蔽**（M8 踩）→ ConsolePage 的 prop `consoleId`（URL 引导参数，恒空串）与 store 的 `consoleId` 同名——组件内新代码写 `c.consoleId === consoleId` 引用的是 **prop** 而非 store 订阅，选中态永不显示且无任何报错（会话 Tab 高亮因此实机失效，该功能后整批撤回，但教训通用）。→ 同名场景一律给 store 订阅起独立名（如 `storeConsoleId`）；stub 验证选中态必须断言 `aria-selected` 迁移——DOM 快照的 `[active]` 标记是焦点不是选中态，只看内容切换会漏掉这类缺陷。
 
 ### 可视化验证（脱离 VSCode 宿主）
 - **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
@@ -117,7 +117,7 @@
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
 | Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（P1-1 隔离） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
-| Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行/会话 Tab 标签徽标纯函数）+ `store/consoleStore.ts`（M8 会话 Tab：consoles 列表 + switchConsole）；Host 侧会话列表推导 `packages/extension/src/services/consoleTabs.ts`（纯函数有单测） |
+| Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts`（单例视图跟随最近执行的 Console；多会话 Tab 方案 M8 试作后撤回，见概要 v0.2.3） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |
 | Redis 契约测试 | `packages/driver-redis/src/redis.conformance.test.ts`（需本地 Redis，环境见 P-28；D-05 评估 `D05_EVAL=1` 跑 `d05.eval.test.ts`） |
 | Redis SSL/TLS 契约 | `packages/driver-redis/src/ssl.test.ts`（schema 断言常驻；TLS 集成探测 6392，环境见 P-28/P-30） |
@@ -130,6 +130,6 @@
 | 导出任务引擎（M8 后台化 #16） | `packages/extension/src/services/exportTasks.ts`（纯层：调度即回执/后台流式写/终态回执，有单测）+ `resultExporter.ts`（vscode 胶水 createResultExporter）；协议 `ExportRunResult={exportId}` + `evt:export.done` |
 | 执行计划树形缩进（D-13） | `webview-ui/src/lib/consoleView.ts`（isExplainResultSet/explainIndentLevels 纯函数）+ ConsoleGrid 首列缩进 |
 | 保存查询 | `packages/extension/src/services/savedQueries.ts`（纯函数）+ `savedQueryActions.ts`（VSCode 交互），落盘 `.vscode/db-queries/*.sql` |
-| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20，**单实例串行**，两实例并行争输出目录互崩，见 pitfalls），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js` / `console-sessions.js`（M8 会话 Tab）、表格导出场景 `scripts/table-export.js`（M8 导出 chip）、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
+| Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20，**单实例串行**，两实例并行争输出目录互崩，见 pitfalls），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`、表格导出场景 `scripts/table-export.js`（M8 导出 chip）、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |

@@ -51,7 +51,6 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         output: deps.output,
         console: {
           getState: (params: unknown) => deps.console.getState(consoleIdOf(params)),
-          list: () => Promise.resolve(deps.console.listConsoles()),
           execute: (params: unknown) => {
             const p = params as { consoleId?: string; sql?: string };
             return deps.console.executeSql(consoleIdOf(p) || '', String(p.sql ?? ''));

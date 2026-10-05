@@ -1,4 +1,4 @@
-import type { ConsoleRun, ConsoleRunItem, ConsoleTabInfo } from '@db-explorer/protocol';
+import type { ConsoleRun, ConsoleRunItem } from '@db-explorer/protocol';
 
 /**
  * Console 结果面板视图推导（交互稿 §7.3）：
@@ -129,19 +129,4 @@ export function explainIndentLevels(rows: unknown[][], columns: string[]): numbe
 /** 缩进级别 → 首列树形前缀（等宽字形；0 级无前缀） */
 export function explainIndentPrefix(level: number): string {
   return level <= 0 ? '' : `${'│ '.repeat(level - 1)}└─ `;
-}
-
-// ── 会话 Tab（M8 #11 多 Tab 结果 & 会话保持，交互稿 §7.3）─────────────────
-
-/** 会话 Tab 标签：`连接名 · 库`（未绑库只显示连接名） */
-export function sessionTabLabel(tab: Pick<ConsoleTabInfo, 'connLabel' | 'db'>): string {
-  return tab.db ? `${tab.connLabel} · ${tab.db}` : tab.connLabel;
-}
-
-/** 会话 Tab 徽标：执行中 ⟳ 优先于事务中 ● 事务（同一 Tab 只显示一个，执行中更紧急） */
-export function sessionTabBadge(tab: Pick<ConsoleTabInfo, 'running' | 'txnActive'>): string {
-  if (tab.running) {
-    return '⟳';
-  }
-  return tab.txnActive ? '● 事务' : '';
 }

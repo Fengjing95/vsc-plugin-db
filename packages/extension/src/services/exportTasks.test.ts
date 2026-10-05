@@ -239,12 +239,10 @@ describe('ExportTaskRunner（M8 导出后台化）', () => {
   it('多任务并发：各自独立取数与终态回执，互不干扰', async () => {
     const g1 = deferred<ResultSet>();
     const g2 = deferred<ResultSet>();
-    let calls = 0;
+    // 按请求参数绑定 gate（不能按调用序：mkdir 是真实线程池 I/O，两任务交错顺序不定）
     const host = {
-      fetchRows: () => {
-        calls++;
-        return calls === 1 ? g1.promise : calls === 2 ? g2.promise : page([]);
-      },
+      fetchRows: (_conn: unknown, req: { obj: string }) =>
+        req.obj === 'orders' ? g2.promise : g1.promise,
     } as unknown as DriverHost;
     const h = makeHarness({ host });
 

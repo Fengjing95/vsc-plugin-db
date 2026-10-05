@@ -6,7 +6,6 @@ import {
   ConsoleCloseParamsSchema,
   ConsoleExecuteParamsSchema,
   ConsoleExportParamsSchema,
-  ConsoleListParamsSchema,
   ConsoleResolveBannerParamsSchema,
   ConsoleStateParamsSchema,
   CopyTextParamsSchema,  EditChangesParamsSchema,
@@ -30,8 +29,6 @@ import type { EditGuard, ViewStateStore } from '../services/editGuard';
 /** M5 Console 面板方法门面（console.*，rpcHost 完成 zod 校验后调用） */
 export interface ConsoleRpcFacade {
   getState(params: unknown): Promise<unknown>;
-  /** M8 #11 会话 Tab：会话列表（console.list） */
-  list(params: unknown): Promise<unknown>;
   execute(params: unknown): Promise<unknown>;
   cancel(params: unknown): Promise<unknown>;
   resolveBanner(params: unknown): Promise<unknown>;
@@ -316,15 +313,6 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           if (deps.console) {
             const p = ConsoleStateParamsSchema.parse(req.params ?? {});
             respond(true, { result: await deps.console.getState(p.consoleId) });
-            return;
-          }
-          break;
-        }
-
-        case RpcMethods.consoleList: {
-          if (deps.console) {
-            ConsoleListParamsSchema.parse(req.params ?? {});
-            respond(true, { result: await deps.console.list(req.params) });
             return;
           }
           break;

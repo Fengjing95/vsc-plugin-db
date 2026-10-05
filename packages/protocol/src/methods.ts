@@ -19,7 +19,6 @@ export const RpcMethods = {
   connTest: 'conn.test',
   connSave: 'conn.save',
   consoleState: 'console.getState',
-  consoleList: 'console.list',
   consoleExecute: 'console.execute',
   consoleCancel: 'console.cancel',
   consoleResolveBanner: 'console.resolveBanner',
@@ -38,7 +37,6 @@ export const RpcEvents = {
   consoleRunning: 'evt:console.running',
   consoleUpdated: 'evt:console.updated',
   consoleActivated: 'evt:console.activated',
-  consoleList: 'evt:console.list',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -579,34 +577,6 @@ export const ConsoleCloseParamsSchema = z.object({
   consoleId: z.string().min(1),
 });
 export type ConsoleCloseParams = z.infer<typeof ConsoleCloseParamsSchema>;
-
-/** 会话 Tab 信息（M8 #11 结果面板会话标签，交互稿 §7.3）：
- *  「会话」= 一个已绑定连接的 Console 文档（连接/库绑定 + 最近一次执行结果 + 经由连接的事务上下文） */
-export const ConsoleTabInfoSchema = z.object({
-  consoleId: z.string().min(1),
-  connLabel: z.string(),
-  db: z.string().nullable(),
-  /** 该会话有执行在进行中（Tab 显示 ⟳） */
-  running: z.boolean(),
-  /** 该会话连接上有交互式事务进行中（Tab 显示 ● 事务，§4.6） */
-  txnActive: z.boolean(),
-  /** 有可展示的最近执行结果 */
-  hasRun: z.boolean(),
-  /** 最近一次执行开始时间（排序/展示用；未执行过为 null） */
-  lastRunAt: z.number().nullable(),
-});
-export type ConsoleTabInfo = z.infer<typeof ConsoleTabInfoSchema>;
-
-/** console.list 结果 / evt:console.list 负载（M8 #11）：
- *  consoles 按会话创建顺序稳定排列；activeConsoleId = 面板当前跟随的会话（空 = 无） */
-export const ConsoleListResultSchema = z.object({
-  consoles: z.array(ConsoleTabInfoSchema),
-  activeConsoleId: z.string(),
-});
-export type ConsoleListResult = z.infer<typeof ConsoleListResultSchema>;
-
-export const ConsoleListParamsSchema = z.object({}).optional();
-export type ConsoleListParams = z.infer<typeof ConsoleListParamsSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({
