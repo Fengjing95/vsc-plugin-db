@@ -20,6 +20,9 @@ import { ConsoleGrid } from './console/ConsoleGrid';
  * 数据流：console.getState 引导 → evt:console.updated/running/banner 增量推送。
  */
 export function ConsolePage({ consoleId }: { consoleId: string }) {
+  // 注意：prop consoleId 是 URL 引导参数（恒空串，仅用于首帧 bootstrap）；
+  // 会话 Tab 的高亮必须用 store 的 consoleId——prop 同名遮蔽会让选中态永不显示（M8 修复）
+  const storeConsoleId = useConsoleStore((s) => s.consoleId);
   const phase = useConsoleStore((s) => s.phase);
   const errorMsg = useConsoleStore((s) => s.errorMsg);
   const bound = useConsoleStore((s) => s.bound);
@@ -96,7 +99,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         >
           {consoles.map((c) => {
             const badge = sessionTabBadge(c);
-            const active = c.consoleId === consoleId;
+            const active = c.consoleId === storeConsoleId;
             return (
               <button
                 key={c.consoleId}

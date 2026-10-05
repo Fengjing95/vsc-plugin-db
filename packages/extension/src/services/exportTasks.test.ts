@@ -58,6 +58,8 @@ interface Harness {
   progressEvents: ExportProgressEvent[];
   doneEvents: ExportDoneEvent[];
   logs: string[];
+  /** 终态时序（P-37 回归）：progress:close 必须先于 message:* 入列 */
+  timeline: string[];
 }
 
 function makeHarness(opts: { target?: string | null; host?: DriverHost } = {}): Harness {
@@ -70,20 +72,28 @@ function makeHarness(opts: { target?: string | null; host?: DriverHost } = {}): 
     progressEvents: [],
     doneEvents: [],
     logs: [],
+    timeline: [],
   };
   const ui: ExportHostUi = {
     pickTargetFile: async () => (h.target === null ? undefined : h.target),
     showProgress: async (_title, onCancel) => {
-      const handle = { onCancel, closed: false };
-      h.progressHandles.push(handle);
-      return {
+      const handle = {
+        onCancel,
+        closed: false,
+        // close 幂等（终态清理 + finally 兜底会调两次），时序只记首次
         close: () => {
-          handle.closed = true;
+          if (!handle.closed) {
+            handle.closed = true;
+            h.timeline.push('progress:close');
+          }
         },
       };
+      h.progressHandles.push(handle);
+      return { close: () => handle.close() };
     },
     showMessage: async (kind, message, action) => {
       h.messages.push({ kind, message, action });
+      h.timeline.push(`message:${kind}`);
       return action;
     },
     revealFile: (filePath) => h.revealed.push(filePath),
@@ -137,6 +147,8 @@ describe('ExportTaskRunner（M8 导出后台化）', () => {
     expect(h.doneEvents[0].error).toBeUndefined();
     expect(h.messages).toEqual([{ kind: 'info', message: '已导出 1 行 → out.csv', action: '定位文件' }]);
     expect(h.progressHandles[0].closed).toBe(true);
+    // P-37 回归：进度通知必须在成功 Toast 弹出前关闭（带按钮的 Toast 会 await 用户点击）
+    expect(h.timeline).toEqual(['progress:close', 'message:info']);
   });
 
   it('定位文件动作触发 revealFile', async () => {
@@ -207,6 +219,8 @@ describe('ExportTaskRunner（M8 导出后台化）', () => {
     expect(h.doneEvents[0].canceled).toBeUndefined();
     expect(h.messages).toEqual([{ kind: 'error', message: '导出失败：无法连接' }]);
     expect(h.progressHandles[0].closed).toBe(true);
+    // P-37：失败终态同样先关进度再发错误 Toast
+    expect(h.timeline).toEqual(['progress:close', 'message:error']);
   });
 
   it('export.cancel 中止在途任务（终态 canceled）', async () => {

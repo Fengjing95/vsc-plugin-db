@@ -85,7 +85,9 @@ export class ExportTaskRunner {
     return { exportId };
   }
 
-  /** 后台执行体：终态三路（成功/取消/失败）都发 evt:export.done；进度通知终态关闭 */
+  /** 后台执行体：终态三路（成功/取消/失败）都发 evt:export.done；进度通知终态关闭。
+   *  终态清理（关进度/出任务表）必须先于回执 Toast——带按钮的 showInformationMessage
+   *  会 await 到用户点击为止，若把 close 放在 finally 会让进度通知驻留到 Toast 被处理后（P-37）。 */
   private async executeDetached(
     exportId: string,
     p: ExportRunParams,
@@ -97,7 +99,26 @@ export class ExportTaskRunner {
       () => controller.abort(),
     );
     try {
-      const result = await this.streamToFile(exportId, p, target, controller.signal);
+      let result: { filePath: string; rows: number; bytes: number; canceled?: boolean };
+      try {
+        result = await this.streamToFile(exportId, p, target, controller.signal);
+      } catch (err) {
+        this.finishTask(exportId, progress);
+        const e = DriverError.is(err)
+          ? err
+          : new DriverError('E_INTERNAL', err instanceof Error ? err.message : String(err));
+        this.deps.log(`[export] ${exportId} 失败：${e.code} ${e.message}`);
+        this.deps.events.done({
+          exportId,
+          rows: 0,
+          bytes: 0,
+          error: { code: e.code, message: e.message },
+        });
+        void this.deps.ui.showMessage('error', `导出失败：${e.message}`);
+        return;
+      }
+      // 成功/取消终态：先关进度、出任务表，再发回执（完成 Toast 等待用户交互不阻塞任何清理）
+      this.finishTask(exportId, progress);
       this.deps.events.done({
         exportId,
         rows: result.rows,
@@ -117,22 +138,17 @@ export class ExportTaskRunner {
       if (action === '定位文件') {
         this.deps.ui.revealFile(result.filePath);
       }
-    } catch (err) {
-      const e = DriverError.is(err)
-        ? err
-        : new DriverError('E_INTERNAL', err instanceof Error ? err.message : String(err));
-      this.deps.log(`[export] ${exportId} 失败：${e.code} ${e.message}`);
-      this.deps.events.done({
-        exportId,
-        rows: 0,
-        bytes: 0,
-        error: { code: e.code, message: e.message },
-      });
-      void this.deps.ui.showMessage('error', `导出失败：${e.message}`);
     } finally {
+      // 兜底：无论路径如何任务必然出表、进度必然关闭（幂等，正常路径已提前清理）
       this.running.delete(exportId);
       progress.close();
     }
+  }
+
+  /** 终态清理：任务出表 + 关闭进度通知（两者均幂等，可安全重复调用） */
+  private finishTask(exportId: string, progress: { close(): void }): void {
+    this.running.delete(exportId);
+    progress.close();
   }
 
   private async streamToFile(

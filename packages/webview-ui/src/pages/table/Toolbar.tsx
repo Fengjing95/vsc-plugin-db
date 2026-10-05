@@ -196,7 +196,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
       )}
       {editEnabled && counts.total > 0 && (
         <span className="shrink-0 text-[11px] text-warning" title="存在未提交变更">
-          ● 表名有未提交变更
+          ● 有未提交变更
         </span>
       )}
 
