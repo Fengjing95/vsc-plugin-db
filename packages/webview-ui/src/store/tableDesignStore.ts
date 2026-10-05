@@ -228,8 +228,8 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
         });
         return;
       }
-      // 成功：Host 侧已关闭面板 + 缓存失效 + 树刷新；本视图随之销毁，toast 由 Host 呈现
-      set({ executing: false });
+      // 成功：Host 侧已关闭面板 + 缓存失效 + 树刷新；关掉预览 Modal（面板 dispose 失败时不残留）
+      set({ executing: false, preview: null });
     } catch (err) {
       const cancelled = err instanceof Error && err.message.includes('已取消');
       set({
