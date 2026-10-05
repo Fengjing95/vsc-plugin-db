@@ -3,6 +3,7 @@ import { createMockDriver } from '@db-explorer/driver-mock';
 import {
   runChangesetChecks,
   runConnectionChecks,
+  runDdlChecks,
   runFilterPushdownChecks,
   runInteractiveTransactionChecks,
   runMetadataChecks,
@@ -70,4 +71,15 @@ it('conformance: mock 驱动通过 interactive-transaction 组（M7，D-09）', 
   expect(summary.failed).toBe(0);
   // C-3：组必须实跑（mock 已实现交互式事务）而非静默跳过
   expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+});
+
+it('conformance: mock 驱动通过 ddl 组（M8-B2，表结构编辑）', async () => {
+  const summary = await runDdlChecks(mockConnection);
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  // C-3：组必须实跑（mock 声明 supportsDdlEditor）而非静默跳过；
+  // create 一致 / 加列改注释 / 删列 / 主键变更 / 无差异 / 非法标识符 / 清理
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
 });

@@ -24,6 +24,9 @@ export const RpcMethods = {
   consoleResolveBanner: 'console.resolveBanner',
   consoleExport: 'console.export',
   consoleClose: 'console.close',
+  ddlLoad: 'ddl.load',
+  ddlPreview: 'ddl.preview',
+  ddlExecute: 'ddl.execute',
   copyText: 'sys.copyText',
 } as const;
 
@@ -577,6 +580,81 @@ export const ConsoleCloseParamsSchema = z.object({
   consoleId: z.string().min(1),
 });
 export type ConsoleCloseParams = z.infer<typeof ConsoleCloseParamsSchema>;
+
+// ── ddl.*（M8-B2 表结构编辑器，概要设计 §5.9）────────────────────────────
+// 列名/类型合法性由驱动 fail-closed 校验（DDL 不可参数化，驱动规范 §10），前端仅即时提示。
+
+export const ColumnSpecSchema = z.object({
+  name: z.string().min(1).max(128),
+  dataType: z.string().min(1).max(256),
+  nullable: z.boolean(),
+  isPrimaryKey: z.boolean(),
+  autoIncrement: z.boolean().optional(),
+  defaultValue: z.string().max(512).optional(),
+  comment: z.string().max(1024).optional(),
+  ordinal: z.number().int().min(1),
+});
+export type ColumnSpecPayload = z.infer<typeof ColumnSpecSchema>;
+
+export const TableSpecSchema = z.object({
+  name: z.string().min(1).max(128),
+  comment: z.string().max(2048).optional(),
+  columns: z.array(ColumnSpecSchema).max(256),
+});
+export type TableSpecPayload = z.infer<typeof TableSpecSchema>;
+
+export const DdlStatementSchema = z.object({
+  sql: z.string().min(1).max(100_000),
+  /** true = 含可能丢数据的操作（删列/改类型/删主键等）→ 确认分级与红条警示 */
+  destructive: z.boolean().optional(),
+});
+export type DdlStatementPayload = z.infer<typeof DdlStatementSchema>;
+
+export const DdlLoadParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  /** 缺省 = 新建表（create 态，spec 为 null）；提供 = 修改表结构（载入当前结构） */
+  obj: z.string().min(1).optional(),
+});
+export type DdlLoadParams = z.infer<typeof DdlLoadParamsSchema>;
+
+export const DdlLoadResultSchema = z.object({
+  kind: z.enum(['create', 'alter']),
+  /** create 态为 null（编辑器给空白模板）；alter 态为库内当前结构 */
+  spec: TableSpecSchema.nullable(),
+});
+export type DdlLoadResult = z.infer<typeof DdlLoadResultSchema>;
+
+export const DdlPreviewParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1).optional(),
+  spec: TableSpecSchema,
+});
+export type DdlPreviewParams = z.infer<typeof DdlPreviewParamsSchema>;
+
+export const DdlPreviewResultSchema = z.object({
+  kind: z.enum(['create', 'alter']),
+  statements: z.array(DdlStatementSchema).max(512),
+});
+export type DdlPreviewResult = z.infer<typeof DdlPreviewResultSchema>;
+
+/** 执行参数与 preview 同形；Host 侧重新调用同一 builder 生成语句（预览与执行同源，不信任回传 SQL） */
+export const DdlExecuteParamsSchema = DdlPreviewParamsSchema;
+export type DdlExecuteParams = z.infer<typeof DdlExecuteParamsSchema>;
+
+export const DdlExecuteResultSchema = z.object({
+  executed: z.number().int().min(0),
+  /** 失败即停：第 N 条（1-based）语句的结构化错误；已执行语句不回滚（DDL 隐式提交） */
+  failed: z
+    .object({
+      index: z.number().int().min(1),
+      code: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+});
+export type DdlExecuteResult = z.infer<typeof DdlExecuteResultSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({

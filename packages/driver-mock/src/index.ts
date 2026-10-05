@@ -7,6 +7,7 @@ import {
   type CompletionSource,
   type ConnectionConfig,
   type DatabaseMeta,
+  type DdlStatement,
   type DriverCapabilities,
   type FetchRowsRequest,
   type FilterCondition,
@@ -21,10 +22,18 @@ import {
   type QueryRequest,
   type ResultSet,
   type RowKey,
+  type TableSpec,
   type TestResult,
 } from '@db-explorer/core';
 import { compileOrderBy, compileWhere } from './whereEval';
 import { executeMockSelect, parseMockStatement } from './query';
+import {
+  buildMockAlterTable,
+  buildMockCreateTable,
+  executeMockDdlSql,
+  isMockDdlStatement,
+  type MockDdlRegistry,
+} from './ddl';
 
 /**
  * M0 演示驱动：纯内存数据源。
@@ -46,6 +55,7 @@ const capabilities: DriverCapabilities = {
   supportsMultiStatement: false,
   supportsCancel: false,
   supportsDdl: false,
+  supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable + query() 执行 DDL（内存）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
   editable: true,
   pagination: 'offset',
@@ -305,6 +315,57 @@ export function resetMockStore(): void {
   store.clear();
   nextIds.clear();
 }
+
+/** M8-B2 DDL 执行器的注册表句柄：对 tableDefs/store 就地变更（P-18 共享物化存储语义） */
+const mockDdlRegistry: MockDdlRegistry = {
+  databases: () => databases.map((d) => d.name),
+  getTable: (db, obj) => {
+    const def = getDef(db, obj);
+    if (!def) {
+      return undefined;
+    }
+    // columns/primaryKey 必须是活对象引用（执行器就地改标记）
+    return { comment: def.comment, columns: def.columns, primaryKey: def.primaryKey };
+  },
+  createTable: (db, obj, def) => {
+    tableDefs[`${db}.${obj}`] = {
+      kind: 'table',
+      comment: def.comment,
+      columns: def.columns,
+      primaryKey: def.primaryKey,
+      rows: () => [],
+    };
+    store.set(storeKey(db, obj), []);
+  },
+  dropTable: (db, obj) => {
+    delete tableDefs[`${db}.${obj}`];
+    const key = storeKey(db, obj);
+    store.delete(key);
+    nextIds.delete(key);
+  },
+  renameTable: (db, obj, newDb, newObj) => {
+    const def = tableDefs[`${db}.${obj}`];
+    if (!def) {
+      return;
+    }
+    delete tableDefs[`${db}.${obj}`];
+    tableDefs[`${newDb}.${newObj}`] = def;
+    const oldKey = storeKey(db, obj);
+    store.set(storeKey(newDb, newObj), store.get(oldKey) ?? []);
+    store.delete(oldKey);
+    nextIds.delete(oldKey);
+  },
+  appendColumnCells: (db, obj) => {
+    for (const row of materialize(db, obj)) {
+      row.push(null);
+    }
+  },
+  spliceColumnCells: (db, obj, index) => {
+    for (const row of materialize(db, obj)) {
+      row.splice(index, 1);
+    }
+  },
+};
 
 function cellToString(v: unknown): string {
   if (v === null || v === undefined) return '';
@@ -583,6 +644,16 @@ export class MockConnection implements IConnection {
     return Promise.resolve(defOf(db, obj).keys ?? []);
   }
 
+  // ── 表结构编辑（M8-B2，概要 §5.9）：语句生成 + query() 内存执行 ──
+
+  buildCreateTable(db: string, spec: TableSpec): Promise<DdlStatement[]> {
+    return Promise.resolve(buildMockCreateTable(db, spec));
+  }
+
+  buildAlterTable(db: string, obj: string, spec: TableSpec, current: TableSpec): Promise<DdlStatement[]> {
+    return Promise.resolve(buildMockAlterTable(db, obj, spec, current));
+  }
+
   async fetchRows(req: FetchRowsRequest): Promise<ResultSet> {
     const def = defOf(req.db, req.obj);
     const columns = def.columns;
@@ -669,6 +740,19 @@ export class MockConnection implements IConnection {
     }
     if (stmts.length > 1) {
       throw new DriverError('E_VALIDATION', 'mock 驱动不支持一次执行多条语句');
+    }
+    // M8-B2：DDL 走表结构编辑执行链（只认本驱动生成的语句形状）
+    if (isMockDdlStatement(stmts[0].text)) {
+      executeMockDdlSql(mockDdlRegistry, stmts[0].text);
+      return [
+        {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          affectedRows: 0,
+          executionMs: Math.max(Date.now() - started, 1),
+        },
+      ];
     }
     const plan = parseMockStatement(stmts[0].text);
     const db = plan.ref.db ?? req.db;

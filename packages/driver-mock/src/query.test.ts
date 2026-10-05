@@ -128,10 +128,12 @@ describe('mock query：值编码（C-7）', () => {
 });
 
 describe('mock query：契约防护', () => {
-  it('DriverError 形状（code + message）', async () => {
+  it('DriverError 形状（code + message）：未支持语句 E_UNSUPPORTED', async () => {
     resetMockStore();
     try {
-      await makeConn().query(req('DROP TABLE users'));
+      // M8-B2 起限定库的 CREATE/ALTER/DROP TABLE 走 DDL 执行链（ddl 契约组覆盖）；
+      // 其余语句仍 E_UNSUPPORTED（TRUNCATE 不在 DDL 路由白名单）
+      await makeConn().query(req('TRUNCATE TABLE demo.users'));
       expect.unreachable('应抛出 E_UNSUPPORTED');
     } catch (err) {
       expect(DriverError.is(err)).toBe(true);

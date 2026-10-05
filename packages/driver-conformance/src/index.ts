@@ -1,4 +1,15 @@
-import type { ChangeSet, ColumnMeta, FilterCondition, FilterOp, IConnection, NormalizedType, RowKey } from '@db-explorer/core';
+import {
+  DriverError,
+  specFromColumns,
+  type ChangeSet,
+  type ColumnMeta,
+  type FilterCondition,
+  type FilterOp,
+  type IConnection,
+  type NormalizedType,
+  type RowKey,
+  type TableSpec,
+} from '@db-explorer/core';
 
 /**
  * 驱动契约测试套件（概要设计 §12.2）。
@@ -1316,6 +1327,185 @@ export async function runInteractiveTransactionChecks(
         await session.dispose();
         await conn.query({ sql: sql.cleanupSql(key), maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
       }
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+// ───────────────────────── M8-B2：表结构编辑（DDL，概要 §5.9）─────────────────────────
+
+/** 契约 fixture 表名（专用前缀 cf_ddl_，结束统一清理） */
+const DDL_FIXTURE_TABLE = 'cf_ddl_t';
+
+function quoteFor(conn: IConnection, name: string): string {
+  const [open, close] = conn.dialect?.quote ?? ['"', '"'];
+  return `${open}${name}${close}`;
+}
+
+async function execDdlStatements(
+  conn: IConnection,
+  db: string,
+  statements: Array<{ sql: string }>,
+): Promise<void> {
+  for (const s of statements) {
+    await conn.query({ sql: s.sql, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+  }
+}
+
+function assertColumnsMatchSpec(
+  cols: ColumnMeta[],
+  spec: TableSpec,
+  opts: { checkAutoIncrement?: boolean } = {},
+): void {
+  const ordered = [...spec.columns].sort((a, b) => a.ordinal - b.ordinal);
+  assert(
+    cols.map((c) => c.name).join(',') === ordered.map((c) => c.name).join(','),
+    `列名/顺序不一致：实际 [${cols.map((c) => c.name).join(',')}] 期望 [${ordered.map((c) => c.name).join(',')}]`,
+  );
+  for (let i = 0; i < ordered.length; i++) {
+    const actual = cols[i];
+    const expect = ordered[i];
+    assert(actual.ordinal === i + 1, `列 ${actual.name} ordinal 应为 ${i + 1}，实际 ${actual.ordinal}`);
+    assert(actual.nullable === expect.nullable, `列 ${actual.name} nullable 不一致`);
+    assert(actual.isPrimaryKey === expect.isPrimaryKey, `列 ${actual.name} 主键标记不一致`);
+    if (opts.checkAutoIncrement && expect.autoIncrement) {
+      assert(Boolean(actual.autoIncrement), `列 ${actual.name} 应为自增`);
+    }
+  }
+}
+
+/**
+ * ddl 组（@since M8-B2）：探针 = buildCreateTable/buildAlterTable 方法存在性（P-19 同族：
+ * 只按方法存在性判定，未实现 → 整组跳过；实现有缺陷必须红）。语句经 conn.query 逐条执行
+ * （DDL 隐式提交，失败即停语义由 Host 侧负责，此处顺序执行即可）。
+ */
+export async function runDdlChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    if (typeof conn.buildCreateTable !== 'function' || typeof conn.buildAlterTable !== 'function') {
+      await skip(results, 'ddl', '整组跳过', '驱动未实现 buildCreateTable/buildAlterTable（supportsDdlEditor 未声明）');
+      return summarize(results);
+    }
+    const dbs = await conn.listDatabases();
+    assert(dbs.length > 0, 'listDatabases 返回空数组');
+    const db = dbs[0].name;
+    const dropFixture = async (): Promise<void> => {
+      try {
+        await conn.query({
+          sql: `DROP TABLE IF EXISTS ${quoteFor(conn, DDL_FIXTURE_TABLE)}`,
+          db,
+          maxRows: 1,
+          timeoutMs: SAMPLE_TIMEOUT_MS,
+        });
+      } catch {
+        // IF EXISTS 不支持或权限受限时忽略（fixture 清理尽力而为）
+      }
+    };
+
+    await check(results, 'ddl', 'buildCreateTable 执行后 listColumns 与 spec 一致', async () => {
+      await dropFixture();
+      const spec: TableSpec = {
+        name: DDL_FIXTURE_TABLE,
+        comment: '契约 fixture',
+        columns: [
+          { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, autoIncrement: true, ordinal: 1 },
+          { name: 'uname', dataType: 'varchar(64)', nullable: false, isPrimaryKey: false, defaultValue: 'anon', comment: '名称', ordinal: 2 },
+          { name: 'amount', dataType: 'int', nullable: true, isPrimaryKey: false, ordinal: 3 },
+        ],
+      };
+      const statements = await conn.buildCreateTable!(db, spec);
+      assert(statements.length > 0, 'buildCreateTable 返回空语句集');
+      await execDdlStatements(conn, db, statements);
+      const cols = await conn.listColumns(db, DDL_FIXTURE_TABLE);
+      assertColumnsMatchSpec(cols, spec, { checkAutoIncrement: true });
+      const uname = cols.find((c) => c.name === 'uname');
+      assert(
+        uname !== undefined && (uname.defaultValue ?? '').includes('anon'),
+        `默认值应保留 anon，实际 ${String(uname?.defaultValue)}`,
+      );
+    });
+
+    await check(results, 'ddl', 'buildAlterTable 加列/改注释 执行后反映', async () => {
+      const baseline = specFromColumns(DDL_FIXTURE_TABLE, await conn.listColumns(db, DDL_FIXTURE_TABLE));
+      const target: TableSpec = {
+        ...baseline,
+        columns: [
+          ...baseline.columns,
+          { name: 'extra', dataType: 'varchar(32)', nullable: true, isPrimaryKey: false, ordinal: baseline.columns.length + 1 },
+        ],
+      };
+      const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, baseline);
+      assert(statements.length > 0, '存在新增列时应生成非空语句集');
+      await execDdlStatements(conn, db, statements);
+      assertColumnsMatchSpec(await conn.listColumns(db, DDL_FIXTURE_TABLE), target);
+    });
+
+    await check(results, 'ddl', 'buildAlterTable 删列：destructive 标记 + 执行后反映', async () => {
+      const baseline = specFromColumns(DDL_FIXTURE_TABLE, await conn.listColumns(db, DDL_FIXTURE_TABLE));
+      const dropped = baseline.columns.find((c) => c.name === 'extra');
+      assert(dropped !== undefined, '前置失败：extra 列不存在');
+      const target: TableSpec = {
+        ...baseline,
+        columns: baseline.columns.filter((c) => c.name !== 'extra'),
+      };
+      const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, baseline);
+      assert(
+        statements.some((s) => s.destructive === true),
+        '删列语句必须标 destructive（驱动规范 §3）',
+      );
+      await execDdlStatements(conn, db, statements);
+      assertColumnsMatchSpec(await conn.listColumns(db, DDL_FIXTURE_TABLE), target);
+    });
+
+    await check(results, 'ddl', 'buildAlterTable 主键变更：destructive + 执行后反映', async () => {
+      const baseline = specFromColumns(DDL_FIXTURE_TABLE, await conn.listColumns(db, DDL_FIXTURE_TABLE));
+      const target: TableSpec = {
+        ...baseline,
+        columns: baseline.columns.map((c) =>
+          c.name === 'uname' ? { ...c, nullable: false, isPrimaryKey: true } : c,
+        ),
+      };
+      const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, baseline);
+      assert(statements.length > 0, '主键变更应生成非空语句集');
+      assert(
+        statements.some((s) => s.destructive === true),
+        '主键变更语句必须标 destructive',
+      );
+      await execDdlStatements(conn, db, statements);
+      assertColumnsMatchSpec(await conn.listColumns(db, DDL_FIXTURE_TABLE), target);
+    });
+
+    await check(results, 'ddl', 'buildAlterTable 无结构差异返回空数组', async () => {
+      const baseline = specFromColumns(DDL_FIXTURE_TABLE, await conn.listColumns(db, DDL_FIXTURE_TABLE));
+      const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, baseline, baseline);
+      assert(statements.length === 0, `无差异应返回空数组，实际 ${statements.length} 条`);
+    });
+
+    await check(results, 'ddl', '非法标识符 fail-closed（E_VALIDATION）', async () => {
+      const bad = async (name: string): Promise<void> => {
+        try {
+          await conn.buildCreateTable!(db, {
+            name,
+            columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+          });
+        } catch (err) {
+          assert(
+            DriverError.is(err) && err.code === 'E_VALIDATION',
+            `非法标识符应抛 E_VALIDATION，实际 ${String(err)}`,
+          );
+          return;
+        }
+        assert(false, `非法标识符 "${name}" 未被拒绝`);
+      };
+      await bad('cf_ddl_x; DROP TABLE t');
+      await bad('cf`_ddl');
+    });
+
+    await check(results, 'ddl', 'fixture 清理', async () => {
+      await dropFixture();
     });
   } finally {
     await conn.dispose();

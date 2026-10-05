@@ -12,3 +12,4 @@ export * from './services/sqlDanger';
 export * from './services/sqlFormat';
 export * from './services/redisCommands';
 export * from './services/completionContext';
+export * from './services/tableSpec';

@@ -7,6 +7,7 @@ import {
   type CompletionSource,
   type ConnectionConfig,
   type DatabaseMeta,
+  type DdlStatement,
   type DriverCapabilities,
   type DialectInfo,
   type FetchRowsRequest,
@@ -22,9 +23,11 @@ import {
   type QueryRequest,
   type ResultSet,
   type RowKey,
+  type TableSpec,
   type TestResult,
 } from '@db-explorer/core';
 import { buildChangeStatements } from './changes';
+import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
 import { buildSelect, encodeValue, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
 
 /**
@@ -42,6 +45,7 @@ const capabilities: DriverCapabilities = {
   supportsMultiStatement: false, // 收紧注入面；Console 按单语句执行
   supportsCancel: false, // mysql2 无法可靠中止已下发语句，契约如实声明
   supportsDdl: true,
+  supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -426,6 +430,16 @@ export class MysqlConnection implements IConnection {
     } catch (err) {
       throw toDriverError(err);
     }
+  }
+
+  // ── 表结构编辑（M8-B2，概要 §5.9）：语句生成（执行走 query()，Host 同源调用）──
+
+  buildCreateTable(db: string, spec: TableSpec): Promise<DdlStatement[]> {
+    return Promise.resolve(buildCreateTableStatements(db, spec));
+  }
+
+  buildAlterTable(db: string, obj: string, spec: TableSpec, current: TableSpec): Promise<DdlStatement[]> {
+    return Promise.resolve(buildAlterTableStatements(db, obj, spec, current));
   }
 
   dispose(): void | Promise<void> {

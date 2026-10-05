@@ -11,11 +11,14 @@ import type {
 } from '../model/rows';
 import type {
   ColumnMeta,
+  ColumnSpec,
   DatabaseMeta,
+  DdlStatement,
   IndexMeta,
   KeyMeta,
   NormalizedType,
   ObjectMeta,
+  TableSpec,
 } from '../model/meta';
 import type { DriverError } from './errors';
 
@@ -40,6 +43,8 @@ export interface DriverCapabilities {
   /** 真正响应 AbortSignal（契约测试强制） */
   supportsCancel: boolean;
   supportsDdl: boolean;
+  /** @since M8-B2：表结构编辑器（概要 §5.9）——true 时必须实现 buildCreateTable/buildAlterTable */
+  supportsDdlEditor?: boolean;
   hierarchy: NodeLevel[];
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';
@@ -127,6 +132,12 @@ export interface IConnection extends Disposable {
   fetchCell?(db: string, obj: string, rowKey: RowKey, column: string): Promise<string>;
   /** DDL 生成（capabilities.supportsDdl = true 时实现，@since apiVersion 1） */
   getDdl?(db: string, obj: string): Promise<string>;
+  /** @since M8-B2 表结构编辑器（概要 §5.9；capabilities.supportsDdlEditor = true 时实现）。
+   *  语句为方言原文（DDL 不可参数化，驱动规范 §10）；可能丢数据的语句标 destructive */
+  buildCreateTable?(db: string, spec: TableSpec): Promise<DdlStatement[]>;
+  /** @since M8-B2：驱动自行 diff spec（目标）与 current（Host 实时派生的库内当前结构）；
+   *  obj 为目标表现名（重命名时为旧名）；无结构差异返回空数组 */
+  buildAlterTable?(db: string, obj: string, spec: TableSpec, current: TableSpec): Promise<DdlStatement[]>;
   openSession?(): Promise<ISession>;
   getCompletionSource(db?: string): Promise<CompletionSource>;
   quoteIdentifier?(name: string): string;
