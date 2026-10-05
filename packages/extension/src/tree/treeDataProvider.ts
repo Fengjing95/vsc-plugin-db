@@ -179,7 +179,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           label: db.name,
           description: db.comment,
           collapsibleState: Collapsed,
-          contextValue: 'database',
+          // M8-B2：支持表结构编辑的驱动追加 ddl 令牌（package.json when 控制新建表入口显隐）
+          contextValue: this.ddlCapable(connId) ? 'database ddl' : 'database',
           iconId: 'server',
           payload: { connId, db: db.name },
         }));
@@ -273,7 +274,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           // 行估算不再上树（M4 评审反馈，交互稿 §8.1 v0.1.2）；注释可得时展示
           description: o.comment,
           collapsibleState: kind === 'table' ? Collapsed : None,
-          contextValue: kind,
+          // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）
+          contextValue: kind === 'table' && this.ddlCapable(connId) ? `${kind} ddl` : kind,
           iconId: kind === 'table' ? 'table' : 'eye',
           // rowEstimate 仍随 payload 供表格分页栏“约 N 行”（交互稿 §4.7）
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
@@ -371,10 +373,16 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
       label,
       description: count,
       collapsibleState: Collapsed,
-      contextValue: `folder-${kind}`,
+      // M8-B2：表目录在支持表结构编辑的驱动上追加 ddl 令牌（新建表入口显隐）
+      contextValue: kind === 'table' && this.ddlCapable(parent.payload.connId!) ? `folder-${kind} ddl` : `folder-${kind}`,
       iconId,
       payload: { ...parent.payload, kind, ...(group !== undefined ? { group } : {}) },
     };
+  }
+
+  /** 驱动是否支持表结构编辑（概要 §5.9 supportsDdlEditor）；驱动未注册时保守为不支持 */
+  private ddlCapable(connId: string): boolean {
+    return this.connections.getDriver(connId)?.capabilities.supportsDdlEditor === true;
   }
 }
 

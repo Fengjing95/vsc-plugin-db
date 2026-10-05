@@ -95,6 +95,28 @@
         "category": "数据库"
       },
       {
+        "command": "dbExplorer.createTable",
+        "title": "新建表",
+        "category": "数据库",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dbExplorer.alterTable",
+        "title": "修改表结构",
+        "category": "数据库",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "dbExplorer.dropTable",
+        "title": "删除表",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.truncateTable",
+        "title": "清空表",
+        "category": "数据库"
+      },
+      {
         "command": "dbExplorer.generateCode",
         "title": "由表结构生成代码",
         "category": "数据库"
@@ -192,22 +214,22 @@
       "view/item/context": [
         {
           "command": "dbExplorer.openTable",
-          "when": "viewItem == table || viewItem == view || viewItem == collection",
+          "when": "viewItem =~ /^(table|view|collection)( ddl)?$/",
           "group": "inline@1"
         },
         {
           "command": "dbExplorer.openTable",
-          "when": "viewItem == table || viewItem == view || viewItem == collection",
+          "when": "viewItem =~ /^(table|view|collection)( ddl)?$/",
           "group": "1_open@0"
         },
         {
           "command": "dbExplorer.newQuery",
-          "when": "viewItem =~ /^connection connected/ || viewItem == database",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
           "group": "2_object@0"
         },
         {
           "command": "dbExplorer.newQuery",
-          "when": "viewItem =~ /^connection connected/ || viewItem == database",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
           "group": "inline@0"
         },
         {
@@ -232,27 +254,47 @@
         },
         {
           "command": "dbExplorer.refreshNode",
-          "when": "viewItem =~ /^connection connected/ || viewItem == database",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
           "group": "navigation@1"
         },
         {
           "command": "dbExplorer.viewDdl",
-          "when": "viewItem == table || viewItem == view",
+          "when": "viewItem =~ /^(table|view)( ddl)?$/",
           "group": "2_object@1"
         },
         {
+          "command": "dbExplorer.alterTable",
+          "when": "viewItem == table ddl",
+          "group": "2_object@5"
+        },
+        {
+          "command": "dbExplorer.dropTable",
+          "when": "viewItem == table ddl",
+          "group": "7_danger@0"
+        },
+        {
+          "command": "dbExplorer.truncateTable",
+          "when": "viewItem == table ddl",
+          "group": "7_danger@1"
+        },
+        {
+          "command": "dbExplorer.createTable",
+          "when": "viewItem == database ddl || viewItem == folder-table ddl",
+          "group": "2_object@5"
+        },
+        {
           "command": "dbExplorer.generateCode",
-          "when": "viewItem == table || viewItem == view",
+          "when": "viewItem =~ /^(table|view)( ddl)?$/",
           "group": "2_object@4"
         },
         {
           "command": "dbExplorer.copyName",
-          "when": "viewItem == table || viewItem == view || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
+          "when": "viewItem =~ /^(table|view)( ddl)?$/ || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
           "group": "2_object@2"
         },
         {
           "command": "dbExplorer.generateSelect",
-          "when": "viewItem == table || viewItem == view",
+          "when": "viewItem =~ /^(table|view)( ddl)?$/",
           "group": "2_object@3"
         },
         {

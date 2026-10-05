@@ -11,7 +11,6 @@ import type {
 } from '../model/rows';
 import type {
   ColumnMeta,
-  ColumnSpec,
   DatabaseMeta,
   DdlStatement,
   IndexMeta,

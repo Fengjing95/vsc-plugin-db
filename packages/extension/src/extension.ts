@@ -8,6 +8,7 @@ import { ConnectionManager } from './services/connectionManager';
 import { ConnectionStore } from './services/connectionStore';
 import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
+import { DdlService } from './services/ddlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
@@ -66,6 +67,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     () => tree.refresh(),
   );
+  // M8-B2 表结构编辑（概要 §5.9）：编辑器 RPC + 删表/清空表树操作；成功后缓存失效联动树刷新
+  const ddlService = new DdlService({
+    connections,
+    cache,
+    output,
+    refreshTree: () => tree.refresh(),
+    timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
+  });
 
   await store.ensureSeed(MOCK_CONNECTION);
 
@@ -96,6 +105,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         console: consoleService,
         history,
         sshFingerprints,
+        ddl: ddlService,
       },
       tree,
     ),

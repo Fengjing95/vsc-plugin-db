@@ -24,6 +24,7 @@ export function escapeDdlLiteral(value: string): string {
   if (/^-?\d+(\.\d+)?$/.test(value) || /^CURRENT_TIMESTAMP$/i.test(value.trim())) {
     return value.trim();
   }
+  // eslint-disable-next-line no-control-regex -- 刻意拒绝控制字符（驱动规范 §10 fail-closed）
   if (/[\r\n\x00]/.test(value)) {
     throw new DriverError('E_VALIDATION', '默认值/注释不允许包含换行或控制字符');
   }
@@ -32,6 +33,7 @@ export function escapeDdlLiteral(value: string): string {
 
 /** 注释/字符串文本转义（包裹单引号，内部 ' 翻倍；控制字符 fail-closed） */
 function escapeText(value: string): string {
+  // eslint-disable-next-line no-control-regex -- 刻意拒绝控制字符（驱动规范 §10 fail-closed）
   if (/[\r\n\x00]/.test(value)) {
     throw new DriverError('E_VALIDATION', '注释不允许包含换行或控制字符');
   }

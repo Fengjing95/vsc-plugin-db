@@ -10,7 +10,9 @@ import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
 import { CODEGEN_LANGUAGES, codegenLanguageId, generateCode, type CodegenLanguage } from './services/codegen';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
+import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
+import { openTableDesignPanel } from './views/tableDesignPanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 
 export interface AppServices {
@@ -28,6 +30,8 @@ export interface AppServices {
   history: import('./services/consoleHistory').ConsoleHistory;
   /** M7 SSH 隧道：主机指纹库（TOFU），连接表单与 ConnectionManager 共享 */
   sshFingerprints: import('./services/sshTunnel').FingerprintStore;
+  /** M8-B2 表结构编辑（DDL）：编辑器 RPC + 删表/清空表树操作 */
+  ddl: DdlService;
 }
 
 function copy(text: string, hint: string): void {
@@ -299,6 +303,53 @@ export function registerCommands(
       } catch (err) {
         void vscode.window.showErrorMessage(
           `获取 DDL 失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }),
+
+    // ── M8-B2 表结构编辑（概要 §5.9 / 交互稿 §12；入口仅右键菜单，§8.2）──
+
+    vscode.commands.registerCommand('dbExplorer.createTable', (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        void vscode.window.showInformationMessage('请先连接并在具体库上新建表。');
+        return;
+      }
+      openTableDesignPanel(context, services, { connId, db });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.alterTable', (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      openTableDesignPanel(context, services, { connId, db, obj });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.dropTable', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      try {
+        await services.ddl.dropTable(connId, db, obj);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `删除表失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.truncateTable', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      try {
+        await services.ddl.truncateTable(connId, db, obj);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `清空表失败：${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }),

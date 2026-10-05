@@ -27,6 +27,7 @@ export const RpcMethods = {
   ddlLoad: 'ddl.load',
   ddlPreview: 'ddl.preview',
   ddlExecute: 'ddl.execute',
+  ddlClose: 'ddl.close',
   copyText: 'sys.copyText',
 } as const;
 
@@ -655,6 +656,10 @@ export const DdlExecuteResultSchema = z.object({
     .optional(),
 });
 export type DdlExecuteResult = z.infer<typeof DdlExecuteResultSchema>;
+
+/** 关闭表结构编辑器面板（Webview 侧「关闭」按钮；Host dispose 面板。未保存确认在 Webview） */
+export const DdlCloseParamsSchema = z.object({}).optional();
+export type DdlCloseParams = z.infer<typeof DdlCloseParamsSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({

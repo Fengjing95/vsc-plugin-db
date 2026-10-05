@@ -24,6 +24,7 @@ export function escapeDdlLiteral(value: string): string {
   if (/^-?\d+(\.\d+)?$/.test(value) || /^CURRENT_TIMESTAMP$/i.test(value.trim())) {
     return value.trim();
   }
+  // eslint-disable-next-line no-control-regex -- 刻意拒绝控制字符/反斜杠（驱动规范 §10 fail-closed）
   if (/[\r\n\x00\\]/.test(value)) {
     throw new DriverError('E_VALIDATION', '默认值不允许包含换行/反斜杠/控制字符');
   }
@@ -32,6 +33,7 @@ export function escapeDdlLiteral(value: string): string {
 
 /** 注释文本转义（COMMENT 子句；控制字符/反斜杠拒绝） */
 function escapeComment(value: string): string {
+  // eslint-disable-next-line no-control-regex -- 刻意拒绝控制字符/反斜杠（驱动规范 §10 fail-closed）
   if (/[\r\n\x00\\]/.test(value)) {
     throw new DriverError('E_VALIDATION', '注释不允许包含换行/反斜杠/控制字符');
   }
