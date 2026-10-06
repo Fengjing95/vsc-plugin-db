@@ -1512,3 +1512,253 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
   }
   return summarize(results);
 }
+
+// ───────────────────────── M8-PG：取消（驱动规范 §7）/ SQL 值编码（§5）─────────────────────────
+
+export interface CancellationOptions {
+  /** 仅声明 supportsCancel = true 的驱动实跑（否则整组跳过，契约按能力裁剪，驱动规范 §7「不可虚报」） */
+  supportsCancel?: boolean;
+  /** 长查询模板（方言原文）：执行时长须显著大于中止延迟，如 `SELECT pg_sleep(3)` */
+  longQuerySql: (seconds: number) => string;
+  /** 取消后的复用探针（方言原文，如 `SELECT 1 AS one`）：验证服务端会话未被取消毒害 */
+  probeSql: string;
+}
+
+const ABORT_DELAY_MS = 200;
+const CANCEL_DEADLINE_MS = 10_000;
+
+/**
+ * 取消契约组（@since M8-PG，驱动规范 §7：supportsCancel 声明为 true 而实际不响应 → 契约失败）：
+ * - 预中止的 signal 在 SQL 下发前立即拒绝（E_CANCELED）
+ * - 在途查询 abort 后于死线内返回 E_CANCELED
+ * - 取消后同一连接可复用
+ */
+export async function runCancellationChecks(
+  create: () => Promise<IConnection>,
+  opts: CancellationOptions,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  if (opts.supportsCancel !== true) {
+    await skip(results, 'cancellation', '取消组（驱动未声明 supportsCancel，跳过）', 'supportsCancel≠true');
+    return summarize(results);
+  }
+  const conn = await create();
+  try {
+    await check(results, 'cancellation', '预中止 signal 立即拒绝（SQL 下发前检查点）', async () => {
+      const ac = new AbortController();
+      ac.abort();
+      let thrown: unknown;
+      try {
+        await conn.query({
+          sql: opts.longQuerySql(3),
+          maxRows: 10,
+          timeoutMs: SAMPLE_TIMEOUT_MS,
+          signal: ac.signal,
+        });
+      } catch (err) {
+        thrown = err;
+      }
+      assert(thrown !== undefined, '预中止的 signal 未拒绝');
+      assert(isCode(thrown, 'E_CANCELED'), `应抛 E_CANCELED，实际 ${describeError(thrown)}`);
+    });
+
+    await check(results, 'cancellation', '在途查询 abort → E_CANCELED（死线内返回）', async () => {
+      const ac = new AbortController();
+      const started = Date.now();
+      const pending = conn.query({
+        sql: opts.longQuerySql(3),
+        maxRows: 10,
+        timeoutMs: 30_000,
+        signal: ac.signal,
+      });
+      const timer = setTimeout(() => ac.abort(), ABORT_DELAY_MS);
+      try {
+        await pending;
+        assert(false, 'abort 后查询未失败');
+      } catch (err) {
+        assert(isCode(err, 'E_CANCELED'), `应抛 E_CANCELED，实际 ${describeError(err)}`);
+        const elapsed = Date.now() - started;
+        assert(elapsed < CANCEL_DEADLINE_MS, `取消未在死线内生效（${elapsed}ms）`);
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+
+    await check(results, 'cancellation', '取消后连接可复用', async () => {
+      const rs = await conn.query({ sql: opts.probeSql, maxRows: 10, timeoutMs: SAMPLE_TIMEOUT_MS });
+      assert(rs.length > 0 && rs[0].rowCount >= 0, '取消后连接探针失败');
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+export interface SqlValueEncodingCase {
+  column: string;
+  /** 方言类型原文（fixture 建表列定义，调用方按驱动方言提供） */
+  dataType: string;
+  /** §5 编码形态写入值（经 applyChanges 参数化绑定） */
+  write: unknown;
+  /** §5 编码形态期望读回；缺省 = 与 write 严格相等 */
+  read?: unknown;
+}
+
+export interface SqlValueEncodingOptions {
+  /** fixture 表所在库（PG 驱动 = schema 名，D-15） */
+  db: string;
+  /** fixture 表名（默认 cf_valenc_t） */
+  fixtureTable?: string;
+  /** 主键自增列类型原文（方言，默认 bigint） */
+  pkDataType?: string;
+  /** 各类型用例：每列独立断言（§5 编码往返） */
+  cases: SqlValueEncodingCase[];
+}
+
+const VE_FIXTURE_TABLE = 'cf_valenc_t';
+
+/** 契约值比较：对象/数组深比较（键序无关，兼容 jsonb 归一化键序）；字符串/数值/布尔/二进制必须严格相等（§5 编码形态不得变形） */
+function veValueMatches(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) return true;
+  if (typeof actual === 'object' && typeof expected === 'object' && actual !== null && expected !== null) {
+    return JSON.stringify(actual, (_k, val) =>
+      val && typeof val === 'object' && !Array.isArray(val)
+        ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => (a < b ? -1 : 1)))
+        : val,
+    ) === JSON.stringify(expected, (_k, val) =>
+      val && typeof val === 'object' && !Array.isArray(val)
+        ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => (a < b ? -1 : 1)))
+        : val,
+    );
+  }
+  return false;
+}
+
+/**
+ * SQL 值编码契约组（@since M8-PG，概要 §4.4 / 驱动规范 §5）：
+ * 经 buildCreateTable 建 fixture 表（探针口径同 P-19：方法不存在整组跳过）→
+ * applyChanges 写入两行（契约值行 + 全 NULL 行）→ fetchRows 按回填主键读回断言往返一致。
+ * 全 NULL 行用于区分 NULL vs ''（驱动把 null 读成 '' 即红）；'' 用例由调用方以字符串列承载。
+ * 每个类型用例独立 CheckResult，方言覆盖不全时不影响其他用例。
+ */
+export async function runSqlValueEncodingChecks(
+  create: () => Promise<IConnection>,
+  opts: SqlValueEncodingOptions,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    if (typeof conn.buildCreateTable !== 'function' || typeof conn.applyChanges !== 'function') {
+      await skip(
+        results,
+        'sql-value-encoding',
+        '整组跳过',
+        '驱动未实现 buildCreateTable/applyChanges（supportsDdlEditor/编辑未声明）',
+      );
+      return summarize(results);
+    }
+    assert(opts.cases.length > 0, '调用方未提供值编码用例');
+    const db = opts.db;
+    const table = opts.fixtureTable ?? VE_FIXTURE_TABLE;
+    const quote = (n: string): string => quoteFor(conn, n);
+    const dropFixture = async (): Promise<void> => {
+      try {
+        await conn.query({
+          sql: `DROP TABLE IF EXISTS ${quote(table)}`,
+          db,
+          maxRows: 1,
+          timeoutMs: SAMPLE_TIMEOUT_MS,
+        });
+      } catch {
+        // fixture 清理尽力而为（同 runDdlChecks）
+      }
+    };
+
+    const spec: TableSpec = {
+      name: table,
+      columns: [
+        {
+          name: 'id',
+          dataType: opts.pkDataType ?? 'bigint',
+          nullable: false,
+          isPrimaryKey: true,
+          autoIncrement: true,
+          ordinal: 1,
+        },
+        ...opts.cases.map((c, i) => ({
+          name: c.column,
+          dataType: c.dataType,
+          nullable: true,
+          isPrimaryKey: false,
+          ordinal: i + 2,
+        })),
+      ],
+    };
+
+    await dropFixture();
+    const statements = await conn.buildCreateTable!(db, spec);
+    assert(statements.length > 0, 'buildCreateTable 返回空语句集');
+    for (const s of statements) {
+      await conn.query({ sql: s.sql, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+    }
+
+    // 行 A：契约值；行 B：全 NULL（§5 NULL 与 '' 严格区分）
+    const insert = async (tempId: string, values: Record<string, unknown>): Promise<RowKey> => {
+      const apply = await conn.applyChanges(db, table, {
+        inserts: [{ tempId, values }],
+        updates: [],
+        deletes: [],
+      });
+      const item = apply.items.find((i) => i.kind === 'insert' && i.tempId === tempId);
+      assert(item !== undefined, `ApplyResult 缺少 insert 项 ${tempId}`);
+      assert(
+        item.rowKey !== undefined && Object.keys(item.rowKey).length > 0,
+        `insert ${tempId} 未回填主键（驱动规范 §8-3）`,
+      );
+      return item.rowKey!;
+    };
+    const keyA = await insert('cf-ve-a', Object.fromEntries(opts.cases.map((c) => [c.column, c.write])));
+    const keyB = await insert('cf-ve-b', Object.fromEntries(opts.cases.map((c) => [c.column, null])));
+
+    const fetchBy = async (key: RowKey): Promise<Record<string, unknown>> => {
+      const rs = await conn.fetchRows({
+        db,
+        obj: table,
+        filters: Object.entries(key).map(([column, value]) => ({ column, op: 'eq' as const, value })),
+        limit: 5,
+        timeoutMs: SAMPLE_TIMEOUT_MS,
+      });
+      assert(rs.rowCount === 1, `按回填主键应查回 1 行，实际 ${rs.rowCount}`);
+      const row = rs.rows[0];
+      return Object.fromEntries(rs.columns.map((c, i) => [c.name, row[i]]));
+    };
+    const rowA = await fetchBy(keyA);
+    const rowB = await fetchBy(keyB);
+
+    for (const c of opts.cases) {
+      await check(results, 'sql-value-encoding', `值编码往返 ${c.column}（${c.dataType}）`, async () => {
+        const expected = c.read ?? c.write;
+        assert(
+          veValueMatches(rowA[c.column], expected),
+          `往返不一致：写入 ${JSON.stringify(c.write) ?? String(c.write)} → 读回 ${JSON.stringify(rowA[c.column]) ?? String(rowA[c.column])}，期望 ${JSON.stringify(expected) ?? String(expected)}`,
+        );
+      });
+    }
+
+    await check(results, 'sql-value-encoding', "NULL 行读回恒为 null（NULL vs '' 严格区分）", async () => {
+      for (const c of opts.cases) {
+        assert(
+          rowB[c.column] === null,
+          `NULL 行 ${c.column} 读回 ${JSON.stringify(rowB[c.column]) ?? String(rowB[c.column])}（应严格为 null）`,
+        );
+      }
+    });
+
+    await check(results, 'sql-value-encoding', 'fixture 清理', async () => {
+      await dropFixture();
+    });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}

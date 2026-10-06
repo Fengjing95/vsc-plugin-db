@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import {
+  runCancellationChecks,
   runChangesetChecks,
   runConnectionChecks,
   runDdlChecks,
@@ -8,6 +9,8 @@ import {
   runInteractiveTransactionChecks,
   runMetadataChecks,
   runPaginationChecks,
+  runSqlValueEncodingChecks,
+  type SqlValueEncodingCase,
 } from './index';
 
 function mockConnection() {
@@ -82,4 +85,41 @@ it('conformance: mock 驱动通过 ddl 组（M8-B2，表结构编辑）', async 
   // C-3：组必须实跑（mock 声明 supportsDdlEditor）而非静默跳过；
   // create 一致 / 加列改注释 / 删列 / 主键变更 / 无差异 / 非法标识符 / 清理
   expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
+});
+
+/** mock 基准值编码用例（§5 编码形态写入→读回；dataType 为驱动方言原文） */
+const MOCK_VE_CASES: SqlValueEncodingCase[] = [
+  { column: 'c_str', dataType: 'varchar(64)', write: "it's ✓ 汉" },
+  { column: 'c_empty', dataType: 'varchar(64)', write: '' },
+  { column: 'c_int', dataType: 'bigint', write: 42 },
+  { column: 'c_bigint', dataType: 'bigint', write: '9007199254740993' },
+  { column: 'c_dec', dataType: 'decimal(32,9)', write: '12345678901234567890.123456789' },
+  { column: 'c_float', dataType: 'double', write: 1.5 },
+  { column: 'c_bool', dataType: 'boolean', write: true },
+  { column: 'c_date', dataType: 'date', write: '2024-06-01' },
+  { column: 'c_time', dataType: 'time', write: '08:30:00.000' },
+  { column: 'c_dt', dataType: 'datetime', write: '2024-06-01 08:30:00.000' },
+  { column: 'c_json', dataType: 'json', write: { k: 1, arr: [1, 2, null], s: '汉' } },
+  { column: 'c_bin', dataType: 'bytea', write: 'AAEC/w==' },
+  { column: 'c_uuid', dataType: 'varchar(36)', write: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' },
+];
+
+it('conformance: mock 驱动通过 sql-value-encoding 组（M8-PG，§5 编码往返）', async () => {
+  const summary = await runSqlValueEncodingChecks(mockConnection, { db: 'demo', cases: MOCK_VE_CASES });
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  // C-3：组必须实跑（mock 已实现 buildCreateTable/applyChanges）——类型用例 + NULL 行 + 清理
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(MOCK_VE_CASES.length + 2);
+});
+
+it('conformance: 取消组按能力跳过（mock 未声明 supportsCancel，M8-PG）', async () => {
+  const summary = await runCancellationChecks(mockConnection, {
+    supportsCancel: false,
+    longQuerySql: (s) => `SELECT ${s}`,
+    probeSql: 'SELECT COUNT(*) AS n FROM demo.users',
+  });
+  expect(summary.failed).toBe(0);
+  expect(summary.results.every((r) => r.skipped)).toBe(true);
 });
