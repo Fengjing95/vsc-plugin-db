@@ -66,7 +66,11 @@ window.__DBX_STUB__ = {
                 group: '高级',
                 hint: '⚠ 风险：不校验服务器证书，连接可被中间人窃听/篡改。仅限自签证书的受信内网环境使用',
               },
-              { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级' },
+              { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级', section: '超时与连接池' },
+              // SSH 小节（镜像扩展层 SSH_FORM_FIELDS 注入形状，M8 修订：开关在标题行）
+              { key: 'sshEnabled', label: 'SSH 隧道', type: 'boolean', default: false, group: '高级', section: 'SSH 隧道' },
+              { key: 'sshHost', label: 'SSH 主机', type: 'string', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
+              { key: 'sshPort', label: 'SSH 端口', type: 'number', default: 22, group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
             ],
           },
         };

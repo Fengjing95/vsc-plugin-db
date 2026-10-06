@@ -87,10 +87,15 @@ export interface FormSchema {
     default?: unknown;
     options?: Array<{ label: string; value: unknown }>;
     placeholder?: string;
-    /** 字段旁的辅助/风险说明（如 sslInsecure 的证书校验风险，驱动规范 §10）；表单渲染在控件下方 */
+    /** 字段旁的辅助/风险说明（如 sslInsecure 的证书校验风险，驱动规范 §10）；表单渲染为标题后的 tips 图标（M8） */
     hint?: string;
     /** 折叠分组，如 '高级' */
     group?: string;
+    /** @since M8 表单方案 A：高级组内小节标题——同 section 字段归为一个小节、单列渲染 */
+    section?: string;
+    /** @since M8 表单方案 A：依赖的布尔字段 key——该开关关闭时本项隐藏（值仍随表单提交）；
+     *  小节内被引用的布尔字段渲染为「标题行复选框」 */
+    toggle?: string;
     validator?: 'port' | 'host' | 'path' | 'regex';
     validationRegex?: string;
   }>;

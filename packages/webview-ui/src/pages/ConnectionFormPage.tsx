@@ -6,6 +6,8 @@ import type {
   FormSchemaPayload,
 } from '@db-explorer/protocol';
 import { request } from '../rpc/client';
+import { IconEye, IconEyeOff, IconInfo } from '../components/ui/icons';
+import { groupAdvancedFields, isFieldVisible } from '../lib/formSections';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
 
@@ -181,6 +183,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
 
   const baseFields = schema?.fields.filter((f) => !f.group) ?? [];
   const advancedFields = schema?.fields.filter((f) => f.group) ?? [];
+  /** 高级组按 section 分小节（M8 修订：小节标题/开关标题行，依赖字段随开关显隐） */
+  const advancedSections = groupAdvancedFields(advancedFields);
   /** 高级组状态 chips（通用规则：组内已开启的布尔字段 label；无则不显示） */
   const advancedChips = advancedFields
     .filter((f) => f.type === 'boolean' && options[f.key] === true)
@@ -192,7 +196,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
 
   return (
     <div className="min-h-screen bg-background text-panel-foreground">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-4 px-6 py-6">
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-5 px-6 py-6">
         <div>
           <h1 className="text-[15px] font-semibold">{connId ? '编辑连接' : '新建连接'}</h1>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -211,7 +215,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
             驱动类型 <span className="text-destructive">*</span>
           </span>
           <div
-            className="grid gap-2"
+            className="mt-1 grid gap-2"
             style={{ gridTemplateColumns: `repeat(${Math.min(drivers.length, 3)}, minmax(0, 1fr))` }}
             role="radiogroup"
             aria-label="驱动类型"
@@ -257,10 +261,10 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
           {errors._name && <span className="mt-1 block text-[12px] text-destructive">{errors._name}</span>}
         </div>
 
-        {/* 基础字段：schema 驱动，双列网格（textarea 跨两列） */}
+        {/* 基础字段：schema 驱动，双列网格（textarea 跨两列）；区块间以间距区分（无边框） */}
         {baseFields.length > 0 && (
-          <>
-            <div className="border-b border-border pb-1 text-[11px] tracking-wider text-muted-foreground">连接参数</div>
+          <section className="flex flex-col gap-3">
+            <div className="text-[11px] font-medium tracking-wider text-muted-foreground">连接参数</div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-3">
               {baseFields.map((f) => (
                 <div key={f.key} className={f.type === 'textarea' ? 'col-span-2' : ''}>
@@ -280,13 +284,13 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                 </div>
               ))}
             </div>
-          </>
+          </section>
         )}
 
-        {/* 环境与保护（§3.1 方案 A：三段控件 + 只读；prod 红色警示与 §5.8 护栏呼应） */}
-        <div>
-          <div className="border-b border-border pb-1 text-[11px] tracking-wider text-muted-foreground">环境与保护</div>
-          <div className="mt-3 flex items-center gap-4">
+        {/* 环境与保护（三段控件；prod 红色警示与 §5.8 护栏呼应） */}
+        <section className="flex flex-col gap-3">
+          <div className="text-[11px] font-medium tracking-wider text-muted-foreground">环境与保护</div>
+          <div className="flex items-center gap-4">
             <div className="flex overflow-hidden rounded-sm border border-border" role="radiogroup" aria-label="环境">
               {(
                 [
@@ -327,16 +331,16 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
             </label>
           </div>
           {env === 'prod' && (
-            <div className="mt-2 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-[12px] text-destructive">
+            <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-[12px] text-destructive">
               生产环境：所有写操作与危险语句将强制二次确认（输入名称匹配），该约束不可关闭
             </div>
           )}
-        </div>
+        </section>
 
-        {/* 高级选项：折叠 + 状态 chips（§3.1 方案 A） */}
-        {advancedFields.length > 0 && (
-          <details className="rounded-sm border border-border">
-            <summary className="cursor-pointer px-3 py-2 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+        {/* 高级选项：按 section 分小节（M8 修订）——开关在标题行、开启才显示配置；单列无边框 */}
+        {advancedSections.length > 0 && (
+          <details className="group">
+            <summary className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground">
               高级选项
               {advancedChips.length > 0 && (
                 <span className="ml-2 inline-flex gap-1.5">
@@ -348,24 +352,51 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                 </span>
               )}
             </summary>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-3 border-t border-border px-3 py-3">
-              {advancedFields.map((f) => (
-                <div key={f.key} className={f.type === 'textarea' ? 'col-span-2' : ''}>
-                  <FieldRow
-                    field={f}
-                    value={options[f.key]}
-                    error={errors[f.key]}
-                    inputCls={inputCls}
-                    labelCls={labelCls}
-                    passwordState={{
-                      value: passwords[f.key] ?? '',
-                      hasSecret: f.key === 'password' ? hasSecret : false,
-                      onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
-                    }}
-                    onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
-                  />
-                </div>
-              ))}
+            <div className="mt-3 flex flex-col gap-5">
+              {advancedSections.map((sec, i) => {
+                const headerOn = sec.header ? options[sec.header.key] === true : false;
+                // 独立布尔小节：复选框自身即标题（如 mysql「启用 SSL」），不渲染小节标题文字
+                const standaloneBool =
+                  !sec.header && sec.fields.length === 1 && sec.fields[0].type === 'boolean';
+                return (
+                  <div key={sec.title ?? i} className="flex flex-col gap-2.5">
+                    {sec.header ? (
+                      <label className="flex items-center gap-2 text-[13px] font-medium">
+                        <input
+                          type="checkbox"
+                          checked={headerOn}
+                          onChange={(e) => setOptions((prev) => ({ ...prev, [sec.header!.key]: e.target.checked }))}
+                        />
+                        {sec.header.label}
+                        {sec.header.hint && <HintTip text={sec.header.hint} />}
+                      </label>
+                    ) : sec.title && !standaloneBool ? (
+                      <div className="text-[12px] font-medium text-foreground">{sec.title}</div>
+                    ) : null}
+                    {sec.header && !headerOn && sec.fields.length > 0 && (
+                      <div className="text-[12px] text-muted-foreground">开启后可配置</div>
+                    )}
+                    {sec.fields
+                      .filter((f) => isFieldVisible(f, options))
+                      .map((f) => (
+                        <FieldRow
+                          key={f.key}
+                          field={f}
+                          value={options[f.key]}
+                          error={errors[f.key]}
+                          inputCls={inputCls}
+                          labelCls={labelCls}
+                          passwordState={{
+                            value: passwords[f.key] ?? '',
+                            hasSecret: f.key === 'password' ? hasSecret : false,
+                            onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
+                          }}
+                          onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
             </div>
           </details>
         )}
@@ -431,15 +462,19 @@ interface FieldRowProps {
 }
 
 function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onChange }: FieldRowProps) {
-  /** 密码可见性切换（§3.1 方案 A）：👁 切换 type；默认密文 */
+  /** 密码可见性切换（§3.1 方案 A）：系统图标 eye/eye-off；默认密文 */
   const [show, setShow] = useState(false);
   /** label↔input 关联（交互稿 §11 无障碍：读屏可读、测试可定位） */
   const inputId = `conn-field-${field.key}`;
+  /** hint 经 aria-describedby 提供读屏可读（可见形态是标题后的 tips 图标） */
+  const hintId = `${inputId}-hint`;
+  const describedBy = field.hint ? hintId : undefined;
 
   const label = (
-    <label className={labelCls} htmlFor={inputId}>
+    <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
       {field.label}
       {field.required && field.type !== 'password' ? <span className="text-destructive"> *</span> : null}
+      {field.hint && <HintTip text={field.hint} />}
     </label>
   );
 
@@ -449,6 +484,7 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
       <div className="relative">
         <input
           id={inputId}
+          aria-describedby={describedBy}
           type={show ? 'text' : 'password'}
           className={`${inputCls} pr-8`}
           value={passwordState.value}
@@ -460,23 +496,29 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
           type="button"
           aria-label={show ? '隐藏密码' : '显示密码'}
           title={show ? '隐藏密码' : '显示密码'}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 px-1 text-[12px] text-muted-foreground hover:text-foreground"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
           onClick={() => setShow(!show)}
         >
-          {show ? '🙈' : '👁'}
+          {show ? <IconEyeOff size={14} /> : <IconEye size={14} />}
         </button>
       </div>
     );
   } else if (field.type === 'boolean') {
     input = (
       <label className="flex h-7 items-center gap-1.5 text-[13px]" htmlFor={inputId}>
-        <input id={inputId} type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
+        <input
+          id={inputId}
+          aria-describedby={describedBy}
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+        />
         <span className={value ? 'text-foreground' : 'text-muted-foreground'}>{value ? '开启' : '关闭'}</span>
       </label>
     );
   } else if (field.type === 'select') {
     input = (
-      <select id={inputId} className={inputCls} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+      <select id={inputId} aria-describedby={describedBy} className={inputCls} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
         {(field.options ?? []).map((o) => (
           <option key={String(o.value)} value={String(o.value)}>
             {o.label}
@@ -488,6 +530,7 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
     input = (
       <textarea
         id={inputId}
+        aria-describedby={describedBy}
         rows={3}
         className={`${inputCls} h-auto py-1.5`}
         value={String(value ?? '')}
@@ -499,6 +542,7 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
     input = (
       <input
         id={inputId}
+        aria-describedby={describedBy}
         type={field.type === 'number' ? 'number' : 'text'}
         className={inputCls}
         value={value === undefined || value === null ? '' : String(value)}
@@ -512,8 +556,26 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
     <div>
       {label}
       {input}
+      {field.hint && (
+        <span id={hintId} className="sr-only">
+          {field.hint}
+        </span>
+      )}
       {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}
-      {!error && field.hint && <span className="mt-1 block text-[11px] text-muted-foreground">{field.hint}</span>}
     </div>
+  );
+}
+
+/** 提示文案的 tips 形式（M8 修订）：标题后的 ⓘ 图标（aria-hidden，hover 显示 title 气泡，不占版面）；
+ *  提示文本本身经 aria-describedby 提供读屏可读（见 FieldRow 的 sr-only 段） */
+function HintTip({ text }: { text: string }) {
+  return (
+    <span
+      aria-hidden
+      title={text}
+      className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground"
+    >
+      <IconInfo size={12} />
+    </span>
   );
 }

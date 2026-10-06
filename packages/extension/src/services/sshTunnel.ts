@@ -28,17 +28,20 @@ export interface SshTunnelConfig {
 
 /** 连接表单的 SSH 字段组（驱动 FormSchema 合并进「高级」分组；sshPassword 不入 options → SecretStorage） */
 export const SSH_FORM_FIELDS: FormFieldPayload[] = [
-  { key: 'sshEnabled', label: 'SSH 隧道', type: 'boolean', default: false, group: '高级' },
-  { key: 'sshHost', label: 'SSH 主机', type: 'string', placeholder: '跳板机地址', group: '高级' },
-  { key: 'sshPort', label: 'SSH 端口', type: 'number', default: 22, validator: 'port', group: '高级' },
-  { key: 'sshUsername', label: 'SSH 用户名', type: 'string', group: '高级' },
-  { key: 'sshPassword', label: 'SSH 密码', type: 'password', group: '高级' },
+  // section/toggle（M8 表单方案 A）：SSH 隧道小节——开关在标题行，开启后才显示以下配置
+  { key: 'sshEnabled', label: 'SSH 隧道', type: 'boolean', default: false, group: '高级', section: 'SSH 隧道' },
+  { key: 'sshHost', label: 'SSH 主机', type: 'string', placeholder: '跳板机地址', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
+  { key: 'sshPort', label: 'SSH 端口', type: 'number', default: 22, validator: 'port', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
+  { key: 'sshUsername', label: 'SSH 用户名', type: 'string', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
+  { key: 'sshPassword', label: 'SSH 密码', type: 'password', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
   {
     key: 'sshPrivateKeyPath',
     label: 'SSH 私钥路径（可选）',
     type: 'string',
     placeholder: '~/.ssh/id_rsa',
     group: '高级',
+    section: 'SSH 隧道',
+    toggle: 'sshEnabled',
     hint: '本机私钥文件路径；暂不支持带口令的私钥',
   },
   {
@@ -47,6 +50,8 @@ export const SSH_FORM_FIELDS: FormFieldPayload[] = [
     type: 'boolean',
     default: false,
     group: '高级',
+    section: 'SSH 隧道',
+    toggle: 'sshEnabled',
     hint: '⚠ 风险：不校验跳板机主机指纹，连接可被中间人劫持。默认首连录入指纹（TOFU），变更将拒绝',
   },
 ];

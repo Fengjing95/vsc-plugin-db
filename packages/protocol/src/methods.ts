@@ -395,6 +395,10 @@ export const FormFieldSchema = z.object({
   /** 字段旁的辅助/风险说明（驱动 FormSchema 透传，表单渲染在控件下方） */
   hint: z.string().optional(),
   group: z.string().optional(),
+  /** @since M8 表单方案 A：高级组内的小节标题（同 section 的字段按小节分行渲染） */
+  section: z.string().optional(),
+  /** @since M8 表单方案 A：依赖的布尔开关字段 key——该开关关闭时本项隐藏（如 sslInsecure 依赖 ssl） */
+  toggle: z.string().optional(),
   validator: z.enum(['port', 'host', 'path', 'regex']).optional(),
   validationRegex: z.string().optional(),
 });

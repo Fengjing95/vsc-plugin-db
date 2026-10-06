@@ -64,9 +64,17 @@ const formSchema: FormSchema = {
       type: 'number',
       default: 10000,
       group: '高级',
+      section: '超时与连接池',
     },
-    { key: 'connectionLimit', label: '连接池上限', type: 'number', default: 4, group: '高级' },
-    { key: 'ssl', label: '启用 SSL', type: 'boolean', group: '高级' },
+    {
+      key: 'connectionLimit',
+      label: '连接池上限',
+      type: 'number',
+      default: 4,
+      group: '高级',
+      section: '超时与连接池',
+    },
+    { key: 'ssl', label: '启用 SSL', type: 'boolean', group: '高级', section: 'SSL' },
   ],
 };
 

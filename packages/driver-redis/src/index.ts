@@ -83,9 +83,18 @@ const formSchema: FormSchema = {
       type: 'boolean',
       default: false,
       group: '高级',
+      section: 'SSL/TLS',
+      toggle: 'ssl', // 依赖 base 组的 ssl 开关：关闭时本项隐藏
       hint: '⚠ 风险：不校验服务器证书，连接可被中间人窃听/篡改。仅限自签证书的受信内网环境使用',
     },
-    { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级' },
+    {
+      key: 'connectTimeout',
+      label: '连接超时（ms）',
+      type: 'number',
+      default: 10000,
+      group: '高级',
+      section: '超时',
+    },
   ],
 };
 
