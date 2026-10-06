@@ -772,9 +772,10 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
       await conn.applyChanges(db, obj, toChangeSet({ deletes: [{ rowKey: item.rowKey!, original: {} }] }));
     });
 
-    await check(results, 'changeset', 'preview 语句带参数化 params（? 数量 = params 长度）', async () => {
+    await check(results, 'changeset', 'preview 语句带参数化 params（占位符数量 = params 长度）', async () => {
       // PreviewItem.params 是 IConnection 层可观测的（区别于 P-9 的 SQL 形状）：
-      // Webview 预览回填实际值依赖它，占位符语句缺失 params 会让预览只剩 ?
+      // Webview 预览回填实际值依赖它，占位符语句缺失 params 会让预览只剩 ?。
+      // 占位符计 ? （mysql/mock）与 $n （pg）两族
       const rs = await conn.fetchRows({
         db, obj, limit: 1,
         sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),
@@ -803,10 +804,12 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
       }));
       assert(preview.length >= 3, `预览应覆盖 insert/update/delete，实际 ${preview.length} 条`);
       for (const item of preview) {
-        const marks = (item.sql.match(/\?/g) ?? []).length;
+        const qMarks = (item.sql.match(/\?/g) ?? []).length;
+        const dollarMax = Math.max(0, ...(item.sql.match(/\$\d+/g) ?? []).map((s) => Number(s.slice(1))));
+        const marks = Math.max(qMarks, dollarMax);
         if (marks === 0) continue; // 以字面量内联的语句无占位符，不约束
-        assert(item.params !== undefined, `${item.kind} 语句含 ${marks} 个 ? 但未携带 params`);
-        assert(item.params!.length === marks, `${item.kind} ? 数量 ${marks} ≠ params 长度 ${item.params!.length}`);
+        assert(item.params !== undefined, `${item.kind} 语句含 ${marks} 个占位符但未携带 params`);
+        assert(item.params!.length === marks, `${item.kind} 占位符数量 ${marks} ≠ params 长度 ${item.params!.length}`);
       }
     });
 

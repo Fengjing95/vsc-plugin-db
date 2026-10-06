@@ -8,7 +8,8 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 + 6390 requirepass 供错误密码用例）
+    # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 + 6390 requirepass 供错误密码用例）；
+    # M8-PG：PostgreSQL 契约（本地无实例，PG_HOST 门控 skip / CI 实跑，驱动规范 §11）
     services:
       redis:
         image: redis:7
@@ -26,6 +27,19 @@ jobs:
         options: >-
           --requirepass m6cipass
           --health-cmd "redis-cli -a m6cipass ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -51,9 +65,14 @@ jobs:
       - name: 构建
         run: pnpm build
 
-      - name: 测试（含 Redis 契约）
+      - name: 测试（含 Redis / PostgreSQL 契约）
         run: pnpm test
         env:
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: 6379
           REDIS_AUTH_PORT: 6390
+          PG_HOST: 127.0.0.1
+          PG_PORT: 5432
+          PG_USER: postgres
+          PG_PASSWORD: postgres
+          PG_DATABASE: postgres
