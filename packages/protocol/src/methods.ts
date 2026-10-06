@@ -399,8 +399,6 @@ export const FormFieldSchema = z.object({
   section: z.string().optional(),
   /** @since M8 表单方案 A：依赖的布尔开关字段 key——该开关关闭时本项隐藏（如 sslInsecure 依赖 ssl） */
   toggle: z.string().optional(),
-  /** @since M8 表单方案 A：布尔字段的控件形态——'switch' 渲染为滑动开关（缺省复选框） */
-  control: z.enum(['switch']).optional(),
   validator: z.enum(['port', 'host', 'path', 'regex']).optional(),
   validationRegex: z.string().optional(),
 });
