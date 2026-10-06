@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ConnMetaResult,
   ConnTestResult,
@@ -265,7 +265,15 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {baseFields.length > 0 && (
           <section className="flex flex-col gap-3">
             <div className="text-[11px] font-medium tracking-wider text-muted-foreground">连接参数</div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+            {/* legacy.css 的 .grid 类带边框/限高（P-42），此处用 inline style 声明网格 */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                columnGap: '0.75rem',
+                rowGap: '0.75rem',
+              }}
+            >
               {baseFields.map((f) => (
                 <div key={f.key} className={f.type === 'textarea' ? 'col-span-2' : ''}>
                   <FieldRow
@@ -274,6 +282,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                     error={errors[f.key]}
                     inputCls={inputCls}
                     labelCls={labelCls}
+                    booleanLayout="stacked"
                     passwordState={{
                       value: passwords[f.key] ?? '',
                       hasSecret: f.key === 'password' ? hasSecret : false,
@@ -459,11 +468,23 @@ interface FieldRowProps {
   error?: string;
   inputCls: string;
   labelCls: string;
+  /** 布尔渲染形态：row = 复选框+标签单行（功能开关，如只读保护/SSH 隧道）；
+   *  stacked = 标签在上+复选框在下（字段网格内，与相邻字段标签位对齐）。默认 row */
+  booleanLayout?: 'row' | 'stacked';
   passwordState: { value: string; hasSecret: boolean; onChange: (v: string) => void };
   onChange: (v: unknown) => void;
 }
 
-function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onChange }: FieldRowProps) {
+function FieldRow({
+  field,
+  value,
+  error,
+  inputCls,
+  labelCls,
+  booleanLayout = 'row',
+  passwordState,
+  onChange,
+}: FieldRowProps) {
   /** 密码可见性切换（§3.1 方案 A）：系统图标 eye/eye-off；默认密文 */
   const [show, setShow] = useState(false);
   /** label↔input 关联（交互稿 §11 无障碍：读屏可读、测试可定位） */
@@ -472,8 +493,31 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
   const hintId = `${inputId}-hint`;
   const describedBy = field.hint ? hintId : undefined;
 
-  // 布尔开关统一「复选框 + 标签」单行格式（M8 修订：与 SSH 隧道标题行一致，不再上标签下开关两段式）
+  // 布尔开关（M8 修订）：row = 复选框+标签单行（功能开关）；stacked = 标签在上复选框在下（字段网格内保留标签）
   if (field.type === 'boolean') {
+    if (booleanLayout === 'stacked') {
+      return (
+        <div>
+          <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
+            {field.label}
+            {field.hint && <HintTip text={field.hint} />}
+          </label>
+          <input
+            id={inputId}
+            aria-describedby={describedBy}
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          {field.hint && (
+            <span id={hintId} className="sr-only">
+              {field.hint}
+            </span>
+          )}
+          {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}
+        </div>
+      );
+    }
     return (
       <div>
         <label className="flex items-center gap-2 text-[13px]" htmlFor={inputId}>
@@ -584,21 +628,42 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
   );
 }
 
-/** 提示文案的 tips 形式（M8 修订）：标题后的 ⓘ 图标（aria-hidden，hover 显示 title 气泡，不占版面）；
+/** 提示文案的 tips 形式（M8 修订）：标题后的 ⓘ 图标，hover 500ms 后显示气泡（原生 title
+ *  延迟不可控，自绘实现）；点击不透传——不触发 label 的控件聚焦/开关切换，纯 hover 元素；
  *  提示文本本身经 aria-describedby 提供读屏可读（见 FieldRow 的 sr-only 段） */
 function HintTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const show = (): void => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(true), 500);
+  };
+  const hide = (): void => {
+    clearTimeout(timer.current);
+    setOpen(false);
+  };
   return (
     <span
-      aria-hidden
-      title={text}
+      className="relative inline-flex"
+      onMouseEnter={show}
+      onMouseLeave={hide}
       onClick={(e) => {
         // stopPropagation 挡不住 label 转发（那是 click 的 default action），必须 preventDefault
         e.preventDefault();
         e.stopPropagation();
       }}
-      className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground"
     >
-      <IconInfo size={12} />
+      <span aria-hidden className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground">
+        <IconInfo size={12} />
+      </span>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute left-1/2 top-full z-50 mt-1 w-max max-w-72 -translate-x-1/2 rounded-sm border border-border bg-[var(--vscode-editorHover-widget-background,#252526)] px-2 py-1 text-left text-[11px] font-normal leading-4 text-foreground shadow-lg"
+        >
+          {text}
+        </span>
+      )}
     </span>
   );
 }
