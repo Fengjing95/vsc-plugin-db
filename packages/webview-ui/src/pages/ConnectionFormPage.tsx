@@ -232,10 +232,10 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                   type="button"
                   role="radio"
                   aria-checked={active}
-                  className={`rounded-md px-2 py-2.5 text-center text-[13px] ${
+                  className={`rounded-md border px-2 py-2.5 text-center text-[13px] ${
                     active
-                      ? 'bg-input text-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? 'border-[var(--vscode-focusBorder)] bg-input text-foreground'
+                      : 'border-border text-muted-foreground hover:border-[var(--vscode-focusBorder)] hover:bg-accent hover:text-accent-foreground'
                   }`}
                   onClick={() => void switchDriver(d.id)}
                 >
