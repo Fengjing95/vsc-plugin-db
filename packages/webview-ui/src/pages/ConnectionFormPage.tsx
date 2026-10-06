@@ -82,7 +82,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
       errs._name = '请输入连接名称';
     }
     if (!driverId) {
-      errs._driver = '请选择驱动类型';
+      errs._driver = '请选择数据库类型';
     }
     if (schema) {
       for (const f of schema.fields) {
@@ -212,13 +212,17 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {/* 驱动类型：图标选择卡片（§3.1 方案 A） */}
         <div>
           <span className={labelCls}>
-            驱动类型 <span className="text-destructive">*</span>
+            数据库类型 <span className="text-destructive">*</span>
           </span>
           <div
-            className="mt-1 grid gap-2"
-            style={{ gridTemplateColumns: `repeat(${Math.min(drivers.length, 3)}, minmax(0, 1fr))` }}
+            className="mt-1"
+            style={{
+              display: 'grid',
+              gap: '0.5rem',
+              gridTemplateColumns: `repeat(${Math.min(drivers.length, 3)}, minmax(0, 1fr))`,
+            }}
             role="radiogroup"
-            aria-label="驱动类型"
+            aria-label="数据库类型"
           >
             {drivers.map((d) => {
               const active = d.id === driverId;
@@ -228,10 +232,10 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                   type="button"
                   role="radio"
                   aria-checked={active}
-                  className={`rounded-md border px-2 py-2.5 text-center text-[13px] ${
+                  className={`rounded-md px-2 py-2.5 text-center text-[13px] ${
                     active
-                      ? 'border-[var(--vscode-focusBorder)] bg-input text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? 'bg-input text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   }`}
                   onClick={() => void switchDriver(d.id)}
                 >
