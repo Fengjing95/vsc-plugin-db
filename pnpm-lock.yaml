@@ -110,6 +110,9 @@ importers:
       '@db-explorer/driver-mysql':
         specifier: workspace:*
         version: link:../driver-mysql
+      '@db-explorer/driver-postgres':
+        specifier: workspace:*
+        version: link:../driver-postgres
       '@db-explorer/driver-redis':
         specifier: workspace:*
         version: link:../driver-redis

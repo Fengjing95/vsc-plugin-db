@@ -407,6 +407,7 @@
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*",
     "@db-explorer/driver-mysql": "workspace:*",
+    "@db-explorer/driver-postgres": "workspace:*",
     "@db-explorer/driver-redis": "workspace:*",
     "@db-explorer/protocol": "workspace:*",
     "exceljs": "^4.4.0",

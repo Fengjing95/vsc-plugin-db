@@ -81,6 +81,10 @@
 - **P-40 when 子句里 `viewItem == 带空格的值` 是非法表达式，实测表现为菜单项失控显示**（M8-B2 踩，F5 实机反馈「目录节点带上了修改/删除表」）→ contextValue 多令牌（如 `table ddl`）配 `==` 时值含空格，VSCode 解析不了整个子句，菜单项在不该出现的节点也出现。→ **带空格的 contextValue 一律用 `=~ /^…$/` regex 匹配**（本仓库 `connection connected` 既有惯例）；给树节点新增 contextValue 令牌时，必须同步排查所有引用该值的 `==` 子句（后缀令牌会让原 `==` 失配）。
 - **P-41 FormSchema 契约有双源：core `driver/types.ts` 是驱动侧权威，protocol `FormFieldSchema` 只是 Webview 传输镜像**（M8 表单踩）→ 给表单字段加可选属性只改 protocol 时，extension/驱动侧（用 core 类型）赋值直接 TS2353——typecheck 会抓到，但**若门禁用 `pnpm typecheck | grep -c "error TS"` 这类管道串联，grep 匹配到错误行后退出码为 0，失败被掩盖、带伤提交**。→ ① 契约属性必须 core+protocol 两处同改（core 先行）；② **跑门禁禁止用 `;` + grep -c 串联**——各步骤独立执行并确认退出码，失败立即停。
 - **P-42 legacy.css 的 `.grid` 遗留类与 Tailwind `grid` 工具类同名冲突**（M8 表单踩）→ legacy.css 在 Tailwind 之后引入可覆盖之，其 `.grid` 带 `border + overflow:auto + max-height`（本是旧表格滚动容器样式）——新页面用 `className="grid …"` 声明网格会凭空多出外框和限高（连接表单「连接参数」分组实机可见）。→ 表单/编辑器页面的网格改用 inline style 声明（`display/gridTemplateColumns`，ConnectionFormPage 已规避）；新页面写样式前先 grep legacy.css 的类名碰撞。
+- **P-43 pg 的可选 native 客户端 `pg-native` 会卡死 esbuild 打包**（M8-PG 踩）→ pg 本体纯 JS 与 mysql2/node-redis 同口径整体打包，但其可选依赖 pg-native（未安装）在 `pg/lib/native/*` 顶层被静态 require，esbuild 解析报错。→ esbuild external 加 `'pg-native'`（不加 `pg` 本体——external 后运行时 require('pg') 解析不到 pnpm 隔离目录）；运行时仅 native 路径才 require，永不触达。
+- **P-44 pg 类型解析器必须会话级覆写，禁止 `pg.types.setTypeParser` 全局注册**（M8-PG 踩）→ Extension Host 进程内 `pg.types` 是模块级单例，全局 setTypeParser 会污染同进程其他 pg 消费者（L2/L3 第三方驱动同进程运行，D-05）。→ 经 Pool/Client 配置 `types: { getTypeParser(oid, format) }` 传入（未命中 OID 回落 builtin），timestamp/timestamptz/time 禁用 JS Date 转换取服务端原文（§5.2 时区口径，同 mysql2 dateStrings）。
+- **P-45 §5 编辑回传 base64 → pg 绑定 bytea 必须 Buffer**（M8-PG 踩）→ pg 把 base64 字符串按 text 发送，bytea 输入格式是 hex（`\x…`），直接绑定报 invalid input syntax。→ 值转换放 builder 层钩子（`buildSelect`/`buildChangeStatements` 的 `encodeParam(column, value)`，驱动传「binary 列 base64→Buffer」）；**previewChanges 不传钩子**——预览 params 保持 §5 编码（Webview 回填展示依赖，P-22），applyChanges 才转原生参数。
+- **P-46 @types/pg 未声明运行时存在的 `Client.cancel`**（M8-PG 踩）→ pg ≥8.5 的 Client 有 `cancel()`（独立连接下发取消请求），typings 缺失直接调用 TS 报错。→ 局部 cast（`type CancelableClient = PoolClient & { cancel?: () => Promise<void> }`）；取消实现：signal/deadline → `client.cancel()` + 本地先以 E_CANCELED/E_TIMEOUT 拒绝，settle 后底层查询的后续回包/错误必须吞掉（未处理 rejection 会毒化进程，P-30 同族）。
 
 ### 可视化验证（脱离 VSCode 宿主）
 - **P-20 Webview 无法脱离 VSCode 直接预览**（工具栏改造时踩）→ `rpc/client.ts` 模块加载即调用 `acquireVsCodeApi()`，tokens.css 全部颜色依赖 `--vscode-*`（浏览器里整页黑底是变量缺失，不是渲染 bug）。→ 临时 stub 页验证：静态 HTML 先注入 `window.acquireVsCodeApi` 桩（postMessage 收 req、异步回放 res 帧）+ `__BOOTSTRAP__` + 一组 Dark Modern 变量，再加载 `dist/` 产物即可真实交互。
@@ -114,6 +118,7 @@
 | ChangeSet 权威副本 | `packages/core/src/services/changeSetService.ts`（合并语义单测覆盖） |
 | MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
 | Redis 驱动（M6） | `packages/driver-redis`（SCAN/cursor/值编码见其 README；纯函数层 `keys.ts`、错误映射 `errors.ts`） |
+| PostgreSQL 驱动（M8-PG） | `packages/driver-postgres`（D-15：db 参数=schema 名、obj 恒为裸名；纯函数层 `sql.ts`（$n 占位符/类型归一/时间文本规范化）、变更 `changes.ts`（RETURNING 回填）、DDL 生成器 `ddl.ts`、SQLSTATE 映射 `errors.ts`；契约 `postgres.conformance.test.ts` 经 PG_HOST 门控——本地 skip、CI service 实跑） |
 | Redis 命令白名单 / 命令行切分 | `packages/core/src/services/redisCommands.ts`（provablyRead fail-closed / dangerous / known，纯函数有单测） |
 | 编辑权限 + prod 护栏 + Console 危险判定 | `packages/extension/src/services/editGuard.ts`（DangerGuard §5.8；命令模式同构方法 assessCommandDanger/assertCommandsReadable） |
 | SQL 语句切分 / 会话状态 / DDL 识别 | `packages/core/src/services/sqlScript.ts`（扫描器纯函数，P-24） |
