@@ -7,6 +7,7 @@ import type {
 } from '@db-explorer/protocol';
 import { request } from '../rpc/client';
 import { IconEye, IconEyeOff, IconInfo } from '../components/ui/icons';
+import { Switch } from '../components/ui/switch';
 import { groupAdvancedFields, isFieldVisible } from '../lib/formSections';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
@@ -496,19 +497,25 @@ function FieldRow({
   // 布尔开关（M8 修订）：row = 复选框+标签单行（功能开关）；stacked = 标签在上复选框在下（字段网格内保留标签）
   if (field.type === 'boolean') {
     if (booleanLayout === 'stacked') {
+      const isSwitch = field.control === 'switch';
+      const control = isSwitch ? (
+        <Switch checked={Boolean(value)} onCheckedChange={onChange} aria-label={field.label} aria-describedby={describedBy} />
+      ) : (
+        <input
+          id={inputId}
+          aria-describedby={describedBy}
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+      );
       return (
         <div>
-          <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
+          <label className={`${labelCls} flex items-center gap-1`} htmlFor={isSwitch ? undefined : inputId}>
             {field.label}
             {field.hint && <HintTip text={field.hint} />}
           </label>
-          <input
-            id={inputId}
-            aria-describedby={describedBy}
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(e) => onChange(e.target.checked)}
-          />
+          {control}
           {field.hint && (
             <span id={hintId} className="sr-only">
               {field.hint}
@@ -518,16 +525,22 @@ function FieldRow({
         </div>
       );
     }
+    const isSwitch = field.control === 'switch';
+    const control = isSwitch ? (
+      <Switch checked={Boolean(value)} onCheckedChange={onChange} aria-label={field.label} aria-describedby={describedBy} />
+    ) : (
+      <input
+        id={inputId}
+        aria-describedby={describedBy}
+        type="checkbox"
+        checked={Boolean(value)}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    );
     return (
       <div>
-        <label className="flex items-center gap-2 text-[13px]" htmlFor={inputId}>
-          <input
-            id={inputId}
-            aria-describedby={describedBy}
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(e) => onChange(e.target.checked)}
-          />
+        <label className="flex items-center gap-2 text-[13px]" htmlFor={isSwitch ? undefined : inputId}>
+          {control}
           <span>{field.label}</span>
           {field.hint && <HintTip text={field.hint} />}
         </label>

@@ -75,6 +75,7 @@ const formSchema: FormSchema = {
       label: 'SSL/TLS 加密连接',
       type: 'boolean',
       default: false,
+      control: 'switch',
       hint: '云托管 Redis（Upstash / Redis Cloud / Aiven 等）强制 TLS，须开启',
     },
     {

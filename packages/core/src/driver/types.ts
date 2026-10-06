@@ -96,6 +96,8 @@ export interface FormSchema {
     /** @since M8 表单方案 A：依赖的布尔字段 key——该开关关闭时本项隐藏（值仍随表单提交）；
      *  小节内被引用的布尔字段渲染为「标题行复选框」 */
     toggle?: string;
+    /** @since M8 表单方案 A：布尔字段的控件形态——'switch' 渲染为滑动开关（缺省复选框） */
+    control?: 'switch';
     validator?: 'port' | 'host' | 'path' | 'regex';
     validationRegex?: string;
   }>;
