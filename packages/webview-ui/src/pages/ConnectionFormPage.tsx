@@ -498,7 +498,11 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
   }
 
   const label = (
-    <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
+    <label
+      className={`${labelCls} flex items-center gap-1`}
+      htmlFor={inputId}
+      onClick={(e) => e.preventDefault()}
+    >
       {field.label}
       {field.required && field.type !== 'password' ? <span className="text-destructive"> *</span> : null}
       {field.hint && <HintTip text={field.hint} />}
@@ -587,6 +591,11 @@ function HintTip({ text }: { text: string }) {
     <span
       aria-hidden
       title={text}
+      onClick={(e) => {
+        // stopPropagation 挡不住 label 转发（那是 click 的 default action），必须 preventDefault
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground"
     >
       <IconInfo size={12} />
