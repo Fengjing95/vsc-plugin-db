@@ -47,7 +47,32 @@ window.__DBX_STUB__ = {
         ],
       },
     }),
-    'conn.getSchema': () => ({ schema: { fields: [] } }),
+    'conn.getSchema': (p) => {
+      // 驱动切换路径（M8 表单方案 A）：mysql 返回完整字段集；其余驱动沿用 redis 字段
+      if (p && p.driverId === 'mysql') {
+        return {
+          schema: {
+            fields: [
+              { key: 'host', label: '主机', type: 'string', required: true, placeholder: '127.0.0.1' },
+              { key: 'port', label: '端口', type: 'number', required: true, default: 3306, validator: 'port' },
+              { key: 'username', label: '用户名', type: 'string', required: true },
+              { key: 'password', label: '密码', type: 'password' },
+              { key: 'database', label: '默认库', type: 'string' },
+              {
+                key: 'sslInsecure',
+                label: '跳过证书校验',
+                type: 'boolean',
+                default: false,
+                group: '高级',
+                hint: '⚠ 风险：不校验服务器证书，连接可被中间人窃听/篡改。仅限自签证书的受信内网环境使用',
+              },
+              { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级' },
+            ],
+          },
+        };
+      }
+      return { schema: { fields: [] } };
+    },
     'conn.test': () => ({ ok: true, latencyMs: 8, serverVersion: '7.2.5' }),
     'conn.save': () => ({ connId: 'new-conn-id' }),
   },
