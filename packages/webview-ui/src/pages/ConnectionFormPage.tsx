@@ -290,7 +290,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {/* 环境与保护（三段控件；prod 红色警示与 §5.8 护栏呼应） */}
         <section className="flex flex-col gap-3">
           <div className="text-[11px] font-medium tracking-wider text-muted-foreground">环境与保护</div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center">
             <div className="flex overflow-hidden rounded-sm border border-border" role="radiogroup" aria-label="环境">
               {(
                 [
@@ -320,16 +320,21 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                 );
               })}
             </div>
-            <label className="flex items-center gap-1.5 text-[12px]">
-              <input
-                type="checkbox"
-                checked={readOnly}
-                onChange={(e) => setReadOnly(e.target.checked)}
-              />
-              只读保护
-              <span className="text-muted-foreground">（Host 层拒绝一切写操作）</span>
-            </label>
           </div>
+          <label className="flex items-center gap-2 text-[13px] font-medium" htmlFor="conn-readonly">
+            <input
+              id="conn-readonly"
+              aria-describedby="conn-readonly-hint"
+              type="checkbox"
+              checked={readOnly}
+              onChange={(e) => setReadOnly(e.target.checked)}
+            />
+            只读保护
+            <HintTip text="开启后 Host 层拒绝一切写操作" />
+          </label>
+          <span id="conn-readonly-hint" className="sr-only">
+            开启后 Host 层拒绝一切写操作
+          </span>
           {env === 'prod' && (
             <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-[12px] text-destructive">
               生产环境：所有写操作与危险语句将强制二次确认（输入名称匹配），该约束不可关闭
@@ -373,9 +378,6 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                     ) : sec.title && !standaloneBool ? (
                       <div className="text-[12px] font-medium text-foreground">{sec.title}</div>
                     ) : null}
-                    {sec.header && !headerOn && sec.fields.length > 0 && (
-                      <div className="text-[12px] text-muted-foreground">开启后可配置</div>
-                    )}
                     {sec.fields
                       .filter((f) => isFieldVisible(f, options))
                       .map((f) => (
@@ -470,6 +472,31 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
   const hintId = `${inputId}-hint`;
   const describedBy = field.hint ? hintId : undefined;
 
+  // 布尔开关统一「复选框 + 标签」单行格式（M8 修订：与 SSH 隧道标题行一致，不再上标签下开关两段式）
+  if (field.type === 'boolean') {
+    return (
+      <div>
+        <label className="flex items-center gap-2 text-[13px]" htmlFor={inputId}>
+          <input
+            id={inputId}
+            aria-describedby={describedBy}
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          <span>{field.label}</span>
+          {field.hint && <HintTip text={field.hint} />}
+        </label>
+        {field.hint && (
+          <span id={hintId} className="sr-only">
+            {field.hint}
+          </span>
+        )}
+        {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}
+      </div>
+    );
+  }
+
   const label = (
     <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
       {field.label}
@@ -502,19 +529,6 @@ function FieldRow({ field, value, error, inputCls, labelCls, passwordState, onCh
           {show ? <IconEyeOff size={14} /> : <IconEye size={14} />}
         </button>
       </div>
-    );
-  } else if (field.type === 'boolean') {
-    input = (
-      <label className="flex h-7 items-center gap-1.5 text-[13px]" htmlFor={inputId}>
-        <input
-          id={inputId}
-          aria-describedby={describedBy}
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className={value ? 'text-foreground' : 'text-muted-foreground'}>{value ? '开启' : '关闭'}</span>
-      </label>
     );
   } else if (field.type === 'select') {
     input = (
