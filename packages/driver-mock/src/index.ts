@@ -59,6 +59,8 @@ const capabilities: DriverCapabilities = {
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
   editable: true,
   pagination: 'offset',
+  // M8-PG B6：mock 是契约测试/DoD 基准驱动，不再作为可创建的连接类型暴露（概要 §7.1 测试用）
+  internal: true,
 };
 
 const formSchema: FormSchema = {

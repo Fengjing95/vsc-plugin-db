@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ChangeSetService, DriverRegistry, MetadataCache, type ConnectionConfig } from '@db-explorer/core';
+import { ChangeSetService, DriverRegistry, MetadataCache } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { createPostgresDriver } from '@db-explorer/driver-postgres';
@@ -17,17 +17,10 @@ import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
-const MOCK_CONNECTION: ConnectionConfig = {
-  id: 'mock-local',
-  name: '本地 Mock 数据源',
-  driverId: 'mock',
-  env: 'dev',
-  options: { host: '127.0.0.1', port: 3306 },
-  secretRef: 'dbExplorer.secrets.mock-local',
-};
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const registry = new DriverRegistry();
+  // mock：契约测试/DoD 基准驱动（capabilities.internal=true）——不暴露类型选择、不再种子示例连接；
+  // 保留注册使历史 mock 连接（globalState 已存）仍可打开
   registry.register(createMockDriver());
   registry.register(createMysqlDriver());
   // M8-PG PostgreSQL 驱动：仅注册（可插拔验收），树/取数/Console/DDL 路径零核心改动（D-15）
@@ -78,8 +71,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshTree: () => tree.refresh(),
     timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
   });
-
-  await store.ensureSeed(MOCK_CONNECTION);
 
   context.subscriptions.push(
     registry,

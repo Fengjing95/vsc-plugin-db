@@ -173,6 +173,9 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
   }
 
   async function switchDriver(next: string) {
+    if (connId) {
+      return; // 编辑连接锁定数据库类型（B6 交互稿 §3.2）：类型变更需新建连接
+    }
     setDriverId(next);
     setPhase('idle');
     setTestInfo(null);
@@ -251,7 +254,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
           </div>
         )}
 
-        {/* 驱动类型：图标选择卡片（§3.1 方案 A） */}
+        {/* 驱动类型：图标选择卡片（§3.1 方案 A）；编辑连接锁定类型（B6），卡片置灰不可点 */}
         <div>
           <span className={labelCls}>
             数据库类型 <span className="text-destructive">*</span>
@@ -268,17 +271,20 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
           >
             {drivers.map((d) => {
               const active = d.id === driverId;
+              const locked = Boolean(connId);
               return (
                 <button
                   key={d.id}
                   type="button"
                   role="radio"
                   aria-checked={active}
+                  aria-disabled={locked || undefined}
+                  title={locked ? '编辑连接不可更改数据库类型' : undefined}
                   className={`rounded-md border px-2 py-2.5 text-center text-[13px] ${
                     active
                       ? 'border-[var(--vscode-focusBorder)] bg-input text-foreground'
                       : 'border-border text-muted-foreground hover:border-[var(--vscode-focusBorder)] hover:bg-accent hover:text-accent-foreground'
-                  }`}
+                  } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
                   onClick={() => void switchDriver(d.id)}
                 >
                   <span aria-hidden className="block text-lg leading-none">
@@ -289,6 +295,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
               );
             })}
           </div>
+          {connId && (
+            <span className="mt-1 block text-[12px] text-muted-foreground">
+              编辑连接不可更改数据库类型（如需更换请新建连接）
+            </span>
+          )}
           {errors._driver && <span className="mt-1 block text-[12px] text-destructive">{errors._driver}</span>}
         </div>
 

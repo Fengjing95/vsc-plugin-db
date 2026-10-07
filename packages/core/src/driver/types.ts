@@ -48,6 +48,8 @@ export interface DriverCapabilities {
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';
   lazyCell?: boolean;
+  /** @since M8-PG B6：内部/测试驱动——不暴露给连接表单的数据库类型选择（如 mock 契约基准驱动） */
+  internal?: boolean;
 }
 
 /** 最小 Disposable：core 不依赖 vscode 运行时，便于单测与未来进程隔离（ADR D-05） */

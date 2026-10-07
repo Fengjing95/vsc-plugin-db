@@ -84,7 +84,11 @@ function formHandlers(
   return {
     [RpcMethods.connMeta]: async (raw) => {
       const p = ConnMetaParamsSchema.parse(raw ?? {});
-      const drivers = deps.registry.list().map((d) => ({ id: d.id, displayName: d.displayName }));
+      // internal 驱动（如 mock 契约基准）不作为可创建的连接类型暴露（core capabilities @since M8-PG B6）
+      const drivers = deps.registry
+        .list()
+        .filter((d) => d.capabilities.internal !== true)
+        .map((d) => ({ id: d.id, displayName: d.displayName }));
       const config = p.connId ? deps.store.get(p.connId) : undefined;
       const driverId = config?.driverId ?? drivers[0]?.id ?? '';
       const driverSchema = driverId
