@@ -7,6 +7,7 @@ import type {
   FormSchemaPayload,
 } from '@db-explorer/protocol';
 import { request } from '../rpc/client';
+import { DbDriverIcon } from '../components/ui/dbIcons';
 import { IconEye, IconEyeOff, IconInfo } from '../components/ui/icons';
 import {
   filterSuggestions,
@@ -22,16 +23,6 @@ import {
 import { groupAdvancedFields, isFieldVisible } from '../lib/formSections';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
-
-/** 驱动类型卡片图标（外观装饰；未知驱动走通用图标，不影响任何逻辑） */
-const DRIVER_ICONS: Record<string, string> = {
-  mysql: '🐬',
-  redis: '⚡',
-  postgres: '🐘',
-  postgresql: '🐘',
-  sqlite: '🪶',
-  mock: '🧪',
-};
 
 /**
  * 连接表单（概要设计 5.2 / 交互稿 §3.1 方案 A 紧凑双栏卡片）：
@@ -287,8 +278,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                   } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
                   onClick={() => void switchDriver(d.id)}
                 >
-                  <span aria-hidden className="block text-lg leading-none">
-                    {DRIVER_ICONS[d.id] ?? '🗄'}
+                  <span aria-hidden className="flex h-[18px] items-center justify-center text-lg leading-none">
+                    <DbDriverIcon driverId={d.id} size={18} />
                   </span>
                   <span className="mt-1 block">{d.displayName}</span>
                 </button>
