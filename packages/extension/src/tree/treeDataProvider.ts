@@ -32,6 +32,8 @@ export interface DbTreeNode {
   iconId: string;
   payload: {
     connId?: string;
+    /** 连接节点的驱动 id（树连接节点据此选品牌 logo，M8-PG B8） */
+    driverId?: string;
     db?: string;
     obj?: string;
     kind?: FolderKind;
@@ -43,6 +45,19 @@ export interface DbTreeNode {
 }
 
 const { Collapsed, None } = vscode.TreeItemCollapsibleState;
+
+/** 驱动品牌 logo（media/logos/*.svg，esbuild 构建期从 webview-ui/src/assets/logos 拷贝）：
+ *  driverId → 文件名；别名归一与 webview 侧 components/ui/dbIcons.tsx 的 DRIVER_LOGO_KEYS 同源 */
+const DRIVER_LOGO_FILES: Record<string, string> = {
+  mysql: 'mysql.svg',
+  postgres: 'postgresql.svg',
+  postgresql: 'postgresql.svg',
+  redis: 'redis.svg',
+  sqlite: 'sqlite.svg',
+  sqlite3: 'sqlite.svg',
+  mongodb: 'mongodb.svg',
+  mongo: 'mongodb.svg',
+};
 
 export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNode> {
   private readonly emitter = new vscode.EventEmitter<DbTreeNode | undefined>();
@@ -61,6 +76,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     private readonly cache: MetadataCache,
     /** 交互式事务会话（§4.6）：「事务进行中」树徽标数据源 */
     private readonly sessions?: { hasActive(connId: string): boolean },
+    /** 扩展安装根（extensionUri）：树连接节点品牌 logo 的 media/logos 文件 URI 基址 */
+    private readonly extensionUri?: vscode.Uri,
   ) {}
 
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
@@ -111,7 +128,15 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     const epoch = node.type === 'connection' ? this.collapseEpoch.get(node.payload.connId ?? '') ?? 0 : null;
     item.id = epoch !== null ? `${node.id}#${epoch}` : node.id;
     item.contextValue = node.contextValue;
-    item.iconPath = new vscode.ThemeIcon(node.iconId);
+    // 连接节点优先品牌 logo（media/logos/*.svg，构建期从 webview-ui 素材拷贝）；无素材驱动回落 codicon
+    const logoFile =
+      node.type === 'connection' && node.payload.driverId
+        ? DRIVER_LOGO_FILES[node.payload.driverId]
+        : undefined;
+    item.iconPath =
+      logoFile && this.extensionUri
+        ? vscode.Uri.joinPath(this.extensionUri, 'media', 'logos', logoFile)
+        : new vscode.ThemeIcon(node.iconId);
     if (node.description) {
       item.description = node.description;
     }
@@ -148,7 +173,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           // 新建 Console/刷新/断开按钮（M7 评审：未连接时这三个操作要么强制建连要么无意义）
           contextValue: this.connections.isConnected(c.id) ? 'connection connected' : 'connection',
           iconId: 'database',
-          payload: { connId: c.id },
+          payload: { connId: c.id, driverId: c.driverId },
         };
         this.connectionNodes.set(connectionNode.id, connectionNode);
         return connectionNode;

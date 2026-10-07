@@ -142,5 +142,7 @@
 | 执行计划树形缩进（D-13） | `webview-ui/src/lib/consoleView.ts`（isExplainResultSet/explainIndentLevels 纯函数）+ ConsoleGrid 首列缩进 |
 | 保存查询 | `packages/extension/src/services/savedQueries.ts`（纯函数）+ `savedQueryActions.ts`（VSCode 交互），落盘 `.vscode/db-queries/*.sql` |
 | Webview 可视化验证（无宿主） | skill `webview-visual-test`：`node .agents/skills/webview-visual-test/scripts/make-stub.mjs` 起 stub 页（P-20，**单实例串行**，两实例并行争输出目录互崩，见 pitfalls），Console 页场景见 `scripts/console-scenario.js` / `console-banner.js`、表格导出场景 `scripts/table-export.js`（M8 导出 chip）、表结构编辑场景 `scripts/table-design.js`（M8-B2）、连接表单场景 `scripts/connection-form-ssl.js`，坑与排查见其 `references/pitfalls.md`（P-21 等） |
+| 驱动类型卡片品牌图标（M8-PG B7） | `webview-ui/src/components/ui/dbIcons.tsx`（DbDriverIcon 内联 SVG 渲染，CSP 安全 + emoji 回落）+ `components/dbIcons.generated.ts`（构建期产物入库，勿手改）；新增数据库把 svg 丢入 `assets/logos/` 重跑 `generate:db-icons` 即得 |
+| 树连接节点品牌 logo（M8-PG B8） | `extension/src/tree/treeDataProvider.ts` 的 `DRIVER_LOGO_FILES`（小写文件名，与 webview `DRIVER_LOGO_KEYS` 同源别名归一）；`extension/esbuild.mjs` 构建期从 `webview-ui/src/assets/logos` 拷到 `media/logos`（**文件名归一化小写**——素材源大小写混合，Linux 大小写敏感，产物已 gitignore） |
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |

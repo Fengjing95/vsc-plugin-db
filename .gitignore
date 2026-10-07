@@ -6,3 +6,5 @@ out/
 coverage/
 .vscode-test/
 .DS_Store
+# 树连接节点品牌 logo（esbuild 构建期从 webview-ui/src/assets/logos 拷贝的产物，不入库）
+packages/extension/media/logos/

@@ -44,7 +44,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     () => vscode.workspace.getConfiguration('dbExplorer').get('transaction.idleTimeoutMs', 300_000),
     (message) => void vscode.window.showWarningMessage(message),
   );
-  const tree = new ConnectionsTreeProvider(connections, cache, sessions);
+  const tree = new ConnectionsTreeProvider(connections, cache, sessions, context.extensionUri);
   const treeView = vscode.window.createTreeView('dbExplorer.connections', {
     treeDataProvider: tree,
     showCollapseAll: true,
