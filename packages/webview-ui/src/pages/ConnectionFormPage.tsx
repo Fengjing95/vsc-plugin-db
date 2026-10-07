@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
+  ConnDbOptionsResult,
   ConnMetaResult,
   ConnTestResult,
   FormFieldPayload,
@@ -7,6 +8,17 @@ import type {
 } from '@db-explorer/protocol';
 import { request } from '../rpc/client';
 import { IconEye, IconEyeOff, IconInfo } from '../components/ui/icons';
+import {
+  filterSuggestions,
+  initialDbSuggestState,
+  reduceDbFetchFailure,
+  reduceDbFetchStart,
+  reduceDbFetchSuccess,
+  shouldFetchDbOptions,
+  suggestionFingerprint,
+  suggestionsVisible,
+  type DbSuggestState,
+} from '../lib/dbSuggest';
 import { groupAdvancedFields, isFieldVisible } from '../lib/formSections';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
@@ -41,6 +53,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [phase, setPhase] = useState<TestPhase>('idle');
   const [testInfo, setTestInfo] = useState<ConnTestResult | null>(null);
+  /** 「默认库」动态建议状态（M8-PG B5，交互稿 §3.2）：focus 触发、指纹缓存去重、失败无感 */
+  const [dbSuggest, setDbSuggest] = useState<DbSuggestState>(initialDbSuggestState);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +142,34 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
       }
     }
     return merged;
+  }
+
+  /** 当前表单的列库参数指纹（host/port/用户名/密码/驱动/连接）——任一变化后，下一次聚焦才重拉 */
+  const dbSuggestFingerprint = suggestionFingerprint([
+    driverId,
+    String(options['host'] ?? ''),
+    String(options['port'] ?? ''),
+    String(options['username'] ?? ''),
+    passwords['password'] ?? '',
+    hasSecret ? 'stored' : 'no-secret',
+    connId ?? '',
+  ]);
+
+  /** 字段聚焦触发列库建议（交互稿 §3.2 动态建议字段）：在途/命中缓存不重复；
+   *  全程吞错——Host 侧已兜底回空数组，传输层异常（旧宿主/超时）也按无感降级处理 */
+  function onFocusDatabaseField(): void {
+    if (!shouldFetchDbOptions(dbSuggest, dbSuggestFingerprint)) {
+      return;
+    }
+    setDbSuggest(reduceDbFetchStart(dbSuggest, dbSuggestFingerprint));
+    void request<ConnDbOptionsResult>('conn.dbOptions', {
+      driverId,
+      options: mergePasswordFields(options),
+      password: passwords['password'] || null,
+      connId: connId ?? null,
+    })
+      .then((r) => setDbSuggest((prev) => reduceDbFetchSuccess(prev, dbSuggestFingerprint, r.databases)))
+      .catch(() => setDbSuggest((prev) => reduceDbFetchFailure(prev, dbSuggestFingerprint)));
   }
 
   async function switchDriver(next: string) {
@@ -293,6 +335,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                       onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
                     }}
                     onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
+                    dbSuggest={
+                      f.dynamicOptions === 'databases'
+                        ? { state: dbSuggest, fingerprint: dbSuggestFingerprint, onFocus: onFocusDatabaseField }
+                        : undefined
+                    }
                   />
                 </div>
               ))}
@@ -407,6 +454,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                             onChange: (v) => setPasswords((prev) => ({ ...prev, [f.key]: v })),
                           }}
                           onChange={(v) => setOptions((prev) => ({ ...prev, [f.key]: v }))}
+                          dbSuggest={
+                            f.dynamicOptions === 'databases'
+                              ? { state: dbSuggest, fingerprint: dbSuggestFingerprint, onFocus: onFocusDatabaseField }
+                              : undefined
+                          }
                         />
                       ))}
                   </div>
@@ -477,6 +529,9 @@ interface FieldRowProps {
   booleanLayout?: 'row' | 'stacked';
   passwordState: { value: string; hasSecret: boolean; onChange: (v: string) => void };
   onChange: (v: unknown) => void;
+  /** 动态建议字段（M8-PG B5）：dynamicOptions='databases' 时由页级传入——聚焦触发拉取、
+   *  候选下拉按输入过滤、指纹不匹配不展示（迟到/过期回包防护） */
+  dbSuggest?: { state: DbSuggestState; fingerprint: string; onFocus: () => void };
 }
 
 function FieldRow({
@@ -488,9 +543,12 @@ function FieldRow({
   booleanLayout = 'row',
   passwordState,
   onChange,
+  dbSuggest,
 }: FieldRowProps) {
   /** 密码可见性切换（§3.1 方案 A）：系统图标 eye/eye-off；默认密文 */
   const [show, setShow] = useState(false);
+  /** 库建议下拉开合（聚焦展示、选择/失焦/Esc 关闭；hooks 须顶层，分支内仅使用） */
+  const [suggestOpen, setSuggestOpen] = useState(false);
   /** label↔input 关联（交互稿 §11 无障碍：读屏可读、测试可定位） */
   const inputId = `conn-field-${field.key}`;
   /** hint 经 aria-describedby 提供读屏可读（可见形态是标题后的 tips 图标） */
@@ -610,6 +668,66 @@ function FieldRow({
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
       />
+    );
+  } else if (field.dynamicOptions === 'databases') {
+    // 动态建议输入框（M8-PG B5，交互稿 §3.2）：聚焦拉取 + 候选下拉，输入保持自由。
+    // 候选仅当指纹与当前表单一致时展示（迟到/过期回包不显示）；失败时列表不出现（无感）
+    const matches =
+      dbSuggest && suggestionsVisible(dbSuggest.state, dbSuggest.fingerprint)
+        ? filterSuggestions(dbSuggest.state.items, String(value ?? ''))
+        : [];
+    const listOpen = suggestOpen && matches.length > 0;
+    input = (
+      <div className="relative">
+        <input
+          id={inputId}
+          aria-describedby={describedBy}
+          type="text"
+          className={inputCls}
+          value={value === undefined || value === null ? '' : String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls={`${inputId}-suggest`}
+          onFocus={() => {
+            setSuggestOpen(true);
+            dbSuggest?.onFocus();
+          }}
+          onBlur={() => setSuggestOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setSuggestOpen(false);
+            }
+          }}
+        />
+        {listOpen && (
+          <ul
+            id={`${inputId}-suggest`}
+            role="listbox"
+            aria-label={`${field.label}建议`}
+            // mousedown preventDefault：点击选项不使输入框失焦（blur 先关列表会截断 click）
+            onMouseDown={(e) => e.preventDefault()}
+            className="absolute left-0 right-0 top-full z-10 mt-0.5 max-h-40 overflow-auto rounded-sm border border-border bg-[var(--vscode-editorHover-widget-background,#252526)] py-0.5 shadow-lg"
+          >
+            {matches.map((dbName) => (
+              <li
+                key={dbName}
+                role="option"
+                aria-selected={dbName === String(value ?? '')}
+                className="cursor-pointer px-2 py-1 text-[13px] text-foreground hover:bg-accent"
+                onClick={() => {
+                  onChange(dbName);
+                  setSuggestOpen(false);
+                }}
+              >
+                {dbName}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     );
   } else {
     input = (

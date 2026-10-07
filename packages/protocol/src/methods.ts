@@ -17,6 +17,7 @@ export const RpcMethods = {
   connMeta: 'conn.getMeta',
   connSchema: 'conn.getSchema',
   connTest: 'conn.test',
+  connDbOptions: 'conn.dbOptions',
   connSave: 'conn.save',
   consoleState: 'console.getState',
   consoleExecute: 'console.execute',
@@ -399,6 +400,9 @@ export const FormFieldSchema = z.object({
   section: z.string().optional(),
   /** @since M8 表单方案 A：依赖的布尔开关字段 key——该开关关闭时本项隐藏（如 sslInsecure 依赖 ssl） */
   toggle: z.string().optional(),
+  /** @since M8-PG B5：动态选项——'databases' = 字段聚焦时经 conn.dbOptions 拉取库列表作输入建议
+   *  （仅 string 字段；输入保持自由，失败无感降级为纯手输） */
+  dynamicOptions: z.enum(['databases']).optional(),
   validator: z.enum(['port', 'host', 'path', 'regex']).optional(),
   validationRegex: z.string().optional(),
 });
@@ -460,6 +464,22 @@ export const ConnTestResultSchema = z.object({
   errorMessage: z.string().optional(),
 });
 export type ConnTestResult = z.infer<typeof ConnTestResultSchema>;
+
+// ── conn.dbOptions（M8-PG B5：表单「默认库」聚焦建议）─────────────────────────
+export const ConnDbOptionsParamsSchema = z.object({
+  driverId: z.string().min(1),
+  options: z.record(z.string(), z.unknown()),
+  /** null = 沿用已存密码（编辑态留空）；明文仅在请求瞬间经过，不落任何存储（同 conn.test） */
+  password: z.string().nullable(),
+  connId: z.string().nullable().optional(),
+});
+export type ConnDbOptionsParams = z.infer<typeof ConnDbOptionsParamsSchema>;
+
+/** 失败不产生 error 帧：Host 吞错恒回 { databases: [] }，Webview 无感降级为自由手输 */
+export const ConnDbOptionsResultSchema = z.object({
+  databases: z.array(z.string()),
+});
+export type ConnDbOptionsResult = z.infer<typeof ConnDbOptionsResultSchema>;
 
 // ── conn.save ──────────────────────────────────────────────────
 export const ConnSaveParamsSchema = z.object({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DriverError, type FilterCondition } from '@db-explorer/core';
 import {
+  bootstrapDatabaseCandidates,
   buildSelect,
   encodeCell,
   escapeLike,
@@ -199,5 +200,16 @@ describe('标识符与片段工具', () => {
     expect(fragmentHasColumn('amount DESC, id ASC', 'id')).toBe(true);
     expect(fragmentHasColumn("name = 'id'", 'id')).toBe(false);
     expect(fragmentHasColumn('amount DESC', 'id')).toBe(false);
+  });
+});
+
+describe('bootstrapDatabaseCandidates（表单列库引导链，§3 @since v0.1.4）', () => {
+  it('postgres 优先，其次用户名同名库，末位 template1', () => {
+    expect(bootstrapDatabaseCandidates({ username: 'app' })).toEqual(['postgres', 'app', 'template1']);
+  });
+  it('用户名与 postgres 同名时去重；空用户名跳过', () => {
+    expect(bootstrapDatabaseCandidates({ username: 'postgres' })).toEqual(['postgres', 'template1']);
+    expect(bootstrapDatabaseCandidates({})).toEqual(['postgres', 'template1']);
+    expect(bootstrapDatabaseCandidates({ username: '  ' })).toEqual(['postgres', 'template1']);
   });
 });

@@ -1,5 +1,6 @@
 // 连接表单场景（M8-PG）：验证 PostgreSQL 驱动 FormSchema 渲染——
-// 默认库 hint 消歧（D-15）、高级组 section 小节、SSL/TLS toggle（sslInsecure 随 ssl 显隐）
+// 默认库 hint 消歧（D-15）、高级组 section 小节、SSL/TLS toggle（sslInsecure 随 ssl 显隐）；
+// B5：默认库聚焦动态建议（conn.dbOptions）——成功路径默认；URL 带 ?fail=1 验证失败无感降级
 window.__DBX_STUB__ = {
   delayMs: 30,
   bootstrap: {
@@ -30,6 +31,14 @@ window.__DBX_STUB__ = {
         ],
       },
     }),
+    'conn.dbOptions': (p) => {
+      // 拉取计数（浏览器侧断言用）：window.__DBX_DBOPTIONS_CALLS
+      window.__DBX_DBOPTIONS_CALLS = (window.__DBX_DBOPTIONS_CALLS ?? 0) + 1;
+      if (new URLSearchParams(location.search).has('fail')) {
+        throw new Error('E_CONN simulated'); // Host 正常不会 error 帧——传输层异常按无感降级验证
+      }
+      return { databases: ['postgres', 'app_db', 'reporting'] };
+    },
     'conn.getSchema': (p) => {
       // M8-PG：postgres 驱动字段集（镜像 driver-postgres formSchema，含 D-15 hint 消歧）
       if (p && p.driverId === 'postgres') {
@@ -46,6 +55,7 @@ window.__DBX_STUB__ = {
                 type: 'string',
                 placeholder: 'postgres',
                 hint: 'PG 数据库名（连接级绑定，PG 协议不可跨库切换）；树上展开的「库」为该数据库内的 schema',
+                dynamicOptions: 'databases',
               },
               { key: 'connectTimeout', label: '连接超时（ms）', type: 'number', default: 10000, group: '高级', section: '超时与连接池' },
               { key: 'maxConnections', label: '连接池上限', type: 'number', default: 4, group: '高级', section: '超时与连接池' },

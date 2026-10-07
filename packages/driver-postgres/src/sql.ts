@@ -278,6 +278,17 @@ export function isSafeIntString(v: string): boolean {
   return /^-?\d+$/.test(v) && Number.isSafeInteger(Number(v));
 }
 
+/**
+ * 引导库候选链（连接表单列库建议，驱动规范 §3 @since v0.1.4）：
+ * PG 协议连接即绑库，列库必须先连上某个库才能查 pg_database——
+ * postgres（标准安装必有）→ 用户名同名库（pg 建连缺省行为）→ template1（datallowconn=true 可连）；
+ * 去重、跳过空值。
+ */
+export function bootstrapDatabaseCandidates(options: Record<string, unknown>): string[] {
+  const user = String(options.username ?? '').trim();
+  return [...new Set(['postgres', user, 'template1'].map((d) => d.trim()).filter((d) => d.length > 0))];
+}
+
 /** 值编码契约（概要设计 §4.4）：Buffer → base64；integer 列的 int8 字符串安全转数值 */
 export function encodeCell(v: unknown, type: NormalizedType): unknown {
   if (v === null || v === undefined) {

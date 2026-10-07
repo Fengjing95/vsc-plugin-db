@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ApplyChangesResultSchema,
+  ConnDbOptionsParamsSchema,
+  ConnDbOptionsResultSchema,
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
   ConsoleBannerSchema,
@@ -226,6 +228,16 @@ describe('方法参数校验', () => {
     expect(ConnTestParamsSchema.parse({ ...base, password: null }).password).toBeNull();
     expect(ConnTestParamsSchema.parse({ ...base, password: 's3cret' }).password).toBe('s3cret');
     expect(() => ConnTestParamsSchema.parse({ ...base })).toThrow();
+  });
+
+  it('conn.dbOptions：password nullable 同 conn.test；结果恒为数组（M8-PG B5）', () => {
+    const base = { driverId: 'postgres', options: { host: '127.0.0.1' } };
+    expect(ConnDbOptionsParamsSchema.parse({ ...base, password: null }).password).toBeNull();
+    expect(ConnDbOptionsParamsSchema.parse({ ...base, password: 's3cret' }).password).toBe('s3cret');
+    expect(() => ConnDbOptionsParamsSchema.parse({ ...base })).toThrow();
+    expect(ConnDbOptionsResultSchema.parse({ databases: ['postgres', 'app'] }).databases).toHaveLength(2);
+    expect(ConnDbOptionsResultSchema.parse({ databases: [] }).databases).toHaveLength(0);
+    expect(() => ConnDbOptionsResultSchema.parse({})).toThrow();
   });
 
   it('conn.save：name 必填非空', () => {

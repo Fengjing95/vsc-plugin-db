@@ -158,8 +158,7 @@ export function buildSelect(req: SelectParts): BuiltSelect {
 }
 
 /** MySQL 类型 → NormalizedType（驱动开发规范 §5.1） */
-export function normalizeMysqlType(dataType: string): NormalizedType {
-  const t = dataType.toLowerCase();
+export function normalizeMysqlType(dataType: string): NormalizedType {  const t = dataType.toLowerCase();
   if (t.startsWith('tinyint') || t.startsWith('smallint') || t.startsWith('mediumint') || t.startsWith('int') || t.startsWith('bigint')) {
     return 'integer';
   }
@@ -204,6 +203,13 @@ export function encodeValue(v: unknown): unknown {
     return v.toString('base64');
   }
   return v;
+}
+
+/** MySQL 系统库（SHOW DATABASES 结果过滤；连接表单列库建议，驱动规范 §3 @since v0.1.4） */
+const MYSQL_SYSTEM_DATABASES = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
+
+export function filterMysqlDatabases(names: string[]): string[] {
+  return names.filter((n) => !MYSQL_SYSTEM_DATABASES.has(n.toLowerCase()));
 }
 
 /** MySQL geometry 子类（WKB 存储，按二进制展示） */

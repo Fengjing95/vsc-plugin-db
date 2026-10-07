@@ -96,6 +96,10 @@ export interface FormSchema {
     /** @since M8 表单方案 A：依赖的布尔字段 key——该开关关闭时本项隐藏（值仍随表单提交）；
      *  小节内被引用的布尔字段渲染为「标题行复选框」 */
     toggle?: string;
+    /** @since M8-PG B5：动态选项——'databases' = 字段聚焦时经 conn.dbOptions 拉取服务器库列表
+     *  作为输入建议（仅 string 字段生效）。输入保持自由：拉取失败无感降级为纯手输，
+     *  驱动应实现 listDatabaseOptions 提供数据源 */
+    dynamicOptions?: 'databases';
     validator?: 'port' | 'host' | 'path' | 'regex';
     validationRegex?: string;
   }>;
@@ -109,6 +113,11 @@ export interface IDatabaseDriver {
   readonly capabilities: DriverCapabilities;
   getConnectionFormSchema(): FormSchema;
   testConnection(cfg: ConnectionConfig, secret: string): Promise<TestResult>;
+  /** @since M8-PG B5：连接表单「默认库」动态建议数据源（FormSchema 字段 dynamicOptions='databases' 时
+   *  由表单聚焦触发，经 Host conn.dbOptions 调用）。实现必须自建临时连接（testConnection 同源口径：
+   *  不复用连接池、不产生任何持久化），建连库自行兜底（PG 引导链 postgres→用户名→template1）；
+   *  失败/不可达一律 resolve 空数组、禁止 reject——UI 无感降级为自由手输。cfg 为表单草稿（id 等为占位值） */
+  listDatabaseOptions?(cfg: ConnectionConfig, secret: string): Promise<string[]>;
   connect(cfg: ConnectionConfig, secret: string): Promise<IConnection>;
 }
 

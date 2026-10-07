@@ -31,6 +31,7 @@ import { buildChangeStatements } from './changes';
 import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
 import { toDriverError } from './errors';
 import {
+  bootstrapDatabaseCandidates,
   encodeCell,
   fragmentHasColumn,
   normalizePgType,
@@ -80,6 +81,7 @@ const formSchema: FormSchema = {
       type: 'string',
       placeholder: 'postgres',
       hint: 'PG 数据库名（连接级绑定，PG 协议不可跨库切换）；树上展开的「库」为该数据库内的 schema',
+      dynamicOptions: 'databases',
     },
     {
       key: 'connectTimeout',
@@ -795,6 +797,29 @@ export function createPostgresDriver(): IDatabaseDriver {
       } finally {
         await client?.end().catch(() => undefined);
       }
+    },
+    // 连接表单「默认库」建议（驱动规范 §3 @since v0.1.4）：引导库链逐个尝试，失败 resolve []（无感降级）
+    listDatabaseOptions: async (cfg: ConnectionConfig, secret: string): Promise<string[]> => {
+      const base = buildClientConfig(cfg, secret);
+      // 表单期自动建议：单次建连死线压到 ≤5s，避免不可达主机 × 3 候选的静默长等
+      const bootstrapTimeout = Math.min(Number(cfg.options.connectTimeout ?? 10_000), 5_000);
+      for (const database of bootstrapDatabaseCandidates(cfg.options)) {
+        const client = new pg.Client({ ...base, database, connectionTimeoutMillis: bootstrapTimeout });
+        try {
+          await client.connect();
+          try {
+            const res = await client.query(
+              'SELECT datname FROM pg_catalog.pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname',
+            );
+            return res.rows.map((r) => String(r.datname));
+          } finally {
+            await client.end().catch(() => undefined);
+          }
+        } catch {
+          // 该引导库不可用（不可达/改名/无权限）：尝试下一个候选；全部失败返回 []（契约：禁止 reject）
+        }
+      }
+      return [];
     },
     connect: (cfg: ConnectionConfig, secret: string) => Promise.resolve(new PostgresConnection(cfg, secret)),
   };

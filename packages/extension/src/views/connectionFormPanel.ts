@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import { DriverError, type ConnectionConfig, type DriverRegistry } from '@db-explorer/core';
 import {
+  ConnDbOptionsParamsSchema,
   ConnMetaParamsSchema,
   ConnSaveParamsSchema,
   ConnSchemaParamsSchema,
@@ -149,6 +150,46 @@ function formHandlers(
       } catch (err) {
         const e = DriverError.is(err) ? err : new DriverError('E_INTERNAL', String(err));
         return { ok: false, errorCode: e.code, errorMessage: e.message };
+      } finally {
+        tunnel?.dispose();
+      }
+    },
+
+    [RpcMethods.connDbOptions]: async (raw) => {
+      const p = ConnDbOptionsParamsSchema.parse(raw);
+      const driver = deps.registry.require(p.driverId);
+      // 无感降级契约（驱动规范 §3 @since v0.1.4）：驱动未实现/解析失败/拉取失败一律回空数组，
+      // Webview 静默降级为自由手输，绝不显示错误
+      if (typeof driver.listDatabaseOptions !== 'function') {
+        return { databases: [] };
+      }
+      // 密码解析与 conn.test 同源：表单明文 > 已存密钥；SSH 隧道同走 resolveSshTarget
+      const secret =
+        p.password ?? (p.connId ? ((await deps.store.getSecret(p.connId)) ?? '') : '');
+      const sshSecret =
+        (typeof p.options.sshPassword === 'string' && p.options.sshPassword
+          ? p.options.sshPassword
+          : undefined) ??
+        (p.connId ? ((await deps.store.getSshPassword(p.connId)) ?? '') : '');
+      let cfg: ConnectionConfig = {
+        id: p.connId ?? 'test',
+        name: 'test',
+        driverId: p.driverId,
+        options: p.options,
+        secretRef: secretRefOf(p.connId ?? 'test'),
+      };
+      let tunnel: Awaited<ReturnType<typeof resolveSshTarget>>['tunnel'];
+      try {
+        const resolved = await resolveSshTarget(cfg, sshSecret, deps.sshFingerprints, 10_000);
+        cfg = resolved.cfg;
+        tunnel = resolved.tunnel;
+        const databases = await driver.listDatabaseOptions(cfg, secret);
+        return { databases };
+      } catch (err) {
+        deps.output.appendLine(
+          `[form] 列库建议失败（无感降级）: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return { databases: [] };
       } finally {
         tunnel?.dispose();
       }

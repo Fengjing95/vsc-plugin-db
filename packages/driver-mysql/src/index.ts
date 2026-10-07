@@ -28,7 +28,7 @@ import {
 } from '@db-explorer/core';
 import { buildChangeStatements } from './changes';
 import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
-import { buildSelect, encodeValue, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
+import { buildSelect, encodeValue, filterMysqlDatabases, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
 
 /**
  * MySQL 驱动（mysql2/promise）。
@@ -57,7 +57,7 @@ const formSchema: FormSchema = {
     { key: 'port', label: '端口', type: 'number', required: true, default: 3306, validator: 'port' },
     { key: 'username', label: '用户名', type: 'string', required: true },
     { key: 'password', label: '密码', type: 'password' },
-    { key: 'database', label: '默认库', type: 'string' },
+    { key: 'database', label: '默认库', type: 'string', dynamicOptions: 'databases' },
     {
       key: 'connectTimeout',
       label: '连接超时（ms）',
@@ -656,6 +656,33 @@ export function createMysqlDriver(): IDatabaseDriver {
         return { ok: true, latencyMs: Date.now() - started, serverVersion: version };
       } catch (err) {
         return { ok: false, error: toDriverError(err) };
+      } finally {
+        await conn?.end().catch(() => undefined);
+      }
+    },
+    // 连接表单「默认库」建议（驱动规范 §3 @since v0.1.4）：不带库连接即可 SHOW DATABASES，失败 resolve []（无感降级）
+    listDatabaseOptions: async (cfg: ConnectionConfig, secret: string): Promise<string[]> => {
+      const o = cfg.options;
+      let conn;
+      try {
+        const { createConnection } = await import('mysql2/promise');
+        conn = await createConnection({
+          host: String(o.host ?? '127.0.0.1'),
+          port: Number(o.port ?? 3306),
+          user: String(o.username ?? ''),
+          password: secret,
+          // 表单期自动建议：建连死线压到 ≤5s（不可达主机不静默长等）
+          connectTimeout: Math.min(Number(o.connectTimeout ?? 10_000), 5_000),
+          ssl: o.ssl ? { rejectUnauthorized: true } : undefined,
+        });
+        const [rows] = await conn.query('SHOW DATABASES');
+        const names = (Array.isArray(rows) ? rows : []).map((r) =>
+          String(Object.values(r as Record<string, unknown>)[0] ?? ''),
+        );
+        return filterMysqlDatabases(names.filter((n) => n.length > 0));
+      } catch {
+        // 失败契约（驱动规范 §3 @since v0.1.4）：resolve 空数组、禁止 reject——UI 无感降级为手输
+        return [];
       } finally {
         await conn?.end().catch(() => undefined);
       }

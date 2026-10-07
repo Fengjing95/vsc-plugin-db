@@ -8,6 +8,7 @@ import {
   normalizeMysqlType,
   quoteMysqlIdentifier,
   toDriverError,
+  filterMysqlDatabases,
 } from './sql';
 
 describe('quoteMysqlIdentifier', () => {
@@ -275,5 +276,13 @@ describe('toDriverError 映射（驱动规范 §6）', () => {
     expect(err.code).toBe('E_INTERNAL');
     expect(err.detail).toContain('ER_SOMETHING');
     expect(err.detail).toContain('boom');
+  });
+});
+
+describe('filterMysqlDatabases（表单列库建议，§3 @since v0.1.4）', () => {
+  it('过滤系统库（大小写不敏感），业务库保留', () => {
+    expect(
+      filterMysqlDatabases(['information_schema', 'mysql', 'performance_schema', 'sys', 'myapp', 'MyApp_Prod']),
+    ).toEqual(['myapp', 'MyApp_Prod']);
   });
 });
