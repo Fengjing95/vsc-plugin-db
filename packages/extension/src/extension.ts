@@ -11,6 +11,7 @@ import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
+import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
@@ -84,7 +85,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeView,
     consoleService,
     registerConsoleResultView(context, { connections, output, console: consoleService }),
-    registerConsoleCompletion(context, consoleService),
+    registerConsoleCompletion(consoleService),
+    // SQL CodeLens「▶ 执行」：每条语句上方执行动作（与 Ctrl+Enter 同一执行链，M8 优化）
+    registerSqlCodeLens(),
     store.onDidChange(() => tree.refresh()),
     // 连接状态变化（建连/断开）→ 树刷新连接节点徽标（概要 §8.1）
     connections.onDidChangeStatus(() => tree.refresh()),

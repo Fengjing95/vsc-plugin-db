@@ -178,6 +178,11 @@
         "category": "数据库"
       },
       {
+        "command": "dbExplorer.executeQueryAt",
+        "title": "执行语句（CodeLens 入口）",
+        "category": "数据库"
+      },
+      {
         "command": "dbExplorer.executeQueryAll",
         "title": "执行全部语句",
         "category": "数据库"

@@ -9,12 +9,13 @@ import type { ConsoleService } from './consoleService';
 
 /**
  * Console 补全（概要设计 §5.5.3 / 评审 P1-1）：
- * - 注册范围隔离：untitled sql 文档 + **已绑定连接**的文件（动态注册）；
- *   用户的普通 .sql 文件不注册（禁止污染），未绑定的 untitled 文档只给关键字级补全
- * - 数据源：metadataCache 的补全缓存（Console 打开时预热；DoD 缓存命中 <100ms）
+ * - 注册范围：全部 sql 文档（untitled Console + 普通 .sql 文件——落实 §5.5.3「普通 .sql 只给关键字级」，
+ *   M8 起不再仅限已绑定文件动态注册）
+ * - provider 内部按文档绑定过滤：已绑定 → metadataCache 的补全缓存（Console 打开时预热；
+ *   DoD 缓存命中 <100ms）；未绑定 → 仅关键字级（VSCode 状态栏可看到「未绑定连接」提示）
  * - 上下文：resolveCompletionContext（单库 + 别名，D-04）
  */
-const UNTITLED_SELECTOR: vscode.DocumentSelector = { language: 'sql', scheme: 'untitled' };
+const SELECTOR: vscode.DocumentSelector = { language: 'sql' };
 
 function kindOf(kind: CompletionItemDescriptor['kind']): vscode.CompletionItemKind {
   switch (kind) {
@@ -33,10 +34,7 @@ function kindOf(kind: CompletionItemDescriptor['kind']): vscode.CompletionItemKi
   }
 }
 
-export function registerConsoleCompletion(
-  context: vscode.ExtensionContext,
-  service: ConsoleService,
-): vscode.Disposable {
+export function registerConsoleCompletion(service: ConsoleService): vscode.Disposable {
   const provider: vscode.CompletionItemProvider<vscode.CompletionItem> = {
     async provideCompletionItems(doc: vscode.TextDocument, position: vscode.Position) {
       const state = service.bindingForDocument(doc);
@@ -59,31 +57,5 @@ export function registerConsoleCompletion(
     },
   };
 
-  const fileProviders = new Map<string, vscode.Disposable>();
-  const syncFileProviders = (): void => {
-    const bound = new Set(service.boundFilePaths());
-    for (const [path, d] of [...fileProviders]) {
-      if (!bound.has(path)) {
-        d.dispose();
-        fileProviders.delete(path);
-      }
-    }
-    for (const path of bound) {
-      if (!fileProviders.has(path)) {
-        const selector: vscode.DocumentSelector = { language: 'sql', scheme: 'file', pattern: path };
-        fileProviders.set(path, vscode.languages.registerCompletionItemProvider(selector, provider, '.'));
-      }
-    }
-  };
-
-  const untitled = vscode.languages.registerCompletionItemProvider(UNTITLED_SELECTOR, provider, '.');
-  syncFileProviders();
-  return vscode.Disposable.from(untitled, service.onBindingsChanged(syncFileProviders), {
-    dispose: () => {
-      for (const d of fileProviders.values()) {
-        d.dispose();
-      }
-      fileProviders.clear();
-    },
-  });
+  return vscode.languages.registerCompletionItemProvider(SELECTOR, provider, '.');
 }

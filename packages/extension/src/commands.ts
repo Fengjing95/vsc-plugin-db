@@ -138,6 +138,14 @@ export function registerCommands(
       void services.console.executeActiveEditor('cursor');
     }),
 
+    // CodeLens「▶ 执行」（sqlCodeLens）：与 Ctrl+Enter 同一执行链，按 CodeLens 传入的位置定位语句
+    vscode.commands.registerCommand('dbExplorer.executeQueryAt', (uri?: vscode.Uri, position?: vscode.Position) => {
+      if (!uri || !position) {
+        return; // 命令面板直接调用无参 → 无操作（入口在 CodeLens）
+      }
+      void services.console.executeStatementAt(uri, position);
+    }),
+
     vscode.commands.registerCommand('dbExplorer.executeQueryAll', () => {
       void services.console.executeActiveEditor('all');
     }),

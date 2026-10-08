@@ -125,7 +125,8 @@
 | SQL 语句切分 / 会话状态 / DDL 识别 | `packages/core/src/services/sqlScript.ts`（扫描器纯函数，P-24） |
 | 危险语句判定（AST + 正则降级）/ 只读 fail-closed | `packages/core/src/services/sqlDanger.ts`（纯函数，有单测） |
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
-| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（P1-1 隔离） |
+| SQL CodeLens 执行动作（M8 优化） | `extension/src/services/sqlCodeLens.ts`（每条语句上方「▶ 执行」，splitSqlStatements 定位）+ `consoleService.executeStatementAt`（与 Ctrl+Enter 同一执行链）+ 命令 `dbExplorer.executeQueryAt` |
+| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（**全量注册 sql 文档**，按绑定过滤：绑定→元数据补全、未绑定→关键字级，P1-1） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
 | Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts`（单例视图跟随最近执行的 Console；多会话 Tab 方案 M8 试作后撤回，见概要 v0.2.3） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |

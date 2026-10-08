@@ -456,6 +456,23 @@ export class ConsoleService implements vscode.Disposable {
     return splitSqlStatements(raw);
   }
 
+  /** CodeLens「执行」（sqlCodeLens）：执行指定 SQL 文档中包含该位置的语句（与 Ctrl+Enter 同一执行链） */
+  async executeStatementAt(uri: vscode.Uri, position: vscode.Position): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(uri);
+    if (doc.languageId !== 'sql') {
+      return;
+    }
+    const state = await this.ensureBinding(doc);
+    if (!state) {
+      return; // 未选择连接
+    }
+    const stmt = statementAtOffset(this.splitRanges(state.connId, doc.getText()), doc.offsetAt(position));
+    if (!stmt) {
+      return; // 该位置已无语句（文档刚被编辑等）
+    }
+    await this.runStatements(state, [stmt.text]);
+  }
+
   private async executeDocument(
     editor: vscode.TextEditor,
     scope: 'cursor' | 'all',
