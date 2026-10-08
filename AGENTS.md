@@ -22,6 +22,7 @@
 - **C-8 行定位**：编辑/删除/回填一律用 RowKey（主键值映射），**禁止行号**（翻页后行号失义）。
 - **C-9 下推与性能**：筛选/排序必须在驱动 SQL 层下推（参数化），禁止取全表内存过滤；默认不执行全表 `COUNT(*)`；单次传输上限 5000 行 / 5MB。
 - **C-10 密钥安全**：密码只存 SecretStorage（`dbExplorer.secrets.<connId>`），永不写入 settings/日志/错误/导出文件；SQL 强制参数化，禁止字符串拼接用户值。唯一例外：`FetchRowsRequest.whereSql/orderBySql` 为用户在筛选栏手写的 SQL 片段（自撰 SQL 而非数据值，驱动规范 §4），按设计原样拼接。
+- **C-14 方言补全词表（驱动规范 §3.2 @since v0.1.6）**：新增数据库类型（驱动）必须同步适配 SQL 语法——在驱动 `src/completion.ts` 提供方言全量三份词表（KEYWORDS/FUNCTIONS/COMPLETION_SNIPPETS）并经 `getCompletionSource` 注入；SQL 方言差异是本质性的（UPSERT/引号/关键字/函数集互不通用），**禁止跨驱动复用词表**；键值数据源（supportsSQL=false）为命令域全量词表（先例 driver-redis）。发布 Checklist 有对应验收项。
 
 ### Webview
 - **C-11 CSP/nonce**：所有 `<script>` 必须带 nonce；HTML 构建统一走 `packages/extension/src/views/webviewHtmlInject.ts`，禁止绕过自拼 HTML。
@@ -126,7 +127,7 @@
 | 危险语句判定（AST + 正则降级）/ 只读 fail-closed | `packages/core/src/services/sqlDanger.ts`（纯函数，有单测） |
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
 | SQL CodeLens 执行动作（M8 优化） | `extension/src/services/sqlCodeLens.ts`（每条语句上方「▶ 执行」，splitSqlStatements 定位）+ `consoleService.executeStatementAt`（与 Ctrl+Enter 同一执行链）+ 命令 `dbExplorer.executeQueryAt` |
-| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts`（BASE_KEYWORDS/BASE_FUNCTIONS/GENERIC_SNIPPETS + 排序：**关键字置顶**（v0.2.12 用户口径），列位 关键字→列→函数、任意位 关键字→表/列→片段→函数→库、表位表/库优先）+ metadataCache `getCompletionSource`；方言词表在各驱动 `completion.ts`（关键字/函数/片段全量数据，勿散落 index.ts）；provider 注册在 `extension/src/services/consoleCompletion.ts`（**全量注册 sql 文档**，按绑定过滤：绑定→元数据+方言词表+片段、未绑定→关键字+标准函数+通用片段，P1-1；序号 sortText 保序防字母重排） |
+| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts`（BASE_KEYWORDS/BASE_FUNCTIONS/GENERIC_SNIPPETS + 排序：**关键字置顶**（v0.2.12 用户口径），列位 关键字→列→函数、任意位 关键字→表/列→片段→函数→库、表位表/库优先）+ metadataCache `getCompletionSource`；方言词表在各驱动 `completion.ts`（关键字/函数/片段全量数据，勿散落 index.ts；**新驱动硬性项 C-14/规范 §3.2**）；provider 注册在 `extension/src/services/consoleCompletion.ts`（**全量注册 sql 文档**，按绑定过滤：绑定→元数据+方言词表+片段、未绑定→关键字+标准函数+通用片段，P1-1；序号 sortText 保序防字母重排） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
 | Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts`（单例视图跟随最近执行的 Console；多会话 Tab 方案 M8 试作后撤回，见概要 v0.2.3） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |
