@@ -41,6 +41,26 @@ export function timestampQueryName(now = new Date()): string {
   return `query-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
 }
 
+/** 树「查询」目录的默认名：query_<13 位毫秒时间戳>（Date.now() 口径） */
+export function newQueryDefaultName(now = Date.now()): string {
+  return `query_${now}`;
+}
+
+/** 剥离 .sql 后缀（用户输入与树显示共用；大小写不敏感） */
+export function stripSqlSuffix(input: string): string {
+  return input.replace(/\.sql$/i, '');
+}
+
+/** 查询文件名 → 树显示名（不含 .sql 后缀） */
+export function queryLabel(fileName: string): string {
+  return stripSqlSuffix(fileName);
+}
+
+/** 连接 id / 数据库名 → 目录路径段（消毒防路径穿越与非法字符；清空后兜底 '_' 保证段非空） */
+export function queryPathSegment(input: string): string {
+  return sanitizeQueryFileName(input).trim() || '_';
+}
+
 /** 查询文件摘要（打开选择器的 detail）：首个非空、非注释行，截断 60 字符 */
 export function querySummary(text: string): string {
   const line = text

@@ -7,6 +7,8 @@ import { pickHistoryItem } from './services/consoleHistory';
 import type { EditGuard, ViewStateStore } from './services/editGuard';
 import { formatSql } from '@db-explorer/core';
 import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
+import { newQueryDefaultName, sanitizeQueryFileName } from './services/savedQueries';
+import type { QueryFilesService } from './services/queryFiles';
 import { CODEGEN_LANGUAGES, codegenLanguageId, generateCode, type CodegenLanguage } from './services/codegen';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
@@ -28,6 +30,8 @@ export interface AppServices {
   console: ConsoleService;
   /** M5 执行历史 */
   history: import('./services/consoleHistory').ConsoleHistory;
+  /** M8 树查询目录：.vscode/db-queries/<connId>/<db>/*.sql 磁盘层 */
+  queries: QueryFilesService;
   /** M7 SSH 隧道：主机指纹库（TOFU），连接表单与 ConnectionManager 共享 */
   sshFingerprints: import('./services/sshTunnel').FingerprintStore;
   /** M8-B2 表结构编辑（DDL）：编辑器 RPC + 删表/清空表树操作 */
@@ -130,16 +134,6 @@ export function registerCommands(
       }
     }),
 
-    vscode.commands.registerCommand('dbExplorer.newQuery', (node?: DbTreeNode) => {
-      // 树上的连接/库节点右键 → 直接绑定该连接（库）；命令面板/快捷键 → 交互选择
-      const { connId, db } = node?.payload ?? {};
-      if (connId && (node?.type === 'connection' || node?.type === 'database')) {
-        void services.console.newConsole({ connId, db: node.type === 'database' ? db : undefined });
-      } else {
-        void services.console.newConsole();
-      }
-    }),
-
     vscode.commands.registerCommand('dbExplorer.executeQuery', () => {
       void services.console.executeActiveEditor('cursor');
     }),
@@ -166,6 +160,82 @@ export function registerCommands(
 
     vscode.commands.registerCommand('dbExplorer.openSavedQuery', () => {
       void pickSavedQuery();
+    }),
+
+    // 树「查询」目录（M8 优化：树上 Console 入口改为文件化查询管理）。
+    // 查询 = .vscode/db-queries/<connId>/<db>/*.sql；新建用输入框（默认 query_<13位时间戳>），
+    // 创建即绑定该连接/库（§7.1），打开后 Ctrl+Enter 直接执行
+    vscode.commands.registerCommand('dbExplorer.queries.create', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (node?.type !== 'queries' || !connId || !db) {
+        return;
+      }
+      const dir = services.queries.dirUri(connId, db);
+      if (!dir) {
+        void vscode.window.showErrorMessage('当前没有打开的工作区，无法创建查询。');
+        return;
+      }
+      const name = await vscode.window.showInputBox({
+        title: '新增查询',
+        prompt: '查询名称（保存为 .vscode/db-queries/…/<名称>.sql）',
+        placeHolder: '查询名称',
+        value: newQueryDefaultName(),
+        validateInput: async (v) => {
+          const safe = sanitizeQueryFileName(v.replace(/\.sql$/i, ''));
+          if (!safe) {
+            return '名称无效';
+          }
+          try {
+            await vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, `${safe}.sql`));
+            return '同名查询已存在';
+          } catch {
+            return undefined;
+          }
+        },
+      });
+      if (name === undefined) {
+        return; // 用户取消
+      }
+      const safe = sanitizeQueryFileName(name.replace(/\.sql$/i, '')) || newQueryDefaultName();
+      const uri = await services.queries.create(connId, db, safe);
+      tree.refreshElement(node);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+      await services.console.ensureBinding(doc, { connId, db });
+    }),
+
+    // 「打开目录」：系统文件管理器定位查询目录（首次先落地目录）
+    vscode.commands.registerCommand('dbExplorer.queries.openDir', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (node?.type !== 'queries' || !connId || !db) {
+        return;
+      }
+      const dir = await services.queries.ensureDir(connId, db);
+      if (dir) {
+        await vscode.commands.executeCommand('revealFileInOS', dir);
+      }
+    }),
+
+    // 删除查询：Modal 确认（破坏性操作），进系统回收站可恢复；删除后根刷新重建列表
+    vscode.commands.registerCommand('dbExplorer.queries.delete', async (node?: DbTreeNode) => {
+      if (node?.type !== 'query' || !node.payload.file || !node.payload.connId || !node.payload.db) {
+        return;
+      }
+      const dir = services.queries.dirUri(node.payload.connId, node.payload.db);
+      if (!dir) {
+        return;
+      }
+      const uri = vscode.Uri.joinPath(dir, node.payload.file);
+      const confirmed = await vscode.window.showWarningMessage(
+        `删除查询 "${node.label}"？（${uri.fsPath}）`,
+        { modal: true },
+        '删除',
+      );
+      if (confirmed !== '删除') {
+        return;
+      }
+      await services.queries.delete(uri);
+      tree.refresh();
     }),
 
     // SQL 格式化（概要 §5.5.2 P1）：按绑定连接的方言格式化整个文档/选区（sql-formatter，T-10）

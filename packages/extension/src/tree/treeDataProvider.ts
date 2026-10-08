@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 import type { MetadataCache, ObjectMeta } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
+import type { QueryFilesService } from '../services/queryFiles';
 
 export type TreeNodeType =
   | 'connection'
   | 'database'
+  | 'queries'
+  | 'query'
   | 'folder'
   | 'table'
   | 'view'
@@ -41,6 +44,8 @@ export interface DbTreeNode {
     group?: string;
     column?: string;
     rowEstimate?: number;
+    /** 查询节点的文件名（含 .sql 后缀，M8 树查询管理） */
+    file?: string;
   };
 }
 
@@ -78,6 +83,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     private readonly sessions?: { hasActive(connId: string): boolean },
     /** 扩展安装根（extensionUri）：树连接节点品牌 logo 的 media/logos 文件 URI 基址 */
     private readonly extensionUri?: vscode.Uri,
+    /** 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录的数据源；缺省不渲染该目录 */
+    private readonly queryFiles?: QueryFilesService,
   ) {}
 
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
@@ -87,6 +94,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   refresh(): void {
     this.emitter.fire(undefined);
+  }
+
+  /** 元素级刷新：仅重拉该节点的子级（查询目录增删查询后用，不动元数据缓存） */
+  refreshElement(node: DbTreeNode): void {
+    this.emitter.fire(node);
   }
 
   /**
@@ -146,6 +158,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
         title: '打开表格视图',
         arguments: [node],
       };
+    }
+    // 查询节点单击 = 打开 .sql 文件（原生编辑器承载，绑定/执行走既有 Console 链路）
+    if (node.type === 'query' && node.payload.file && this.queryFiles && node.payload.connId && node.payload.db) {
+      const dir = this.queryFiles.dirUri(node.payload.connId, node.payload.db);
+      if (dir) {
+        item.command = {
+          command: 'vscode.open',
+          title: '打开查询',
+          arguments: [vscode.Uri.joinPath(dir, node.payload.file)],
+        };
+      }
     }
     return item;
   }
@@ -249,7 +272,39 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             }
           }
         }
+        // 查询目录（M8 优化）：与表/视图同级的虚拟目录，管理 .vscode/db-queries/<connId>/<db>/*.sql
+        if (this.queryFiles) {
+          folders.push({
+            id: `${node.id}:queries`,
+            type: 'queries',
+            label: '查询',
+            collapsibleState: Collapsed,
+            contextValue: 'queries',
+            iconId: 'folder-library',
+            payload: { connId, db: node.payload.db },
+          });
+        }
         return folders;
+      }
+
+      case 'queries': {
+        if (!this.queryFiles) {
+          return [];
+        }
+        const connId = node.payload.connId!;
+        const db = node.payload.db!;
+        const files = await this.queryFiles.list(connId, db);
+        return files.map((f) => ({
+          id: `${node.id}:${f.fileName}`,
+          type: 'query' as const,
+          label: f.label,
+          // 描述 = 绝对路径（磁盘真实位置，文件管理器可直接定位）
+          description: f.uri.fsPath,
+          collapsibleState: None,
+          contextValue: 'query',
+          iconId: 'file-code',
+          payload: { connId, db, file: f.fileName },
+        }));
       }
 
       case 'table': {

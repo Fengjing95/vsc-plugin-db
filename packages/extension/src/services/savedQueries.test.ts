@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { defaultQueryName, querySummary, sanitizeQueryFileName, timestampQueryName } from './savedQueries';
+import {
+  defaultQueryName,
+  newQueryDefaultName,
+  queryLabel,
+  queryPathSegment,
+  querySummary,
+  sanitizeQueryFileName,
+  stripSqlSuffix,
+  timestampQueryName,
+} from './savedQueries';
 
 describe('sanitizeQueryFileName', () => {
   it('替换路径分隔符与 Windows 非法字符', () => {
@@ -55,5 +64,31 @@ describe('querySummary', () => {
 
   it('空文本 → (空)', () => {
     expect(querySummary('')).toBe('(空)');
+  });
+});
+
+describe('newQueryDefaultName', () => {
+  it('默认名为 query_<13 位毫秒时间戳>', () => {
+    const now = 1_760_000_000_000; // 13 位
+    expect(newQueryDefaultName(now)).toBe('query_1760000000000');
+    expect(newQueryDefaultName(now).length).toBe('query_'.length + 13);
+  });
+});
+
+describe('stripSqlSuffix / queryLabel', () => {
+  it('剥 .sql 后缀（大小写不敏感），无后缀原样返回', () => {
+    expect(queryLabel('用户订单查询.sql')).toBe('用户订单查询');
+    expect(queryLabel('Report.SQL')).toBe('Report');
+    expect(queryLabel('noext')).toBe('noext');
+    expect(stripSqlSuffix('a.sql')).toBe('a');
+  });
+});
+
+describe('queryPathSegment', () => {
+  it('消毒路径段并保证非空（兜底 _）', () => {
+    expect(queryPathSegment('my/db')).toBe('my db');
+    expect(queryPathSegment('..')).toBe('_');
+    expect(queryPathSegment('*')).toBe('_');
+    expect(queryPathSegment('app_db')).toBe('app_db');
   });
 });

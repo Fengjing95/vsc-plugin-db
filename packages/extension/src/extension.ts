@@ -12,6 +12,7 @@ import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { EditGuard, ViewStateStore } from './services/editGuard';
+import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
@@ -44,7 +45,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     () => vscode.workspace.getConfiguration('dbExplorer').get('transaction.idleTimeoutMs', 300_000),
     (message) => void vscode.window.showWarningMessage(message),
   );
-  const tree = new ConnectionsTreeProvider(connections, cache, sessions, context.extensionUri);
+  // 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录管理 .vscode/db-queries/<connId>/<db>/*.sql
+  const queryFiles = new QueryFilesService();
+  const tree = new ConnectionsTreeProvider(connections, cache, sessions, context.extensionUri, queryFiles);
   const treeView = vscode.window.createTreeView('dbExplorer.connections', {
     treeDataProvider: tree,
     showCollapseAll: true,
@@ -98,6 +101,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         editGuard,
         console: consoleService,
         history,
+        queries: queryFiles,
         sshFingerprints,
         ddl: ddlService,
       },

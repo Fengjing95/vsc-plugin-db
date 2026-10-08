@@ -155,10 +155,22 @@
         "icon": "$(link-external)"
       },
       {
-        "command": "dbExplorer.newQuery",
-        "title": "新建 SQL Console",
+        "command": "dbExplorer.queries.create",
+        "title": "新增查询",
         "category": "数据库",
-        "icon": "$(terminal)"
+        "icon": "$(add)"
+      },
+      {
+        "command": "dbExplorer.queries.openDir",
+        "title": "打开查询目录",
+        "category": "数据库",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "dbExplorer.queries.delete",
+        "title": "删除查询",
+        "category": "数据库",
+        "icon": "$(trash)"
       },
       {
         "command": "dbExplorer.executeQuery",
@@ -235,13 +247,33 @@
           "group": "1_open@0"
         },
         {
-          "command": "dbExplorer.newQuery",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
-          "group": "2_object@0"
+          "command": "dbExplorer.queries.create",
+          "when": "viewItem =~ /^queries$/",
+          "group": "2_object@6"
         },
         {
-          "command": "dbExplorer.newQuery",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
+          "command": "dbExplorer.queries.create",
+          "when": "viewItem =~ /^queries$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "dbExplorer.queries.openDir",
+          "when": "viewItem =~ /^queries$/",
+          "group": "2_object@7"
+        },
+        {
+          "command": "dbExplorer.queries.openDir",
+          "when": "viewItem =~ /^queries$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.queries.delete",
+          "when": "viewItem =~ /^query$/",
+          "group": "7_danger@0"
+        },
+        {
+          "command": "dbExplorer.queries.delete",
+          "when": "viewItem =~ /^query$/",
           "group": "inline@0"
         },
         {
@@ -340,10 +372,6 @@
       {
         "command": "dbExplorer.focus",
         "key": "ctrl+alt+d"
-      },
-      {
-        "command": "dbExplorer.newQuery",
-        "key": "ctrl+alt+q"
       },
       {
         "command": "dbExplorer.queryHistory",
