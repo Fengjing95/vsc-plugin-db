@@ -1,0 +1,119 @@
+/**
+ * SQLite 补全词表（C-14 / 驱动规范 §3.2：方言全量，覆盖 SQLite 3.35~3.49 常用面——
+ * PRAGMA、ATTACH/DETACH、窗口函数、CTE、UPSERT（ON CONFLICT）、RETURNING、JSON1 函数、
+ * 日期时间函数、WITHOUT ROWID/STRICT 表选项）。
+ * 纯数据，无依赖；词表只服务补全（DialectInfo 仅声明性元数据）。
+ */
+
+export const KEYWORDS = [
+  // DML
+  'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
+  'DISTINCT', 'ALL', 'AS', 'INSERT INTO', 'VALUES', 'DEFAULT', 'REPLACE INTO',
+  'UPDATE', 'SET', 'DELETE FROM', 'RETURNING', 'ON CONFLICT', 'DO NOTHING', 'DO UPDATE',
+  'WHERE NOT EXISTS', 'ABORT', 'FAIL', 'IGNORE', 'UPSERT',
+  // JOIN
+  'JOIN', 'INNER JOIN', 'LEFT JOIN', 'LEFT OUTER JOIN', 'RIGHT JOIN', 'RIGHT OUTER JOIN',
+  'FULL JOIN', 'FULL OUTER JOIN', 'CROSS JOIN', 'NATURAL JOIN', 'ON', 'USING',
+  // 条件与表达式
+  'AND', 'OR', 'NOT', 'IN', 'NOT IN', 'EXISTS', 'NOT EXISTS', 'BETWEEN', 'NOT BETWEEN',
+  'IS NULL', 'IS NOT NULL', 'IS', 'LIKE', 'NOT LIKE', 'GLOB', 'NOT GLOB', 'REGEXP',
+  'MATCH', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'NULL', 'TRUE', 'FALSE',
+  'COLLATE', 'BINARY', 'NOCASE', 'RTRIM', 'ESCAPE',
+  // CTE / 窗口
+  'WITH', 'RECURSIVE', 'OVER', 'PARTITION BY', 'WINDOW', 'ROWS', 'RANGE', 'GROUPS',
+  'CURRENT ROW', 'UNBOUNDED PRECEDING', 'PRECEDING', 'FOLLOWING', 'UNBOUNDED FOLLOWING',
+  'EXCLUDE NO OTHERS', 'EXCLUDE CURRENT ROW', 'EXCLUDE GROUP', 'EXCLUDE TIES',
+  'FILTER', 'CURRENT DATE', 'CURRENT TIME', 'CURRENT TIMESTAMP',
+  // 集合
+  'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
+  // 排序
+  'ASC', 'DESC', 'NULLS FIRST', 'NULLS LAST',
+  // 事务
+  'BEGIN', 'BEGIN TRANSACTION', 'BEGIN IMMEDIATE', 'BEGIN EXCLUSIVE', 'COMMIT', 'END TRANSACTION',
+  'ROLLBACK', 'ROLLBACK TO', 'SAVEPOINT', 'RELEASE', 'RELEASE SAVEPOINT',
+  // DDL
+  'CREATE TABLE', 'CREATE TEMPORARY TABLE', 'CREATE TEMP TABLE', 'CREATE VIEW', 'CREATE INDEX',
+  'CREATE UNIQUE INDEX', 'CREATE TRIGGER', 'CREATE VIRTUAL TABLE', 'ATTACH DATABASE', 'DETACH DATABASE',
+  'ALTER TABLE', 'DROP TABLE', 'DROP VIEW', 'DROP INDEX', 'DROP TRIGGER',
+  'RENAME TO', 'RENAME COLUMN', 'ADD COLUMN', 'DROP COLUMN', 'SET SCHEMA',
+  'PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE', 'CHECK', 'REFERENCES', 'CONSTRAINT',
+  'ON DELETE', 'ON UPDATE', 'ON DELETE CASCADE', 'ON DELETE SET NULL', 'ON DELETE SET DEFAULT',
+  'ON DELETE NO ACTION', 'ON DELETE RESTRICT', 'DEFERRABLE', 'INITIALLY DEFERRED', 'INITIALLY IMMEDIATE',
+  'NOT NULL', 'AUTOINCREMENT', 'IF NOT EXISTS', 'IF EXISTS',
+  'WITHOUT ROWID', 'STRICT', 'GENERATED ALWAYS AS', 'STORED', 'VIRTUAL',
+  // 运维与元数据
+  'VACUUM', 'VACUUM INTO', 'ANALYZE', 'REINDEX', 'EXPLAIN', 'EXPLAIN QUERY PLAN', 'PRAGMA',
+  'PRAGMA TABLE_INFO', 'PRAGMA INDEX_LIST', 'PRAGMA FOREIGN_KEY_LIST', 'PRAGMA TABLE_LIST',
+  'PRAGMA JOURNAL_MODE', 'PRAGMA INTEGRITY_CHECK', 'PRAGMA QUICK_CHECK', 'PRAGMA OPTIMIZE',
+  'PRAGMA USER_VERSION', 'PRAGMA FOREIGN_KEYS', 'PRAGMA CACHE_SIZE', 'PRAGMA WAL_CHECKPOINT',
+  // 常用数据类型与亲和性（DDL 场景）
+  'INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT', 'HUGEINT',
+  'REAL', 'FLOAT', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'DECIMAL',
+  'TEXT', 'VARCHAR', 'CHAR', 'CLOB', 'CHARACTER', 'NATIVE CHARACTER', 'NVARCHAR',
+  'BLOB', 'BOOLEAN', 'DATE', 'DATETIME', 'TIMESTAMP', 'JSON', 'UUID',
+];
+
+export const FUNCTIONS = [
+  // 聚合
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'TOTAL', 'GROUP_CONCAT', 'STRING_AGG',
+  // 窗口
+  'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'PERCENT_RANK', 'CUME_DIST', 'NTILE', 'LAG', 'LEAD',
+  'FIRST_VALUE', 'LAST_VALUE', 'NTH_VALUE',
+  // 条件
+  'COALESCE', 'IFNULL', 'NULLIF', 'IIF', 'LIKELY', 'UNLIKELY',
+  // 字符串
+  'LENGTH', 'SUBSTR', 'SUBSTRING', 'TRIM', 'LTRIM', 'RTRIM', 'UPPER', 'LOWER',
+  'INSTR', 'REPLACE', 'HEX', 'UNHEX', 'QUOTE', 'CHAR', 'UNICODE', 'PRINTF', 'FORMAT',
+  'SOUNDEX', 'CONCAT', 'CONCAT_WS', 'LPAD', 'RPAD', 'REVERSE',
+  // 日期时间
+  'DATE', 'TIME', 'DATETIME', 'JULIANDAY', 'UNIXEPOCH', 'STRFTIME',
+  // 数学（SQLite 3.35+ 内置）
+  'ABS', 'ACOS', 'ASIN', 'ATAN', 'ATAN2', 'CEIL', 'CEILING', 'COS', 'COSH', 'DEGREES',
+  'EXP', 'FLOOR', 'LN', 'LOG', 'LOG2', 'LOG10', 'MOD', 'PI', 'POW', 'POWER', 'RADIANS',
+  'SIN', 'SINH', 'SQRT', 'TAN', 'TANH', 'TRUNC',
+  // JSON1
+  'JSON', 'JSON_ARRAY', 'JSON_ARRAY_LENGTH', 'JSON_EACH', 'JSON_EXTRACT', 'JSON_INSERT',
+  'JSON_OBJECT', 'JSON_PATCH', 'JSON_QUOTE', 'JSON_REMOVE', 'JSON_REPLACE', 'JSON_SET',
+  'JSON_TYPE', 'JSON_VALID', 'JSON_GROUP_ARRAY', 'JSON_GROUP_OBJECT', 'JSONB',
+  // 杂项
+  'RANDOM', 'RANDOMBLOB', 'ZEROBLOB', 'LAST_INSERT_ROWID', 'CHANGES', 'TOTAL_CHANGES',
+  'SQLITE_VERSION', 'SQLITE_SOURCE_ID', 'TYPEOF',
+];
+
+export const COMPLETION_SNIPPETS = [
+  {
+    label: 'INSERT … ON CONFLICT (模板)',
+    body: 'INSERT INTO ${1:table} (${2:columns}) VALUES (${3:values})\nON CONFLICT (${4:key}) DO UPDATE SET ${5:column} = excluded.${5:column};',
+    description: 'SQLite UPSERT（唯一键冲突时更新）',
+  },
+  {
+    label: 'INSERT … RETURNING (模板)',
+    body: 'INSERT INTO ${1:table} (${2:columns}) VALUES (${3:values}) RETURNING *;',
+    description: '插入并回读（rowid 自增/默认值）',
+  },
+  {
+    label: 'WITH RECURSIVE (模板)',
+    body: 'WITH RECURSIVE ${1:cte} AS (\n\tSELECT ${2:root}\n\tUNION ALL\n\tSELECT ${3:child} FROM ${4:table} t JOIN ${1:cte} c ON t.${5:parent_id} = c.${6:id}\n)\nSELECT * FROM ${1:cte};',
+    description: '递归 CTE（层级/树查询）',
+  },
+  {
+    label: 'PRAGMA table_info (模板)',
+    body: "PRAGMA table_info('${1:table}');",
+    description: '查看表结构（列名/类型/非空/默认值/主键）',
+  },
+  {
+    label: 'CREATE TABLE IF NOT EXISTS (模板)',
+    body: 'CREATE TABLE IF NOT EXISTS ${1:table} (\n\tid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,\n\t${2:name} TEXT NOT NULL\n);',
+    description: '建表（rowid 别名自增主键）',
+  },
+  {
+    label: 'ATTACH DATABASE (模板)',
+    body: "ATTACH DATABASE '${2:file}' AS ${1:alias};",
+    description: '附加数据库文件（跨库查询 alias.table）',
+  },
+  {
+    label: '日期时间格式化 (模板)',
+    body: "SELECT strftime('%Y-%m-%d %H:%M:%S', ${1:column}) FROM ${2:table};",
+    description: 'strftime 日期时间格式化',
+  },
+];

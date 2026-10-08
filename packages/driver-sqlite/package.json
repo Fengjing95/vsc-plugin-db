@@ -1,0 +1,19 @@
+{
+  "name": "@db-explorer/driver-sqlite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SQLite 驱动（node:sqlite 优先 + sql.js 兜底，D-16）：元数据自省、分页取数、参数化筛选下推、变更集、DDL 生成（M8-SQLite）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-conformance": "workspace:*",
+    "@types/sql.js": "^1.4.9"
+  }
+}
