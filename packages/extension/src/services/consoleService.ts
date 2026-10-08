@@ -250,7 +250,10 @@ export class ConsoleService implements vscode.Disposable {
     if (!picked) {
       return;
     }
-    const state = this.bindingForDocument(doc) ?? (await this.ensureBinding(doc));
+    // 刚选好的连接/库作为 prefill 建绑定——未绑定文档否则会在 ensureBinding 内部再次交互选择（选两遍）
+    const state =
+      this.bindingForDocument(doc) ??
+      (await this.ensureBinding(doc, { connId: picked.connId, db: picked.db ?? undefined }));
     if (!state) {
       return;
     }
