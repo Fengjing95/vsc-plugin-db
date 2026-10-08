@@ -1,5 +1,7 @@
 import pg from 'pg';
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
+// 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSONB/数组面）
+import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -112,20 +114,6 @@ const formSchema: FormSchema = {
     },
   ],
 };
-
-const KEYWORDS = [
-  'SELECT', 'FROM', 'WHERE', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
-  'JOIN', 'LEFT JOIN', 'INNER JOIN', 'FULL JOIN', 'ON', 'INSERT INTO', 'VALUES',
-  'UPDATE', 'SET', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE',
-  'RETURNING', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL', 'LIKE', 'ILIKE',
-  'IN', 'BETWEEN', 'DISTINCT', 'AS', 'ASC', 'DESC', 'BEGIN', 'COMMIT', 'ROLLBACK',
-];
-
-const FUNCTIONS = [
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NOW', 'COALESCE', 'NULLIF', 'CONCAT',
-  'SUBSTRING', 'TO_CHAR', 'TO_TIMESTAMP', 'DATE_TRUNC', 'EXTRACT', 'CAST',
-  'JSONB_BUILD_OBJECT', 'ARRAY_AGG', 'STRING_AGG', 'GENERATE_SERIES',
-];
 
 // ── 会话级类型解析器（禁用 JS Date 转换防时区漂移，驱动规范 §5.2；不污染全局 pg.types）──────────
 
@@ -487,6 +475,7 @@ export class PostgresConnection implements IConnection {
     const base: CompletionSource = {
       keywords: KEYWORDS,
       functions: FUNCTIONS,
+      snippets: COMPLETION_SNIPPETS,
       databases: (await this.listDatabases()).map((d) => d.name),
       tables: [],
       columns: [],

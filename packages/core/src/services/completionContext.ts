@@ -19,15 +19,87 @@ export interface CompletionItemDescriptor {
   kind: 'keyword' | 'function' | 'database' | 'table' | 'column' | 'snippet';
   /** 展示细节（表注释 / 列所属表） */
   detail?: string;
+  /** 片段插入体（vscode.SnippetString 语法 $1/${1:placeholder}；仅 kind=snippet） */
+  insert?: string;
 }
 
-/** 未绑定连接的文档仅给关键字级补全（评审 P1-1） */
+/** 未绑定连接的文档给关键字 + 常用函数级补全（评审 P1-1；不含库/表等连接元数据） */
 export const BASE_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
-  'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'JOIN', 'LEFT JOIN',
-  'INNER JOIN', 'ON', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL',
-  'IN', 'NOT IN', 'LIKE', 'BETWEEN', 'DISTINCT', 'AS', 'ASC', 'DESC', 'UNION',
-  'COUNT(*)', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'TRUNCATE TABLE', 'EXPLAIN',
+  'FETCH FIRST', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'TRUNCATE TABLE',
+  'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN', 'ON', 'USING',
+  'AND', 'OR', 'NOT', 'IN', 'NOT IN', 'EXISTS', 'NOT EXISTS', 'LIKE', 'NOT LIKE', 'BETWEEN',
+  'IS NULL', 'IS NOT NULL', 'DISTINCT', 'AS', 'ASC', 'DESC', 'NULLS FIRST', 'NULLS LAST',
+  'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT', 'WITH', 'RECURSIVE', 'OVER', 'PARTITION BY',
+  'WINDOW', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'NULL', 'TRUE', 'FALSE', 'FOR UPDATE',
+  'BEGIN', 'COMMIT', 'ROLLBACK', 'CREATE TABLE', 'CREATE INDEX', 'CREATE VIEW',
+  'ALTER TABLE', 'DROP TABLE', 'DROP VIEW', 'DROP INDEX', 'PRIMARY KEY', 'FOREIGN KEY',
+  'UNIQUE', 'REFERENCES', 'CONSTRAINT', 'DEFAULT', 'ADD COLUMN', 'DROP COLUMN',
+  'ALTER COLUMN', 'ADD CONSTRAINT', 'USE', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'EXPLAIN ANALYZE',
+  // 常用数据类型（DDL 场景）
+  'INT', 'BIGINT', 'SMALLINT', 'DECIMAL', 'NUMERIC', 'VARCHAR', 'CHAR', 'TEXT', 'BOOLEAN',
+  'DATE', 'TIME', 'TIMESTAMP', 'INTERVAL', 'JSON', 'UUID', 'BLOB',
+];
+
+/** 未绑定文档的常用 SQL 标准函数（不含方言私有函数——绑定后由驱动提供全量） */
+export const BASE_FUNCTIONS = [
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COALESCE', 'NULLIF', 'GREATEST', 'LEAST', 'CAST',
+  'CONCAT', 'SUBSTRING', 'UPPER', 'LOWER', 'TRIM', 'LENGTH', 'REPLACE', 'ROUND', 'ABS',
+  'FLOOR', 'CEIL', 'MOD', 'NOW', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', 'EXTRACT',
+];
+
+/** 未绑定文档的通用 SQL 片段（绑定后驱动片段与其合并） */
+export const GENERIC_SNIPPETS: Array<{ label: string; body: string; description?: string }> = [
+  {
+    label: 'SELECT * FROM (模板)',
+    body: 'SELECT * FROM ${1:table} LIMIT ${2:100};',
+    description: '基础查询（带 LIMIT）',
+  },
+  {
+    label: 'SELECT 列 WHERE ORDER (模板)',
+    body: 'SELECT ${1:columns} FROM ${2:table} WHERE ${3:condition} ORDER BY ${4:id} DESC;',
+    description: '条件查询 + 排序',
+  },
+  {
+    label: 'JOIN (模板)',
+    body: 'SELECT t.*, o.* FROM ${1:table} t JOIN ${2:other} o ON o.${3:id} = t.${4:other_id};',
+    description: '内连接',
+  },
+  {
+    label: 'COUNT (模板)',
+    body: 'SELECT COUNT(*) FROM ${1:table};',
+    description: '计数',
+  },
+  {
+    label: 'UPDATE WHERE (模板)',
+    body: 'UPDATE ${1:table} SET ${2:column} = ${3:value} WHERE ${4:condition};',
+    description: '条件更新',
+  },
+  {
+    label: 'DELETE WHERE (模板)',
+    body: 'DELETE FROM ${1:table} WHERE ${2:condition};',
+    description: '条件删除',
+  },
+  {
+    label: 'INSERT VALUES (模板)',
+    body: 'INSERT INTO ${1:table} (${2:columns}) VALUES (${3:values});',
+    description: '插入行',
+  },
+  {
+    label: 'WITH CTE (模板)',
+    body: 'WITH ${1:cte} AS (\n\t${2:SELECT ...}\n)\nSELECT * FROM ${1:cte};',
+    description: '公用表表达式',
+  },
+  {
+    label: '分页 LIMIT/OFFSET (模板)',
+    body: 'SELECT * FROM ${1:table} ORDER BY ${2:id} LIMIT ${3:20} OFFSET ${4:0};',
+    description: '稳定分页（带 ORDER BY）',
+  },
+  {
+    label: 'EXPLAIN ANALYZE (模板)',
+    body: 'EXPLAIN ANALYZE ${1:SELECT ...};',
+    description: '执行计划',
+  },
 ];
 
 const IDENT_CHARS = /[A-Za-z0-9_$\u4e00-\u9fa5]/;
@@ -198,21 +270,23 @@ export function buildCompletionDescriptors(source: CompletionSource, ctx: Comple
       break;
     case 'any':
     default:
-      for (const k of source.keywords) {
-        push(k, 'keyword');
-      }
-      for (const f of source.functions) {
-        push(f, 'function', '函数');
-      }
+      // 上下文优先级：表/列（元数据）→ 片段 → 函数 → 库 → 关键字殿后（extension 侧按序号生成
+      // sortText，VSCode 不再按字母重排——体感上"要补的"总在前面）
       for (const t of source.tables) {
         push(t.name, 'table', t.comment);
       }
       columnsOf();
+      for (const s of source.snippets ?? []) {
+        out.push({ label: s.label, kind: 'snippet', detail: s.description ?? s.body, insert: s.body });
+      }
+      for (const f of source.functions) {
+        push(f, 'function', '函数');
+      }
       for (const d of source.databases) {
         push(d, 'database', '数据库');
       }
-      for (const s of source.snippets ?? []) {
-        out.push({ label: s.label, kind: 'snippet', detail: s.description ?? s.body });
+      for (const k of source.keywords) {
+        push(k, 'keyword');
       }
       break;
   }

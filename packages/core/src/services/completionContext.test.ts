@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CompletionSource } from '../model/rows';
-import { BASE_KEYWORDS, buildCompletionDescriptors, resolveCompletionContext } from './completionContext';
+import {
+  BASE_FUNCTIONS,
+  BASE_KEYWORDS,
+  GENERIC_SNIPPETS,
+  buildCompletionDescriptors,
+  resolveCompletionContext,
+} from './completionContext';
 
 const source: CompletionSource = {
   keywords: ['SELECT', 'FROM', 'WHERE'],
@@ -73,6 +79,27 @@ describe('buildCompletionDescriptors', () => {
     expect(labels).toContain('id');
     expect(labels).toContain('analytics');
   });
+
+  it('any 上下文排序：表/列在前、关键字殿后（M8 优先级重排）', () => {
+    const items = buildCompletionDescriptors(source, { kind: 'any' });
+    const kinds = items.map((i) => i.kind);
+    expect(kinds.indexOf('table')).toBeLessThan(kinds.indexOf('keyword'));
+    expect(kinds.indexOf('column')).toBeLessThan(kinds.indexOf('keyword'));
+    // 关键字为连续尾段：首个关键字之后不再混入表/列等高优先级条目
+    const firstKeyword = kinds.indexOf('keyword');
+    expect(kinds.slice(firstKeyword).every((k) => k === 'keyword')).toBe(true);
+  });
+
+  it('片段：label/detail 透传且携带插入体', () => {
+    const withSnippets: CompletionSource = {
+      ...source,
+      snippets: [{ label: 'JOIN (模板)', body: 'SELECT t.* FROM ${1:a} t JOIN ${2:b} o;', description: '内连接' }],
+    };
+    const item = buildCompletionDescriptors(withSnippets, { kind: 'any' }).find((i) => i.kind === 'snippet');
+    expect(item?.label).toBe('JOIN (模板)');
+    expect(item?.insert).toBe('SELECT t.* FROM ${1:a} t JOIN ${2:b} o;');
+    expect(item?.detail).toBe('内连接');
+  });
 });
 
 describe('未绑定文档的关键字级补全（P1-1）', () => {
@@ -80,5 +107,19 @@ describe('未绑定文档的关键字级补全（P1-1）', () => {
     expect(BASE_KEYWORDS).toContain('SELECT');
     expect(BASE_KEYWORDS).toContain('DELETE FROM');
     expect(BASE_KEYWORDS.length).toBeGreaterThan(20);
+  });
+
+  it('M8 扩充：窗口/CTE/CASE 与数据类型入库', () => {
+    expect(BASE_KEYWORDS).toContain('WITH');
+    expect(BASE_KEYWORDS).toContain('OVER');
+    expect(BASE_KEYWORDS).toContain('CASE');
+    expect(BASE_KEYWORDS).toContain('VARCHAR');
+  });
+
+  it('BASE_FUNCTIONS / GENERIC_SNIPPETS 覆盖常用面', () => {
+    expect(BASE_FUNCTIONS).toContain('COALESCE');
+    expect(BASE_FUNCTIONS.length).toBeGreaterThan(10);
+    expect(GENERIC_SNIPPETS.length).toBeGreaterThanOrEqual(8);
+    expect(GENERIC_SNIPPETS.every((s) => s.body.includes('${1:'))).toBe(true);
   });
 });

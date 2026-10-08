@@ -126,7 +126,7 @@
 | 危险语句判定（AST + 正则降级）/ 只读 fail-closed | `packages/core/src/services/sqlDanger.ts`（纯函数，有单测） |
 | Console 执行链（绑定/取消/横幅/历史/DDL 失效） | `packages/extension/src/services/consoleService.ts` |
 | SQL CodeLens 执行动作（M8 优化） | `extension/src/services/sqlCodeLens.ts`（每条语句上方「▶ 执行」，splitSqlStatements 定位）+ `consoleService.executeStatementAt`（与 Ctrl+Enter 同一执行链）+ 命令 `dbExplorer.executeQueryAt` |
-| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts` + metadataCache `getCompletionSource`；provider 注册在 `extension/src/services/consoleCompletion.ts`（**全量注册 sql 文档**，按绑定过滤：绑定→元数据补全、未绑定→关键字级，P1-1） |
+| Console 补全（上下文规则 / 缓存命中 <100ms） | `packages/core/src/services/completionContext.ts`（BASE_KEYWORDS/BASE_FUNCTIONS/GENERIC_SNIPPETS + 上下文优先级排序）+ metadataCache `getCompletionSource`；方言词表在各驱动 `completion.ts`（关键字/函数/片段全量数据，勿散落 index.ts）；provider 注册在 `extension/src/services/consoleCompletion.ts`（**全量注册 sql 文档**，按绑定过滤：绑定→元数据+方言词表+片段、未绑定→关键字+标准函数+通用片段，P1-1；序号 sortText 保序防字母重排） |
 | Console 执行历史 | `packages/extension/src/services/consoleHistory.ts`（workspaceState，上限 500） |
 | Console 结果面板页 | `webview-ui/src/pages/ConsolePage.tsx` + `lib/consoleView.ts`（Tab/消息/状态行纯函数）+ `store/consoleStore.ts`（单例视图跟随最近执行的 Console；多会话 Tab 方案 M8 试作后撤回，见概要 v0.2.3） |
 | 契约测试套件 | `packages/driver-conformance/src/index.ts`（M6 起含 cursor-pagination / scan-semantics / value-encoding 组） |

@@ -1,4 +1,6 @@
 import { createPool, type Pool, type PoolConnection } from 'mysql2/promise';
+// 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSON 面）
+import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -77,18 +79,6 @@ const formSchema: FormSchema = {
     { key: 'ssl', label: '启用 SSL', type: 'boolean', group: '高级', section: 'SSL' },
   ],
 };
-
-const KEYWORDS = [
-  'SELECT', 'FROM', 'WHERE', 'ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET',
-  'JOIN', 'LEFT JOIN', 'INNER JOIN', 'ON', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET',
-  'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'AND', 'OR', 'NOT',
-  'NULL', 'IS NULL', 'LIKE', 'IN', 'BETWEEN', 'DISTINCT', 'AS', 'ASC', 'DESC',
-];
-
-const FUNCTIONS = [
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NOW', 'DATE_FORMAT', 'COALESCE',
-  'IFNULL', 'CONCAT', 'SUBSTRING', 'JSON_EXTRACT', 'GROUP_CONCAT',
-];
 
 interface RawColumnRow {
   name: string;
@@ -408,6 +398,7 @@ export class MysqlConnection implements IConnection {
     const base: CompletionSource = {
       keywords: KEYWORDS,
       functions: FUNCTIONS,
+      snippets: COMPLETION_SNIPPETS,
       databases: (await this.listDatabases()).map((d) => d.name),
       tables: [],
       columns: [],
