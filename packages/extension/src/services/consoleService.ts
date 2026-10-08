@@ -48,6 +48,12 @@ interface ExecutionOrigin {
   ranges: Array<{ start: number; end: number }>;
 }
 
+/** 注记渲染终点：越过语句尾分号——after 装饰渲染在 range 终点，而 sqlScript 的 end 恰停在
+ *  分号处（不含分号），不越过分号则耗时/错误文本会插在语句与分号之间 */
+function annotationEnd(text: string, end: number): number {
+  return text.charCodeAt(end) === 59 /* ';' */ ? end + 1 : end;
+}
+
 /** 事务动词识别（§4.6）：BEGIN/START TRANSACTION、COMMIT、ROLLBACK（仅 SQL 模式且驱动具备能力时接管） */
 function matchTxnVerb(sql: string): 'begin' | 'commit' | 'rollback' | undefined {
   if (/^\s*(BEGIN|START\s+TRANSACTION)\b/i.test(sql)) {
@@ -482,10 +488,11 @@ export class ConsoleService implements vscode.Disposable {
     if (!stmt) {
       return; // 该位置已无语句（文档刚被编辑等）
     }
+    const fullText = doc.getText();
     const origin: ExecutionOrigin = {
       uri,
       version: doc.version,
-      ranges: [{ start: stmt.start, end: stmt.end }],
+      ranges: [{ start: stmt.start, end: annotationEnd(fullText, stmt.end) }],
     };
     await this.runStatements(state, [stmt.text], undefined, origin);
   }
@@ -499,23 +506,25 @@ export class ConsoleService implements vscode.Disposable {
     if (!state) {
       return; // 未选择连接
     }
-    const ranges = this.splitRanges(state.connId, doc.getText());
+    const fullText = doc.getText();
+    const ranges = this.splitRanges(state.connId, fullText);
     let texts: string[] = [];
     let originRanges: Array<{ start: number; end: number }> = [];
     if (scope === 'all') {
       texts = ranges.map((s) => s.text);
-      originRanges = ranges.map((s) => ({ start: s.start, end: s.end }));
+      originRanges = ranges.map((s) => ({ start: s.start, end: annotationEnd(fullText, s.end) }));
     } else if (!editor.selection.isEmpty) {
       // 选区执行：选区内再切分，偏移平移回全文坐标
       const base = doc.offsetAt(editor.selection.start);
-      const sel = this.splitRanges(state.connId, doc.getText(editor.selection));
+      const selText = doc.getText(editor.selection);
+      const sel = this.splitRanges(state.connId, selText);
       texts = sel.map((s) => s.text);
-      originRanges = sel.map((s) => ({ start: s.start + base, end: s.end + base }));
+      originRanges = sel.map((s) => ({ start: s.start + base, end: annotationEnd(selText, s.end) + base }));
     } else {
       const stmt = statementAtOffset(ranges, doc.offsetAt(editor.selection.active));
       if (stmt) {
         texts = [stmt.text];
-        originRanges = [{ start: stmt.start, end: stmt.end }];
+        originRanges = [{ start: stmt.start, end: annotationEnd(fullText, stmt.end) }];
       }
     }
     const origin: ExecutionOrigin | undefined =

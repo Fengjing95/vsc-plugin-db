@@ -10,7 +10,8 @@
 export interface SqlStatement {
   /** 语句原文（去掉尾部分号与首尾空白） */
   text: string;
-  /** 在脚本中的起止偏移（start 指向首个非空白字符；end 指向分号后） */
+  /** 在脚本中的起止偏移（start 指向首个非空白字符；end 指向分号处，**不含分号**——
+   *  分号归前一条语句的终结符但不入范围，需要"语句完整显示终点"的消费方自行 +1） */
   start: number;
   end: number;
 }
