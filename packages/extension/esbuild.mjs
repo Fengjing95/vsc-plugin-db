@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
@@ -37,6 +38,16 @@ for (const file of readdirSync(logosSrc)) {
     copyFileSync(join(logosSrc, file), join(logosDst, file.toLowerCase()));
   }
 }
+
+// sql.js 的 wasm 引擎（M8-SQLite，D-16）：构建期拷到 media/（.vscodeignore 不排除 media → 随扩展
+// 打包；.gitignore 忽略产物）。sql.js 本体纯 JS 随 esbuild 整体打包（同 pg/mysql2 口径），
+// wasm 二进制不可打包——运行时驱动经 initSqlJs({ locateFile }) 定位 media/sql-wasm.wasm
+// （extension.ts 传入 extensionPath 路径）。源经 createRequire 从 driver-sqlite 的依赖解析
+// （pnpm 隔离目录不在本包依赖图内）。
+const sqliteWasm = createRequire(join(scriptDir, '..', 'driver-sqlite', 'package.json')).resolve(
+  'sql.js/dist/sql-wasm.wasm',
+);
+copyFileSync(sqliteWasm, join(scriptDir, 'media', 'sql-wasm.wasm'));
 
 if (watch) {
   const ctx = await esbuild.context(options);

@@ -452,6 +452,7 @@
     "@db-explorer/driver-mysql": "workspace:*",
     "@db-explorer/driver-postgres": "workspace:*",
     "@db-explorer/driver-redis": "workspace:*",
+    "@db-explorer/driver-sqlite": "workspace:*",
     "@db-explorer/protocol": "workspace:*",
     "exceljs": "^4.4.0",
     "ssh2": "^1.17.0"

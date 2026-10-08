@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import { isAbsolute, join } from 'node:path';
 import { ChangeSetService, DriverRegistry, InProcessDriverHost, MetadataCache } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { createPostgresDriver } from '@db-explorer/driver-postgres';
 import { createRedisDriver } from '@db-explorer/driver-redis';
+import { createSqliteDriver } from '@db-explorer/driver-sqlite';
 import { registerCommands } from './commands';
 import { ConnectionManager } from './services/connectionManager';
 import { ConnectionStore } from './services/connectionStore';
@@ -32,6 +34,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registry.register(createPostgresDriver());
   // M6 Redis 驱动：仅注册（可插拔验收），树/取数/命令控制台路径零核心改动
   registry.register(createRedisDriver());
+  // M8-SQLite SQLite 驱动：仅注册（可插拔验收），树/取数/Console/DDL 路径零核心改动（D-16）。
+  // sql.js wasm 构建期拷至 media/（esbuild.mjs），运行时经 locateFile 定位；
+  // 相对路径解析到首个工作区根（~/ 展开由驱动侧完成）
+  const firstWorkspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  registry.register(
+    createSqliteDriver({
+      wasmPath: join(context.extensionPath, 'media', 'sql-wasm.wasm'),
+      resolvePath: (p) => (isAbsolute(p) || !firstWorkspaceRoot ? p : join(firstWorkspaceRoot, p)),
+    }),
+  );
 
   // M8 优化：LogOutputChannel（原生 info/warn/error/debug 分级 + 自动时间戳 + 面板级别过滤），
   // 各服务经 logger 门面打点（不直接持有 channel）；dbExplorer.showLog 聚焦面板
