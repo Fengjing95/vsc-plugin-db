@@ -162,13 +162,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     // 查询节点单击 = 打开 .sql 文件（原生编辑器承载，绑定/执行走既有 Console 链路）
     if (node.type === 'query' && node.payload.file && this.queryFiles && node.payload.connId && node.payload.db) {
       const dir = this.queryFiles.dirUri(node.payload.connId, node.payload.db);
-      if (dir) {
-        item.command = {
-          command: 'vscode.open',
-          title: '打开查询',
-          arguments: [vscode.Uri.joinPath(dir, node.payload.file)],
-        };
-      }
+      item.command = {
+        command: 'vscode.open',
+        title: '打开查询',
+        arguments: [vscode.Uri.joinPath(dir, node.payload.file)],
+      };
     }
     return item;
   }

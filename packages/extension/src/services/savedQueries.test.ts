@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultQueryName,
+  expandQueryDirectory,
   newQueryDefaultName,
   queryLabel,
   queryPathSegment,
@@ -90,5 +91,18 @@ describe('queryPathSegment', () => {
     expect(queryPathSegment('..')).toBe('_');
     expect(queryPathSegment('*')).toBe('_');
     expect(queryPathSegment('app_db')).toBe('app_db');
+  });
+});
+
+describe('expandQueryDirectory', () => {
+  it('~/ 前缀展开为主目录', () => {
+    expect(expandQueryDirectory('~/Documents/db-queries', '/Users/u')).toBe('/Users/u/Documents/db-queries');
+    expect(expandQueryDirectory('~', '/Users/u')).toBe('/Users/u');
+  });
+
+  it('绝对路径原样返回；空白值与非绝对路径返回空串（回退默认目录）', () => {
+    expect(expandQueryDirectory('/var/queries', '/Users/u')).toBe('/var/queries');
+    expect(expandQueryDirectory('  ', '/Users/u')).toBe('');
+    expect(expandQueryDirectory('relative/dir', '/Users/u')).toBe('');
   });
 });

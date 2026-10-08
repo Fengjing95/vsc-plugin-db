@@ -418,6 +418,11 @@
           ],
           "description": "导出默认格式"
         },
+        "dbExplorer.queries.directory": {
+          "type": "string",
+          "default": "",
+          "description": "查询文件存储目录（树「查询」目录与保存查询；留空用扩展全局存储，不与工作区绑定；支持 ~/ 前缀，如 ~/Documents/db-queries）"
+        },
         "dbExplorer.transaction.idleTimeoutMs": {
           "type": "number",
           "default": 300000,

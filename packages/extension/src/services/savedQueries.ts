@@ -1,8 +1,9 @@
 /**
- * 保存查询（概要设计 §5.5.2 P1）：Console SQL 保存到工作区 `.vscode/db-queries/*.sql`。
- * 纯函数层（文件名消毒 / 默认命名 / 摘要），VSCode 交互在 savedQueryActions.ts
+ * 保存查询（概要设计 §5.5.2 P1）：Console SQL 保存到查询目录（默认扩展全局存储，可配置，不与工作区绑定）。
+ * 纯函数层（文件名消毒 / 默认命名 / 摘要 / 目录设置展开），VSCode 交互在 savedQueryActions.ts
  * （约定：含 vscode import 的模块不进单测，纯函数层保持可测）。
  */
+import { isAbsolute } from 'node:path';
 
 /** 文件名非法字符（跨平台：Windows 保留字符 + 路径分隔符 + 控制字符——消毒正是其用途） */
 // eslint-disable-next-line no-control-regex
@@ -59,6 +60,19 @@ export function queryLabel(fileName: string): string {
 /** 连接 id / 数据库名 → 目录路径段（消毒防路径穿越与非法字符；清空后兜底 '_' 保证段非空） */
 export function queryPathSegment(input: string): string {
   return sanitizeQueryFileName(input).trim() || '_';
+}
+
+/**
+ * 查询目录配置值展开：`~/` 前缀替换为用户主目录（如 ~/Documents/db-queries）；
+ * 空值或非绝对路径返回空串（调用方回退扩展全局存储默认目录）。
+ */
+export function expandQueryDirectory(input: string, home: string): string {
+  const t = input.trim();
+  if (!t) {
+    return '';
+  }
+  const expanded = t === '~' || t.startsWith('~/') ? home + t.slice(1) : t;
+  return isAbsolute(expanded) ? expanded : '';
 }
 
 /** 查询文件摘要（打开选择器的 detail）：首个非空、非注释行，截断 60 字符 */

@@ -45,8 +45,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     () => vscode.workspace.getConfiguration('dbExplorer').get('transaction.idleTimeoutMs', 300_000),
     (message) => void vscode.window.showWarningMessage(message),
   );
-  // 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录管理 .vscode/db-queries/<connId>/<db>/*.sql
-  const queryFiles = new QueryFilesService();
+  // 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录管理 <查询根>/<connId>/<db>/*.sql；
+  // 查询根默认扩展全局存储（不与工作区绑定），dbExplorer.queries.directory 可指向任意磁盘目录
+  const queryFiles = new QueryFilesService(context.globalStorageUri);
   const tree = new ConnectionsTreeProvider(connections, cache, sessions, context.extensionUri, queryFiles);
   const treeView = vscode.window.createTreeView('dbExplorer.connections', {
     treeDataProvider: tree,

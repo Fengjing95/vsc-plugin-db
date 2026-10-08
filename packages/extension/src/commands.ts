@@ -153,31 +153,26 @@ export function registerCommands(
       }
     }),
 
-    // 保存查询（概要 §5.5.2 P1）：活动 SQL 文档 → .vscode/db-queries/*.sql
+    // 保存查询（概要 §5.5.2 P1）：活动 SQL 文档 → 查询目录（默认扩展全局存储）
     vscode.commands.registerCommand('dbExplorer.saveQuery', () => {
-      void saveActiveQuery(services.console);
+      void saveActiveQuery(services.console, services.queries);
     }),
 
     vscode.commands.registerCommand('dbExplorer.openSavedQuery', () => {
-      void pickSavedQuery();
+      void pickSavedQuery(services.queries);
     }),
 
     // 树「查询」目录（M8 优化：树上 Console 入口改为文件化查询管理）。
-    // 查询 = .vscode/db-queries/<connId>/<db>/*.sql；新建用输入框（默认 query_<13位时间戳>），
-    // 创建即绑定该连接/库（§7.1），打开后 Ctrl+Enter 直接执行
+    // 查询 = <查询根>/<connId>/<db>/*.sql（默认扩展全局存储，不与工作区绑定，dbExplorer.queries.directory 可自定义）；
+    // 新建用输入框（默认 query_<13位时间戳>），创建即绑定该连接/库（§7.1），打开后 Ctrl+Enter 直接执行
     vscode.commands.registerCommand('dbExplorer.queries.create', async (node?: DbTreeNode) => {
       const { connId, db } = node?.payload ?? {};
       if (node?.type !== 'queries' || !connId || !db) {
         return;
       }
-      const dir = services.queries.dirUri(connId, db);
-      if (!dir) {
-        void vscode.window.showErrorMessage('当前没有打开的工作区，无法创建查询。');
-        return;
-      }
       const name = await vscode.window.showInputBox({
         title: '新增查询',
-        prompt: '查询名称（保存为 .vscode/db-queries/…/<名称>.sql）',
+        prompt: '查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）',
         placeHolder: '查询名称',
         value: newQueryDefaultName(),
         validateInput: async (v) => {
@@ -186,7 +181,9 @@ export function registerCommands(
             return '名称无效';
           }
           try {
-            await vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, `${safe}.sql`));
+            await vscode.workspace.fs.stat(
+              vscode.Uri.joinPath(services.queries.dirUri(connId, db), `${safe}.sql`),
+            );
             return '同名查询已存在';
           } catch {
             return undefined;
@@ -221,11 +218,10 @@ export function registerCommands(
       if (node?.type !== 'query' || !node.payload.file || !node.payload.connId || !node.payload.db) {
         return;
       }
-      const dir = services.queries.dirUri(node.payload.connId, node.payload.db);
-      if (!dir) {
-        return;
-      }
-      const uri = vscode.Uri.joinPath(dir, node.payload.file);
+      const uri = vscode.Uri.joinPath(
+        services.queries.dirUri(node.payload.connId, node.payload.db),
+        node.payload.file,
+      );
       const confirmed = await vscode.window.showWarningMessage(
         `删除查询 "${node.label}"？（${uri.fsPath}）`,
         { modal: true },

@@ -4,19 +4,15 @@
  */
 import * as vscode from 'vscode';
 import type { ConsoleService } from './consoleService';
+import type { QueryFilesService } from './queryFiles';
 import { defaultQueryName, queryPathSegment, querySummary, sanitizeQueryFileName, timestampQueryName } from './savedQueries';
-
-/** 查询目录：<workspace>/.vscode/db-queries（§5.5.2；多根工作区取第一个，与导出默认目录口径一致） */
-export function queriesFolder(): vscode.Uri | undefined {
-  const ws = vscode.workspace.workspaceFolders?.[0];
-  return ws ? vscode.Uri.joinPath(ws.uri, '.vscode', 'db-queries') : undefined;
-}
 
 /**
  * 保存活动 SQL 编辑器内容为查询文件。源文档（untitled Console）已有连接绑定时，
- * 新文件自动继承绑定（§7.1 绑定可持久化到文件的语义延伸）。
+ * 新文件自动继承绑定（§7.1 绑定可持久化到文件的语义延伸），
+ * 且存入该连接/库的查询子目录（与树「查询」目录同构）；未绑定落查询根目录。
  */
-export async function saveActiveQuery(consoleService: ConsoleService): Promise<void> {
+export async function saveActiveQuery(consoleService: ConsoleService, queries: QueryFilesService): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   const doc = editor?.document;
   if (!doc || doc.languageId !== 'sql') {
@@ -28,21 +24,16 @@ export async function saveActiveQuery(consoleService: ConsoleService): Promise<v
     void vscode.window.showInformationMessage('没有可保存的内容。');
     return;
   }
-  const folderRoot = queriesFolder();
-  if (!folderRoot) {
-    void vscode.window.showErrorMessage('当前没有打开的工作区，无法保存查询。');
-    return;
-  }
   // 源文档已有绑定（connId+db）时保存到对应「查询」目录子目录（与树查询目录同构）；未绑定落根目录
   const sourceBinding = consoleService.bindingForDocument(doc);
   const folder =
     sourceBinding?.connId && sourceBinding.db
-      ? vscode.Uri.joinPath(folderRoot, sourceBinding.connId, queryPathSegment(sourceBinding.db))
-      : folderRoot;
+      ? vscode.Uri.joinPath(queries.rootUri(), sourceBinding.connId, queryPathSegment(sourceBinding.db))
+      : queries.rootUri();
 
   const name = await vscode.window.showInputBox({
     title: '保存查询',
-    prompt: '保存到工作区 .vscode/db-queries/…/<名称>.sql',
+    prompt: '保存到查询目录 …/<名称>.sql（dbExplorer.queries.directory 可自定义位置）',
     placeHolder: '查询名称',
     value: defaultQueryName(text),
   });
@@ -78,26 +69,42 @@ export async function saveActiveQuery(consoleService: ConsoleService): Promise<v
   void vscode.window.setStatusBarMessage(`已保存查询：${safe}.sql`, 3000);
 }
 
-/** 打开保存的查询：QuickPick 列出（含各连接/库子目录，按修改时间倒序），回车打开文件 */
-export async function pickSavedQuery(): Promise<void> {
-  const files = await vscode.workspace.findFiles('.vscode/db-queries/**/*.sql', '**/node_modules/**', 200);
-  if (files.length === 0) {
+/** 打开保存的查询：QuickPick 列出（查询根目录 + 兼容旧版工作区 .vscode/db-queries 遗留文件），按修改时间倒序 */
+export async function pickSavedQuery(queries: QueryFilesService): Promise<void> {
+  const [entries, legacy] = await Promise.all([
+    queries.listAll(),
+    vscode.workspace.findFiles('.vscode/db-queries/**/*.sql', '**/node_modules/**', 200),
+  ]);
+  if (entries.length === 0 && legacy.length === 0) {
     void vscode.window.showInformationMessage('还没有保存的查询（树「查询」目录或 Console 中「保存查询」）。');
     return;
   }
-  const items = await Promise.all(
-    files.map(async (uri) => {
-      let summary = '';
-      let modified = '';
-      try {
-        const stat = await vscode.workspace.fs.stat(uri);
-        modified = new Date(stat.mtime).toLocaleString();
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(await vscode.workspace.fs.readFile(uri));
-        summary = querySummary(text);
-      } catch {
-        // 读取失败仅降级摘要
-      }
-      // 含子目录时以 db-queries 下相对路径区分（同 displaying 名文件可能分布在多个连接/库）
+  const stat = async (uri: vscode.Uri) => {
+    let modified = '';
+    let summary = '';
+    try {
+      const s = await vscode.workspace.fs.stat(uri);
+      modified = new Date(s.mtime).toLocaleString();
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(await vscode.workspace.fs.readFile(uri));
+      summary = querySummary(text);
+    } catch {
+      // 读取失败仅降级摘要
+    }
+    return { modified, summary };
+  };
+  const items = await Promise.all([
+    ...entries.map(async (e) => {
+      const { modified, summary } = await stat(e.uri);
+      return {
+        label: `${e.db}/${e.label}`,
+        description: modified,
+        detail: `[${e.connId.slice(0, 8)}] ${summary}`,
+        uri: e.uri,
+      };
+    }),
+    ...legacy.map(async (uri) => {
+      const { modified, summary } = await stat(uri);
+      // 旧版工作区文件以 db-queries 下相对路径区分
       const rel = uri.path.split('/db-queries/')[1] ?? uri.fsPath;
       return {
         label: rel,
@@ -106,11 +113,11 @@ export async function pickSavedQuery(): Promise<void> {
         uri,
       };
     }),
-  );
+  ]);
   items.sort((a, b) => (a.description < b.description ? 1 : -1));
   const picked = await vscode.window.showQuickPick(items, {
     title: '打开保存的查询',
-    placeHolder: '.vscode/db-queries/**/*.sql（按修改时间排序）',
+    placeHolder: '查询目录（默认扩展全局存储，dbExplorer.queries.directory 可自定义）·按修改时间排序',
   });
   if (!picked) {
     return;
