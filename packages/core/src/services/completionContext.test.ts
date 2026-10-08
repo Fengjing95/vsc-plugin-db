@@ -62,24 +62,18 @@ describe('buildCompletionDescriptors', () => {
     expect(items.find((i) => i.label === 'users')?.detail).toBe('用户表');
   });
 
-  it('column 上下文：限当前表的列 + 函数', () => {
+  it('column 上下文：关键字置顶，其后限当前表的列 + 函数（v0.2.12 口径）', () => {
     const items = buildCompletionDescriptors(source, { kind: 'column', table: 'users' });
     const labels = items.map((i) => i.label);
     expect(labels).toContain('email');
     expect(labels).not.toContain('amount');
     expect(labels).toContain('COUNT');
-  });
-
-  it('column 上下文含关键字殿后（FROM/WHERE 在列位可提示，M8 修复）', () => {
-    const items = buildCompletionDescriptors(source, { kind: 'column', table: 'users' });
-    const labels = items.map((i) => i.label);
     expect(labels).toContain('WHERE');
-    expect(labels).toContain('FROM');
-    // 顺序：列 → 函数 → 关键字（列不被关键字淹没）
+    // 顺序：关键字 → 列 → 函数（关键字靠前，列不被其它类目淹没）
     const kinds = items.map((i) => i.kind);
-    expect(kinds.indexOf('column')).toBeLessThan(kinds.indexOf('keyword'));
-    const firstKeyword = kinds.indexOf('keyword');
-    expect(kinds.slice(firstKeyword).every((k) => k === 'keyword')).toBe(true);
+    const lastKeyword = kinds.lastIndexOf('keyword');
+    expect(kinds.slice(0, lastKeyword + 1).every((k) => k === 'keyword')).toBe(true);
+    expect(kinds.indexOf('column')).toBeGreaterThan(kinds.lastIndexOf('keyword'));
   });
 
   it('any 上下文：关键字 + 函数 + 表 + 列 + 库', () => {
@@ -92,14 +86,14 @@ describe('buildCompletionDescriptors', () => {
     expect(labels).toContain('analytics');
   });
 
-  it('any 上下文排序：表/列在前、关键字殿后（M8 优先级重排）', () => {
+  it('any 上下文排序：关键字置顶，其后表/列 → 片段 → 函数 → 库（v0.2.12 口径）', () => {
     const items = buildCompletionDescriptors(source, { kind: 'any' });
     const kinds = items.map((i) => i.kind);
-    expect(kinds.indexOf('table')).toBeLessThan(kinds.indexOf('keyword'));
-    expect(kinds.indexOf('column')).toBeLessThan(kinds.indexOf('keyword'));
-    // 关键字为连续尾段：首个关键字之后不再混入表/列等高优先级条目
-    const firstKeyword = kinds.indexOf('keyword');
-    expect(kinds.slice(firstKeyword).every((k) => k === 'keyword')).toBe(true);
+    // 关键字为连续首段：末个关键字之后不再回到关键字
+    const lastKeyword = kinds.lastIndexOf('keyword');
+    expect(kinds.slice(0, lastKeyword + 1).every((k) => k === 'keyword')).toBe(true);
+    expect(kinds.indexOf('table')).toBeGreaterThan(lastKeyword);
+    expect(kinds.indexOf('column')).toBeGreaterThan(lastKeyword);
   });
 
   it('片段：label/detail 透传且携带插入体', () => {

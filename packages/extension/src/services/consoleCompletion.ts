@@ -17,8 +17,9 @@ import type { ConsoleService } from './consoleService';
  *   DoD 缓存命中 <100ms；词表为方言全量：关键字/函数/片段）；未绑定 → 关键字 + 常用标准函数
  *   + 通用片段（不含库/表等连接元数据）
  * - 上下文：resolveCompletionContext（单库 + 别名，D-04）
- * - 排序：buildCompletionDescriptors 按上下文优先级出序（表/列→片段→函数→关键字殿后），
- *   extension 按序号生成 sortText，VSCode 不再按字母重排
+ * - 排序：buildCompletionDescriptors 关键字置顶（v0.2.12 用户口径），其后按上下文优先级出序
+ *   （列位：列→函数；任意位：表/列→片段→函数→库；表位保持表/库优先），extension 按序号生成
+ *   sortText，VSCode 不再按字母重排
  */
 const SELECTOR: vscode.DocumentSelector = { language: 'sql' };
 

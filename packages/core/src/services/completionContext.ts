@@ -263,20 +263,22 @@ export function buildCompletionDescriptors(source: CompletionSource, ctx: Comple
       }
       break;
     case 'column':
+      // 关键字置顶（v0.2.12 用户口径）：FROM/WHERE/AND 是列位最高频的补全对象，列/函数紧随其后
+      for (const k of source.keywords) {
+        push(k, 'keyword');
+      }
       columnsOf(ctx.table);
       for (const f of source.functions) {
         push(f, 'function', '函数');
       }
-      // 关键字殿后：FROM/WHERE/AND 等恰恰多在列位书写（SELECT … FRO|、FROM t WHE|、x=1 AN|），
-      // 缺位会让最高频书写位置关键字无提示；前缀过滤保证有词缀时不污染列列表
-      for (const k of source.keywords) {
-        push(k, 'keyword');
-      }
       break;
     case 'any':
     default:
-      // 上下文优先级：表/列（元数据）→ 片段 → 函数 → 库 → 关键字殿后（extension 侧按序号生成
-      // sortText，VSCode 不再按字母重排——体感上"要补的"总在前面）
+      // 关键字置顶，其后元数据优先级：表/列 → 片段 → 函数 → 库（extension 侧按序号生成
+      // sortText，VSCode 不再按字母重排；前缀过滤下排序只影响跨类别并列时的命中顺序）
+      for (const k of source.keywords) {
+        push(k, 'keyword');
+      }
       for (const t of source.tables) {
         push(t.name, 'table', t.comment);
       }
@@ -289,9 +291,6 @@ export function buildCompletionDescriptors(source: CompletionSource, ctx: Comple
       }
       for (const d of source.databases) {
         push(d, 'database', '数据库');
-      }
-      for (const k of source.keywords) {
-        push(k, 'keyword');
       }
       break;
   }
