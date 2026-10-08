@@ -3,6 +3,7 @@ import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { DdlService } from '../services/ddlService';
+import type { Logger } from '../services/logger';
 
 /**
  * 表结构编辑器面板（M8-B2，概要 §5.9 / 交互稿 §12）：
@@ -13,7 +14,7 @@ import type { DdlService } from '../services/ddlService';
 
 export interface TableDesignPanelDeps {
   ddl: DdlService;
-  output: vscode.OutputChannel;
+  logger: Logger;
 }
 
 const panels = new Map<string, vscode.WebviewPanel>();
@@ -64,7 +65,7 @@ export function openTableDesignPanel(
   attachRpcHost(panel.webview, {
     viewId,
     params: { connId: target.connId, db: target.db, obj: target.obj ?? '' },
-    output: deps.output,
+    logger: deps.logger,
     handlers: {
       [RpcMethods.ddlLoad]: (raw) => deps.ddl.load(raw),
       [RpcMethods.ddlPreview]: (raw) => deps.ddl.preview(raw),

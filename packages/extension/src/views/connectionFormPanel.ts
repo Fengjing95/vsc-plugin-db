@@ -13,6 +13,7 @@ import {
 } from '@db-explorer/protocol';
 import { secretRefOf, type ConnectionStore } from '../services/connectionStore';
 import { attachRpcHost } from '../rpc/rpcHost';
+import { describeError, describeTarget, type Logger } from '../services/logger';
 import {
   SSH_FORM_FIELDS,
   optionsFromSshConfig,
@@ -27,7 +28,7 @@ const panels = new Map<string, vscode.WebviewPanel>();
 export interface FormPanelDeps {
   store: ConnectionStore;
   registry: DriverRegistry;
-  output: vscode.OutputChannel;
+  logger: Logger;
   /** SSH 主机指纹库（TOFU 持久化，与 ConnectionManager 共享同一 globalState） */
   sshFingerprints: FingerprintStore;
 }
@@ -72,7 +73,7 @@ export function openConnectionForm(
   attachRpcHost(panel.webview, {
     viewId,
     params: {},
-    output: deps.output,
+    logger: deps.logger,
     handlers: formHandlers(deps, () => panel.dispose()),
   });
 }
@@ -138,21 +139,35 @@ function formHandlers(
         secretRef: secretRefOf(p.connId ?? 'test'),
       };
       let tunnel: Awaited<ReturnType<typeof resolveSshTarget>>['tunnel'];
+      const started = Date.now();
       try {
         // SSH 隧道测试路径与真实建连同源（resolveSshTarget）；draft 指纹键避免污染正式连接记录
         const resolved = await resolveSshTarget(cfg, sshSecret, deps.sshFingerprints, 10_000);
         cfg = resolved.cfg;
         tunnel = resolved.tunnel;
         const result = await driver.testConnection(cfg, secret);
-        return result.ok
-          ? { ok: true, latencyMs: result.latencyMs, serverVersion: result.serverVersion }
-          : {
-              ok: false,
-              errorCode: result.error?.code ?? 'E_INTERNAL',
-              errorMessage: result.error?.message ?? '连接失败',
-            };
+        if (result.ok) {
+          deps.logger.info(
+            'conn',
+            `测试连接成功：${p.driverId} @ ${describeTarget(p.options)}（${result.latencyMs ?? Date.now() - started}ms）`,
+          );
+          return { ok: true, latencyMs: result.latencyMs, serverVersion: result.serverVersion };
+        }
+        deps.logger.error(
+          'conn',
+          `测试连接失败：${p.driverId} @ ${describeTarget(p.options)} → ${result.error?.code ?? 'E_INTERNAL'} ${result.error?.message ?? '连接失败'}`,
+        );
+        return {
+          ok: false,
+          errorCode: result.error?.code ?? 'E_INTERNAL',
+          errorMessage: result.error?.message ?? '连接失败',
+        };
       } catch (err) {
         const e = DriverError.is(err) ? err : new DriverError('E_INTERNAL', String(err));
+        deps.logger.error(
+          'conn',
+          `测试连接失败：${p.driverId} @ ${describeTarget(p.options)} → ${describeError(e)}`,
+        );
         return { ok: false, errorCode: e.code, errorMessage: e.message };
       } finally {
         tunnel?.dispose();
@@ -190,8 +205,9 @@ function formHandlers(
         const databases = await driver.listDatabaseOptions(cfg, secret);
         return { databases };
       } catch (err) {
-        deps.output.appendLine(
-          `[form] 列库建议失败（无感降级）: ${err instanceof Error ? err.message : String(err)}`,
+        deps.logger.warn(
+          'form',
+          `列库建议失败（无感降级）: ${err instanceof Error ? err.message : String(err)}`,
         );
         return { databases: [] };
       } finally {

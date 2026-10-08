@@ -7,7 +7,8 @@ import {
   type IDatabaseDriver,
 } from '@db-explorer/core';
 import type { ConnectionStore } from './connectionStore';
-import { resolveSshTarget, type FingerprintStore, type SshTunnel } from './sshTunnel';
+import { describeError, describeTarget, type Logger } from './logger';
+import { resolveSshTarget, sshConfigOf, type FingerprintStore, type SshTunnel } from './sshTunnel';
 
 /** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
 export class ConnectionManager implements vscode.Disposable {
@@ -24,6 +25,7 @@ export class ConnectionManager implements vscode.Disposable {
     private readonly registry: DriverRegistry,
     private readonly store: ConnectionStore,
     private readonly fingerprints: FingerprintStore,
+    private readonly logger: Logger,
   ) {}
 
   async listConfigs(): Promise<ConnectionConfig[]> {
@@ -67,14 +69,40 @@ export class ConnectionManager implements vscode.Disposable {
     }
     const driver = this.registry.require(cfg.driverId);
     const secret = (await this.store.getSecret(connId)) ?? '';
+    const resolvedTarget = describeTarget(cfg.options);
     // SSH 隧道（概要 §6 #14）：需要时先开隧道，驱动拿到的是本地回环地址（驱动不感知 SSH）
     const sshSecret = (await this.store.getSshPassword(connId)) ?? '';
     const timeoutMs = vscode.workspace
       .getConfiguration('dbExplorer')
       .get('connection.connectTimeoutMs', 10_000);
-    const resolved = await resolveSshTarget(cfg, sshSecret, this.fingerprints, timeoutMs);
+    // 断开保护窗口内建连 = 自动重连（P-33 竞态防护的另一半：懒连接语义的隐性重连）
+    const reconnecting = this.disconnectedAt.has(connId);
+    const started = Date.now();
+    let resolved: Awaited<ReturnType<typeof resolveSshTarget>>;
+    try {
+      resolved = await resolveSshTarget(cfg, sshSecret, this.fingerprints, timeoutMs);
+    } catch (err) {
+      const ssh = sshConfigOf(cfg);
+      this.logger.error(
+        'conn',
+        `SSH 隧道建立失败：${cfg.name}（${connId}，跳板机 ${ssh?.host}:${ssh?.port ?? 22}）→ ${describeError(err)}`,
+      );
+      throw err;
+    }
+    if (resolved.tunnel) {
+      const ssh = sshConfigOf(cfg);
+      this.logger.info(
+        'conn',
+        `SSH 隧道已建立：${cfg.name}（${connId}）${ssh?.host}:${ssh?.port ?? 22} → 127.0.0.1:${resolved.tunnel.localPort}`,
+      );
+    }
     try {
       const conn = await driver.connect(resolved.cfg, secret);
+      const elapsed = Date.now() - started;
+      this.logger.info(
+        'conn',
+        `${reconnecting ? '自动重连成功' : '连接成功'}：${cfg.name}（${connId}，${cfg.driverId} @ ${resolvedTarget}，${elapsed}ms）`,
+      );
       this.cache.set(connId, conn);
       this.disconnectedAt.delete(connId); // 重连成功，退出断开保护窗口
       if (resolved.tunnel) {
@@ -83,6 +111,11 @@ export class ConnectionManager implements vscode.Disposable {
       this.statusEmitter.fire(connId);
       return conn;
     } catch (err) {
+      const elapsed = Date.now() - started;
+      this.logger.error(
+        'conn',
+        `连接失败：${cfg.name}（${connId}，${cfg.driverId} @ ${resolvedTarget}，${elapsed}ms）→ ${describeError(err)}`,
+      );
       // 建连失败不遗留半开的隧道
       resolved.tunnel?.dispose();
       throw err;
@@ -98,15 +131,19 @@ export class ConnectionManager implements vscode.Disposable {
     if (!conn) {
       return; // 幂等：本就未连接
     }
+    const name = this.store.get(connId)?.name ?? connId;
     this.cache.delete(connId);
     this.disconnectedAt.set(connId, Date.now());
     await this.disposeTunnel(connId);
     await Promise.resolve(conn.dispose());
     this.statusEmitter.fire(connId);
+    this.logger.info('conn', `已断开：${name}（${connId}；懒连接语义，下次操作自动重连）`);
   }
 
   /** 编辑/删除连接后失效缓存，下次操作按新配置重连 */
   invalidate(connId: string): void {
+    const name = this.store.get(connId)?.name ?? connId;
+    this.logger.info('conn', `连接缓存已失效（配置编辑/删除）：${name}（${connId}）`);
     const conn = this.cache.get(connId);
     this.cache.delete(connId);
     const done = Promise.resolve(this.disposeTunnel(connId)).then(() => {

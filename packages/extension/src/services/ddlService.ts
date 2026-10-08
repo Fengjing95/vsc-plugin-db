@@ -17,6 +17,7 @@ import {
   type DdlPreviewResult,
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
+import { describeError, type Logger } from './logger';
 import { confirmNameMatch, quoteWith } from './ddlText';
 
 /**
@@ -37,7 +38,7 @@ export class DdlService {
     private readonly deps: {
       connections: ConnectionManager;
       cache: MetadataCache;
-      output: vscode.OutputChannel;
+      logger: Logger;
       /** DDL 成功后联动树刷新（概要 §7.5） */
       refreshTree: () => void;
       timeoutMs: number;
@@ -85,6 +86,7 @@ export class DdlService {
       }
     }
     let executed = 0;
+    const started = Date.now();
     for (let i = 0; i < statements.length; i++) {
       try {
         await this.host.query(
@@ -95,15 +97,17 @@ export class DdlService {
         // 失败即停：DDL 隐式提交，已执行语句不回滚——返回定位信息由 UI 明示中间态
         const code = DriverError.is(err) ? err.code : 'E_INTERNAL';
         const message = err instanceof Error ? err.message : String(err);
-        this.deps.output.appendLine(
-          `[ddl] ${p.connId}/${p.db}.${p.obj ?? p.spec.name} 第 ${i + 1}/${statements.length} 条失败：${code} ${message}`,
+        this.deps.logger.error(
+          'ddl',
+          `${p.connId}/${p.db}.${p.obj ?? p.spec.name} 第 ${i + 1}/${statements.length} 条失败：${code} ${message}`,
         );
         return { executed, failed: { index: i + 1, code, message } };
       }
       executed++;
     }
-    this.deps.output.appendLine(
-      `[ddl] ${p.connId}/${p.db}.${p.obj ?? p.spec.name} 完成：${executed} 条语句`,
+    this.deps.logger.info(
+      'ddl',
+      `${p.connId}/${p.db}.${p.obj ?? p.spec.name} 完成：${executed} 条语句（${Date.now() - started}ms）`,
     );
     // §7.5 DDL 失效联动：失效该库元数据缓存 + 树刷新
     this.deps.cache.invalidateDb(p.connId, p.db);
@@ -143,10 +147,17 @@ export class DdlService {
     if (!confirmNameMatch(column, await this.promptText('删除列', column))) {
       return false;
     }
-    this.deps.output.appendLine(`[ddl] ${connId}/${db}.${obj} 删除列 ${column}（${statements.length} 条语句）`);
+    this.deps.logger.info('ddl', `${connId}/${db}.${obj} 删除列 ${column}（${statements.length} 条语句）`);
+    const started = Date.now();
     for (const s of statements) {
-      await this.host.query(conn, { sql: s.sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
+      try {
+        await this.host.query(conn, { sql: s.sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
+      } catch (err) {
+        this.deps.logger.error('ddl', `${connId}/${db}.${obj} 删除列 ${column} 失败：${describeError(err)}`);
+        throw err;
+      }
     }
+    this.deps.logger.info('ddl', `${connId}/${db}.${obj} 删除列 ${column} 完成（${Date.now() - started}ms）`);
     this.deps.cache.invalidateDb(connId, db);
     this.deps.refreshTree();
     void vscode.window.showInformationMessage(`列 "${column}" 已删除`);
@@ -172,8 +183,15 @@ export class DdlService {
     }
     const conn = await this.deps.connections.ensureConnected(connId);
     const sql = buildSql((n) => quoteWith(conn, n));
-    this.deps.output.appendLine(`[ddl] ${connId}/${db}.${obj} ${action}`);
-    await this.host.query(conn, { sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
+    this.deps.logger.info('ddl', `${connId}/${db}.${obj} ${action}`);
+    const started = Date.now();
+    try {
+      await this.host.query(conn, { sql, db, maxRows: 1, timeoutMs: this.deps.timeoutMs });
+    } catch (err) {
+      this.deps.logger.error('ddl', `${connId}/${db}.${obj} ${action}失败：${describeError(err)}`);
+      throw err;
+    }
+    this.deps.logger.info('ddl', `${connId}/${db}.${obj} ${action}完成（${Date.now() - started}ms）`);
     this.deps.cache.invalidateDb(connId, db);
     this.deps.refreshTree();
     void vscode.window.showInformationMessage(`表 "${obj}" 已删除`);

@@ -4,6 +4,7 @@ import type { DriverHost } from '@db-explorer/core';
 import type { ExportFormat } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import { safeFileName } from './csvJson';
+import type { Logger } from './logger';
 import { ExportTaskRunner, type ExportTaskBase } from './exportTasks';
 
 /**
@@ -17,7 +18,7 @@ export function createResultExporter(
     webview: vscode.Webview;
     connections: ConnectionManager;
     host: DriverHost;
-    output: vscode.OutputChannel;
+    logger: Logger;
     chunkRows: number;
     timeoutMs: number;
   },
@@ -49,7 +50,7 @@ export function createResultExporter(
         void args.webview.postMessage({ kind: 'evt', event: 'evt:export.done', payload: p });
       },
     },
-    log: (line) => args.output.appendLine(line),
+    log: (line, level = 'info') => args.logger.write(level, line),
   });
 }
 

@@ -4,6 +4,7 @@ import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ConsoleService } from '../services/consoleService';
+import type { Logger } from '../services/logger';
 
 /**
  * Console 结果视图（M5 试点：底部面板形态，D-02 备选位置）：
@@ -16,7 +17,7 @@ export const CONSOLE_RESULT_VIEW_ID = 'dbExplorer.consoleResult';
 
 export interface ConsolePanelDeps {
   connections: ConnectionManager;
-  output: vscode.OutputChannel;
+  logger: Logger;
   console: ConsoleService;
 }
 
@@ -48,7 +49,7 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         params: {},
         connections: deps.connections,
         host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15_000)),
-        output: deps.output,
+        logger: deps.logger,
         console: {
           getState: (params: unknown) => deps.console.getState(consoleIdOf(params)),
           execute: (params: unknown) => {

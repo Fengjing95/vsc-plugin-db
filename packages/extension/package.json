@@ -217,6 +217,11 @@
         "command": "dbExplorer.formatSql",
         "title": "格式化 SQL",
         "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.showLog",
+        "title": "打开日志",
+        "category": "数据库"
       }
     ],
     "menus": {

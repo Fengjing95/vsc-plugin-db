@@ -9,6 +9,7 @@ import {
 } from '@db-explorer/core';
 import type { EditPermission, ViewUiState } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
+import type { Logger } from './logger';
 import type { MetadataCache } from '@db-explorer/core';
 
 /**
@@ -28,7 +29,7 @@ export class EditGuard {
   constructor(
     private readonly connections: ConnectionManager,
     private readonly cache: MetadataCache,
-    private readonly output: vscode.OutputChannel,
+    private readonly logger: Logger,
   ) {}
 
   /** 编辑权限（面板生命周期内缓存；改驱动/设置/表结构后重开视图生效） */
@@ -47,8 +48,9 @@ export class EditGuard {
   assessDanger(sql: string, dialectId?: string): DangerAssessment {
     const assessment = assessStatementDanger(sql, dialectId);
     if (assessment.dangerous) {
-      this.output.appendLine(
-        `[dangerGuard] 危险语句判定：${assessment.reasons.join('；')}${assessment.parseFailed ? '（正则降级）' : ''}`,
+      this.logger.info(
+        'dangerGuard',
+        `危险语句判定：${assessment.reasons.join('；')}${assessment.parseFailed ? '（正则降级）' : ''}`,
       );
     }
     return assessment;
@@ -58,7 +60,7 @@ export class EditGuard {
   assertReadable(statements: string[], dialectId?: string): void {
     for (const sql of statements) {
       if (!isReadStatement(sql, dialectId)) {
-        this.output.appendLine(`[dangerGuard] 只读连接拒绝非读语句（fail-closed）`);
+        this.logger.warn('dangerGuard', '只读连接拒绝非读语句（fail-closed）');
         throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许查询语句');
       }
     }
@@ -73,7 +75,7 @@ export class EditGuard {
       parseFailed: a.unparseable,
     };
     if (assessment.dangerous) {
-      this.output.appendLine(`[dangerGuard] 危险命令判定：${assessment.reasons.join('；')}`);
+      this.logger.info('dangerGuard', `危险命令判定：${assessment.reasons.join('；')}`);
     }
     return assessment;
   }
@@ -82,7 +84,7 @@ export class EditGuard {
   assertCommandsReadable(commands: string[]): void {
     for (const command of commands) {
       if (!isProvablyReadRedisCommand(command)) {
-        this.output.appendLine(`[dangerGuard] 只读连接拒绝非读命令（fail-closed）`);
+        this.logger.warn('dangerGuard', '只读连接拒绝非读命令（fail-closed）');
         throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许读命令');
       }
     }
@@ -139,7 +141,7 @@ export class EditGuard {
     });
     const matched = (input ?? '').trim() === obj;
     if (!matched) {
-      this.output.appendLine(`[dangerGuard] prod 变更提交确认未通过（已拦截）`);
+      this.logger.warn('dangerGuard', 'prod 变更提交确认未通过（已拦截）');
     }
     return matched;
   }

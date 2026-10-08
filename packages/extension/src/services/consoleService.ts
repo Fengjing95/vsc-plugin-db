@@ -21,6 +21,7 @@ import {
 } from '@db-explorer/protocol';
 import { csvRow, toJsonObject } from './csvJson';
 import type { ConnectionManager } from './connectionManager';
+import { describeError, type Logger } from './logger';
 import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePanel';
 import type { ConsoleHistory } from './consoleHistory';
 import type { EditGuard } from './editGuard';
@@ -119,7 +120,7 @@ export class ConsoleService implements vscode.Disposable {
     private readonly history: ConsoleHistory,
     /** M7 交互式事务（§4.6/D-09）：BEGIN/COMMIT/ROLLBACK 接管与会话内语句路由 */
     private readonly sessions: SessionManager,
-    private readonly output: vscode.OutputChannel,
+    private readonly logger: Logger,
     /** DDL 执行后联动树刷新（概要 §7.5） */
     private readonly refreshTree: () => void,
   ) {
@@ -257,7 +258,7 @@ export class ConsoleService implements vscode.Disposable {
     }
     state.connId = picked.connId;
     state.db = picked.db;
-    this.output.appendLine(`[console] ${state.consoleId} 重新绑定 → ${picked.connId}${picked.db ? `/${picked.db}` : ''}`);
+    this.logger.info('console', `${state.consoleId} 重新绑定 → ${picked.connId}${picked.db ? `/${picked.db}` : ''}`);
     this.preheatCompletions(state);
     this.bindingsChangedEmitter.fire();
     this.updateStatusBar();
@@ -412,7 +413,7 @@ export class ConsoleService implements vscode.Disposable {
     }
     void this.saveFileBinding(fsPath, { consoleId: state.consoleId, connId: state.connId, db: state.db });
     this.untitledBindings.delete(closed.key);
-    this.output.appendLine(`[console] 绑定随另存迁移：${state.consoleId} → ${fsPath}`);
+    this.logger.info('console', `绑定随另存迁移：${state.consoleId} → ${fsPath}`);
     this.updateStatusBar();
   }
 
@@ -582,7 +583,7 @@ export class ConsoleService implements vscode.Disposable {
         db = picked;
         this.bindingsChangedEmitter.fire();
         this.updateStatusBar();
-        this.output.appendLine(`[console] ${state.consoleId} 绑定库 → ${picked}（执行时选择）`);
+        this.logger.info('console', `${state.consoleId} 绑定库 → ${picked}（执行时选择）`);
       }
     }
 
@@ -618,19 +619,19 @@ export class ConsoleService implements vscode.Disposable {
           '仍要执行',
         );
         if (pick !== '仍要执行') {
-          this.output.appendLine('[dangerGuard] prod 危险语句已拦截（不落历史）');
+          this.logger.warn('dangerGuard', 'prod 危险语句已拦截（不落历史）');
           return; // 拦截不落历史（§7.4）
         }
         dangerOverridden = true;
       } else {
         const proceed = await this.showBannerAndWait(state, dangerReasons, offending);
         if (!proceed) {
-          this.output.appendLine('[dangerGuard] 危险语句横幅被取消（不落历史）');
+          this.logger.warn('dangerGuard', '危险语句横幅被取消（不落历史）');
           return; // 拦截不落历史
         }
         dangerOverridden = true;
       }
-      this.output.appendLine(`[dangerGuard] 用户确认覆盖危险语句（${dangerReasons.join('；')}）`);
+      this.logger.info('dangerGuard', `用户确认覆盖危险语句（${dangerReasons.join('；')}）`);
     }
 
     // 会话状态检查（评审 P1-5）：仅 SQL 路径——命令模式逐行本就是独立命令（SELECT 等
@@ -768,9 +769,40 @@ export class ConsoleService implements vscode.Disposable {
     } finally {
       run.durationMs = Date.now() - run.startedAt;
       state.controller = undefined;
+      this.logRunOutcome(state, run, texts.length);
       this.pushRun(state);
       this.recordHistory(state, run);
     }
+  }
+
+  /** 执行终态打点（M8 优化）：完成/取消 info、失败 error（DriverError code 可见，C-6 链路补充） */
+  private logRunOutcome(state: ConsoleState, run: ConsoleRun, total: number): void {
+    const done = run.items.length;
+    if (run.status === 'error') {
+      let lastError: ConsoleRunItem['error'] | undefined;
+      for (const item of run.items) {
+        if (item.error) {
+          lastError = item.error;
+        }
+      }
+      this.logger.error(
+        'console',
+        `${state.consoleId} 执行失败：${lastError ? `${lastError.code} ${lastError.message}` : '未知错误'}（${done}/${total} 条语句，${run.durationMs}ms）`,
+      );
+      return;
+    }
+    if (run.status === 'canceled') {
+      this.logger.info(
+        'console',
+        `${state.consoleId} 执行已取消（${done}/${total} 条语句，${run.durationMs}ms）`,
+      );
+      return;
+    }
+    const rows = run.items.reduce((n, i) => n + (i.resultSet?.rowCount ?? i.affectedRows ?? 0), 0);
+    this.logger.info(
+      'console',
+      `${state.consoleId} 执行完成：${total} 条语句 / ${rows} 行（${run.durationMs}ms）`,
+    );
   }
 
   private itemFromResultSet(sqlText: string, rs: import('@db-explorer/core').ResultSet): ConsoleRunItem {
@@ -937,7 +969,7 @@ export class ConsoleService implements vscode.Disposable {
       bytes = Buffer.byteLength(content);
       await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
     }
-    this.output.appendLine(`[console] 结果 ${itemSeq} 已导出：${target.fsPath}（${rs.rowCount} 行）`);
+    this.logger.info('console', `结果 ${itemSeq} 已导出：${target.fsPath}（${rs.rowCount} 行）`);
     return { filePath: target.fsPath, rows: rs.rowCount, bytes };
   }
 
@@ -968,7 +1000,7 @@ export class ConsoleService implements vscode.Disposable {
 
   private preheatCompletions(state: ConsoleState): void {
     void this.loadCompletionSource(state).catch((err) => {
-      this.output.appendLine(`[console] 补全预热失败：${String(err)}`);
+      this.logger.error('console', `补全预热失败：${describeError(err)}`);
     });
   }
 
@@ -980,9 +1012,10 @@ export class ConsoleService implements vscode.Disposable {
       conn.getCompletionSource(state.db ?? undefined),
     );
     const elapsed = performance.now() - start;
-    // DoD 口径：缓存命中 <100ms；首载（>100ms）仅记录不告警
-    this.output.appendLine(
-      `[console] 补全数据源 ${state.connId}/${cacheKey}：${elapsed.toFixed(1)}ms（${elapsed < 100 ? '缓存命中' : '首次加载'}）`,
+    // DoD 口径：缓存命中 <100ms；首载（>100ms）仅记录不告警。高频路径 → debug 级
+    this.logger.debug(
+      'console',
+      `补全数据源 ${state.connId}/${cacheKey}：${elapsed.toFixed(1)}ms（${elapsed < 100 ? '缓存命中' : '首次加载'}）`,
     );
     return source;
   }

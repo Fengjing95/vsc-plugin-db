@@ -44,7 +44,8 @@ export interface ExportTaskDeps {
     progress(p: ExportProgressEvent): void;
     done(p: ExportDoneEvent): void;
   };
-  log(line: string): void;
+  /** 日志（Host 门面转发，line 自带 [export] 源标签；级别缺省 info） */
+  log(line: string, level?: 'info' | 'warn' | 'error'): void;
 }
 
 export interface ExportTaskBase {
@@ -80,7 +81,7 @@ export class ExportTaskRunner {
 
     const controller = new AbortController();
     this.running.set(exportId, controller);
-    this.deps.log(`[export] ${exportId} 开始（后台）：${p.db}.${p.obj} → ${target} (${p.format}, ${p.scope})`);
+    this.deps.log(`[export] ${exportId} 开始（后台）：${p.db}.${p.obj} → ${target} (${p.format}, ${p.scope})`, 'info');
     void this.executeDetached(exportId, p, target, controller);
     return { exportId };
   }
@@ -107,7 +108,7 @@ export class ExportTaskRunner {
         const e = DriverError.is(err)
           ? err
           : new DriverError('E_INTERNAL', err instanceof Error ? err.message : String(err));
-        this.deps.log(`[export] ${exportId} 失败：${e.code} ${e.message}`);
+        this.deps.log(`[export] ${exportId} 失败：${e.code} ${e.message}`, 'error');
         this.deps.events.done({
           exportId,
           rows: 0,
@@ -126,10 +127,10 @@ export class ExportTaskRunner {
         canceled: result.canceled || undefined,
       });
       if (result.canceled) {
-        this.deps.log(`[export] ${exportId} 已取消：${result.rows} 行`);
+        this.deps.log(`[export] ${exportId} 已取消：${result.rows} 行`, 'info');
         return;
       }
-      this.deps.log(`[export] ${exportId} 完成：${result.rows} 行 / ${result.bytes} 字节`);
+      this.deps.log(`[export] ${exportId} 完成：${result.rows} 行 / ${result.bytes} 字节`, 'info');
       const action = await this.deps.ui.showMessage(
         'info',
         `已导出 ${result.rows} 行 → ${path.basename(result.filePath)}`,

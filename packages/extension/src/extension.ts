@@ -13,6 +13,7 @@ import { DdlService } from './services/ddlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { EditGuard, ViewStateStore } from './services/editGuard';
+import { Logger } from './services/logger';
 import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { SessionManager } from './services/sessionManager';
@@ -30,16 +31,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // M6 Redis 驱动：仅注册（可插拔验收），树/取数/命令控制台路径零核心改动
   registry.register(createRedisDriver());
 
-  const output = vscode.window.createOutputChannel('Database Explorer');
+  // M8 优化：LogOutputChannel（原生 info/warn/error/debug 分级 + 自动时间戳 + 面板级别过滤），
+  // 各服务经 logger 门面打点（不直接持有 channel）；dbExplorer.showLog 聚焦面板
+  const output = vscode.window.createOutputChannel('Database Explorer', { log: true });
+  const logger = new Logger(output);
   const store = new ConnectionStore(context.globalState, context.secrets);
   // SSH 主机指纹库（TOFU，globalState 持久化）：ConnectionManager 与连接表单共享同一实例
   const sshFingerprints = new GlobalStateFingerprintStore(context.globalState);
-  const connections = new ConnectionManager(registry, store, sshFingerprints);
+  const connections = new ConnectionManager(registry, store, sshFingerprints, logger);
   const cache = new MetadataCache();
   // M4 表格编辑：ChangeSet 权威副本（ADR D-06）+ 视图状态快照 + 编辑护栏（§5.8 / D-03）
   const changesets = new ChangeSetService();
   const viewStates = new ViewStateStore();
-  const editGuard = new EditGuard(connections, cache, output);
+  const editGuard = new EditGuard(connections, cache, logger);
   // M7 交互式事务（§4.6/D-09）：空闲超时自动回滚（默认 5min，可配置）；树徽标经 onDidChange 联动
   const sessions = new SessionManager(
     connections,
@@ -65,14 +69,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     editGuard,
     history,
     sessions,
-    output,
+    logger,
     () => tree.refresh(),
   );
   // M8-B2 表结构编辑（概要 §5.9）：编辑器 RPC + 删表/清空表树操作；成功后缓存失效联动树刷新
   const ddlService = new DdlService({
     connections,
     cache,
-    output,
+    logger,
     refreshTree: () => tree.refresh(),
     timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
   });
@@ -84,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessions,
     treeView,
     consoleService,
-    registerConsoleResultView(context, { connections, output, console: consoleService }),
+    registerConsoleResultView(context, { connections, logger, console: consoleService }),
     registerConsoleCompletion(consoleService),
     // SQL CodeLens「▶ 执行」：每条语句上方执行动作（与 Ctrl+Enter 同一执行链，M8 优化）
     registerSqlCodeLens(),
@@ -99,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         registry,
         store,
         connections,
-        output,
+        logger,
         changesets,
         viewStates,
         editGuard,

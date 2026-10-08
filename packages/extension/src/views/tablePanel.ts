@@ -3,6 +3,7 @@ import { InProcessDriverHost, type ChangeSetService } from '@db-explorer/core';
 import { attachRpcHost } from '../rpc/rpcHost';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
+import type { Logger } from '../services/logger';
 import { createResultExporter } from '../services/resultExporter';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 
@@ -22,7 +23,7 @@ export interface TableTarget {
 
 export interface TablePanelServices {
   connections: ConnectionManager;
-  output: vscode.OutputChannel;
+  logger: Logger;
   /** ChangeSet 权威副本（ADR D-06，进程级单例） */
   changesets: ChangeSetService;
   viewStates: ViewStateStore;
@@ -88,7 +89,7 @@ export async function openTablePanel(
     },
     connections: services.connections,
     host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15000)),
-    output: services.output,
+    logger: services.logger,
     changesets: services.changesets,
     viewStates: services.viewStates,
     editGuard: services.editGuard,
@@ -97,7 +98,7 @@ export async function openTablePanel(
       webview: panel.webview,
       connections: services.connections,
       host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15000)),
-      output: services.output,
+      logger: services.logger,
       chunkRows: cfg.get('export.chunkRows', 1000),
       timeoutMs: cfg.get('query.timeoutMs', 15000),
     }),

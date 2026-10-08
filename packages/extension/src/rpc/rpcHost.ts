@@ -25,6 +25,7 @@ import type { ExportTaskRunner } from '../services/exportTasks';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ChangeSetService } from '@db-explorer/core';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
+import type { Logger } from '../services/logger';
 
 /** M5 Console 面板方法门面（console.*，rpcHost 完成 zod 校验后调用） */
 export interface ConsoleRpcFacade {
@@ -39,7 +40,7 @@ export interface ConsoleRpcFacade {
 export interface RpcHostDeps {
   viewId: string;
   params: Record<string, string>;
-  output: vscode.OutputChannel;
+  logger: Logger;
   connections?: ConnectionManager;
   host?: InProcessDriverHost;
   /** 表格导出（export.run / export.cancel），仅表格视图注入 */
@@ -81,7 +82,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
     try {
       req = RpcRequestSchema.parse(data);
     } catch (err) {
-      deps.output.appendLine(`[rpc] 非法请求帧: ${String(err)}`);
+      deps.logger.warn('rpc', `非法请求帧: ${String(err)}`);
       return;
     }
 
@@ -123,7 +124,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
                 deps.params.obj,
               );
             } catch (err) {
-              deps.output.appendLine(`[rpc] 编辑权限判定失败（视为只读）: ${String(err)}`);
+              deps.logger.warn('rpc', `编辑权限判定失败（视为只读）: ${String(err)}`);
               edit = { enabled: false, reason: '编辑权限判定失败，请刷新重试' };
             }
           }

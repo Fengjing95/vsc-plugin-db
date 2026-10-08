@@ -16,12 +16,14 @@ import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
+import type { Logger } from './services/logger';
 
 export interface AppServices {
   registry: DriverRegistry;
   store: ConnectionStore;
   connections: ConnectionManager;
-  output: vscode.OutputChannel;
+  /** Host 日志门面（LogOutputChannel 分级打点；dbExplorer.showLog 聚焦面板） */
+  logger: Logger;
   /** M4 表格编辑：变更集权威副本 + 视图状态快照 + 编辑护栏 */
   changesets: import('@db-explorer/core').ChangeSetService;
   viewStates: ViewStateStore;
@@ -53,6 +55,11 @@ export function registerCommands(
   return [
     vscode.commands.registerCommand('dbExplorer.focus', async () => {
       await vscode.commands.executeCommand('dbExplorer.connections.focus');
+    }),
+
+    // 打开日志（M8 优化）：聚焦输出面板 Database Explorer 频道（不自动弹出，仅显式入口）
+    vscode.commands.registerCommand('dbExplorer.showLog', () => {
+      services.logger.show();
     }),
 
     vscode.commands.registerCommand('dbExplorer.newConnection', () => {
