@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import {
   DriverError,
-  InProcessDriverHost,
   isDdlStatement,
   isProvablyReadRedisCommand,
   isSessionStateStatement,
@@ -9,6 +8,7 @@ import {
   splitSqlStatements,
   statementAtOffset,
   type CompletionSource,
+  type DriverHost,
   type MetadataCache,
   type SqlStatement,
 } from '@db-explorer/core';
@@ -104,7 +104,6 @@ export class ConsoleService implements vscode.Disposable {
   private seq = 0;
 
   private readonly statusItem: vscode.StatusBarItem;
-  private readonly host: InProcessDriverHost;
   private readonly disposables: vscode.Disposable[] = [];
   /** untitled 关闭后的绑定回收定时器（另存迁移窗口，§7.1） */
   private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -120,15 +119,14 @@ export class ConsoleService implements vscode.Disposable {
     private readonly history: ConsoleHistory,
     /** M7 交互式事务（§4.6/D-09）：BEGIN/COMMIT/ROLLBACK 接管与会话内语句路由 */
     private readonly sessions: SessionManager,
+    /** 查询统一入口（LoggingDriverHost 拦截日志，extension 组装注入，概要 §5.10） */
+    private readonly host: DriverHost,
     private readonly logger: Logger,
     /** DDL 执行后联动树刷新（概要 §7.5） */
     private readonly refreshTree: () => void,
   ) {
     this.fileBindings = new Map(
       Object.entries(context.workspaceState.get<Record<string, FileBinding>>(FILE_BINDINGS_KEY) ?? {}),
-    );
-    this.host = new InProcessDriverHost(
-      vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
     );
 
     this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);

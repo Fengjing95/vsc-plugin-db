@@ -43,6 +43,16 @@ export class ConnectionManager implements vscode.Disposable {
     return cfg ? this.registry.get(cfg.driverId) : undefined;
   }
 
+  /** conn 实例 → connId（查询日志回查用，LoggingDriverHost；缓存条目极小线性查无碍） */
+  connIdOf(conn: IConnection): string | undefined {
+    for (const [id, cached] of this.cache) {
+      if (cached === conn) {
+        return id;
+      }
+    }
+    return undefined;
+  }
+
   /** 当前是否有活跃连接（懒连接语义：false 只代表空闲未连，不代表不可用） */
   isConnected(connId: string): boolean {
     return this.cache.has(connId);

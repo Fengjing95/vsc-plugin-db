@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import {
   DriverError,
-  InProcessDriverHost,
   specFromColumns,
   type DdlStatement,
+  type DriverHost,
   type IConnection,
   type MetadataCache,
   type TableSpec,
@@ -32,19 +32,21 @@ import { confirmNameMatch, quoteWith } from './ddlText';
  */
 
 export class DdlService {
-  private readonly host: InProcessDriverHost;
+  private readonly host: DriverHost;
 
   constructor(
     private readonly deps: {
       connections: ConnectionManager;
       cache: MetadataCache;
       logger: Logger;
+      /** 查询统一入口（LoggingDriverHost 拦截日志，extension 组装注入，概要 §5.10） */
+      host: DriverHost;
       /** DDL 成功后联动树刷新（概要 §7.5） */
       refreshTree: () => void;
       timeoutMs: number;
     },
   ) {
-    this.host = new InProcessDriverHost(deps.timeoutMs);
+    this.host = deps.host;
   }
 
   async load(raw: unknown): Promise<DdlLoadResult> {

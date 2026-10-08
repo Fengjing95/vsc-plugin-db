@@ -48,20 +48,41 @@ const openedSessions: Array<ReturnType<typeof fakeSession>> = [];
 
 function makeManager(host: SessionHost, idleTimeoutMs = 60_000) {
   const notifications: string[] = [];
-  const manager = new SessionManager(host, () => idleTimeoutMs, (msg) => notifications.push(msg));
-  return { manager, notifications };
+  const logs: string[] = [];
+  const manager = new SessionManager(host, () => idleTimeoutMs, (msg) => notifications.push(msg), {
+    info: (_tag, msg) => logs.push(`info ${msg}`),
+    error: (_tag, msg) => logs.push(`error ${msg}`),
+  });
+  return { manager, notifications, logs };
 }
 
 describe('SessionManager（§4.6 / D-09）', () => {
   it('begin → execute → commit：语句走会话并结束', async () => {
     const host = fakeHost();
-    const { manager } = makeManager(host);
+    const { manager, logs } = makeManager(host);
     await manager.begin('c1');
     expect(manager.hasActive('c1')).toBe(true);
     await manager.execute('c1', { sql: 'UPDATE t SET x=1', maxRows: 10, timeoutMs: 1000 });
     await manager.commit('c1');
     expect(manager.hasActive('c1')).toBe(false);
     expect(openedSessions.at(-1)!.calls).toEqual(['execute:UPDATE t SET x=1', 'commit', 'dispose']);
+    // §5.10：事务内语句不经 DriverHost，SessionManager 自行打点（info，含 SQL 摘要）
+    expect(logs.some((l) => l.startsWith('info ') && l.includes('事务语句完成'))).toBe(true);
+    expect(logs.some((l) => l.includes('UPDATE t SET x=1'))).toBe(true);
+  });
+
+  it('会话内语句失败 → error 日志（code 可见）后原样抛出', async () => {
+    const host = fakeHost();
+    const { manager, logs } = makeManager(host);
+    await manager.begin('c1');
+    const s = openedSessions.at(-1)!.session;
+    s.execute = async () => {
+      throw new DriverError('E_SYNTAX', 'boom');
+    };
+    await expect(manager.execute('c1', { sql: 'SELECT bad', maxRows: 1, timeoutMs: 10 })).rejects.toMatchObject({
+      code: 'E_SYNTAX',
+    });
+    expect(logs.some((l) => l.startsWith('error ') && l.includes('E_SYNTAX'))).toBe(true);
   });
 
   it('单连接重复 begin 拒绝；commit/rollback 后可重新开启', async () => {

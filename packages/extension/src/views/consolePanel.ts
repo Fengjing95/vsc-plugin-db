@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { InProcessDriverHost } from '@db-explorer/core';
+import { type DriverHost } from '@db-explorer/core';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { ConnectionManager } from '../services/connectionManager';
@@ -18,6 +18,8 @@ export const CONSOLE_RESULT_VIEW_ID = 'dbExplorer.consoleResult';
 export interface ConsolePanelDeps {
   connections: ConnectionManager;
   logger: Logger;
+  /** 查询统一入口（LoggingDriverHost，extension 组装注入） */
+  host: DriverHost;
   console: ConsoleService;
 }
 
@@ -39,7 +41,6 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         params: { consoleId: '' },
       });
 
-      const cfg = vscode.workspace.getConfiguration('dbExplorer');
       const consoleIdOf = (params: unknown): string => {
         const id = (params as { consoleId?: unknown } | undefined)?.consoleId;
         return typeof id === 'string' && id ? id : '';
@@ -48,7 +49,7 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         viewId: CONSOLE_RESULT_VIEW_ID,
         params: {},
         connections: deps.connections,
-        host: new InProcessDriverHost(cfg.get('query.timeoutMs', 15_000)),
+        host: deps.host,
         logger: deps.logger,
         console: {
           getState: (params: unknown) => deps.console.getState(consoleIdOf(params)),

@@ -24,6 +24,8 @@ export interface AppServices {
   connections: ConnectionManager;
   /** Host 日志门面（LogOutputChannel 分级打点；dbExplorer.showLog 聚焦面板） */
   logger: Logger;
+  /** 查询统一入口（LoggingDriverHost 拦截日志，概要 §5.10） */
+  host: import('@db-explorer/core').DriverHost;
   /** M4 表格编辑：变更集权威副本 + 视图状态快照 + 编辑护栏 */
   changesets: import('@db-explorer/core').ChangeSetService;
   viewStates: ViewStateStore;

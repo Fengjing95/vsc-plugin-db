@@ -25,8 +25,20 @@ export interface DriverHost {
     req: QueryHostRequest,
     options?: { signal?: AbortSignal },
   ): Promise<ResultSet[]>;
-  previewChanges(conn: IConnection, db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]>;
-  applyChanges(conn: IConnection, db: string, obj: string, cs: ChangeSet): Promise<ApplyResult>;
+  previewChanges(
+    conn: IConnection,
+    db: string,
+    obj: string,
+    cs: ChangeSet,
+    options?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<PreviewItem[]>;
+  applyChanges(
+    conn: IConnection,
+    db: string,
+    obj: string,
+    cs: ChangeSet,
+    options?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<ApplyResult>;
 }
 
 export class InProcessDriverHost implements DriverHost {

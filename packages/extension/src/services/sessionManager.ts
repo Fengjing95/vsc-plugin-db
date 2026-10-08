@@ -1,4 +1,5 @@
 import { DriverError, Emitter, type ISession, type QueryRequest, type ResultSet } from '@db-explorer/core';
+import { describeError, sqlDigest, type Logger } from './logger';
 
 /**
  * 交互式事务会话管理（概要设计 §4.6 / D-09，M7）：
@@ -31,6 +32,8 @@ export class SessionManager {
     private readonly idleTimeoutMs: () => number,
     /** 超时/异常的用户通知（extension 侧注入 vscode 通知） */
     private readonly notify: (message: string) => void,
+    /** 事务内语句日志（LoggingDriverHost 不覆盖 session.execute 直连路径，此处补齐；测试可注桩） */
+    private readonly logger: Pick<Logger, 'info' | 'error'>,
   ) {}
 
   /** 当前连接是否有进行中的交互式事务（树徽标 / Console 路由判定） */
@@ -54,14 +57,34 @@ export class SessionManager {
     this.changeEmitter.fire();
   }
 
-  /** 会话内执行语句（刷新空闲计时） */
+  /** 会话内执行语句（刷新空闲计时；语句级日志——此路径不经 DriverHost，概要 §5.10） */
   async execute(connId: string, req: QueryRequest): Promise<ResultSet[]> {
     const entry = this.active.get(connId);
     if (!entry) {
       throw new DriverError('E_VALIDATION', '没有进行中的事务');
     }
     this.arm(connId, entry);
-    return entry.session.execute(req);
+    const started = Date.now();
+    try {
+      const sets = await entry.session.execute(req);
+      const rows = sets.reduce((n, rs) => n + rs.rowCount, 0);
+      this.logger.info(
+        'console',
+        `${connId} 事务语句完成：${sets.length} 个结果集 / ${rows} 行（${Date.now() - started}ms）· ${sqlDigest(req.sql)}`,
+      );
+      return sets;
+    } catch (err) {
+      const elapsed = Date.now() - started;
+      if (DriverError.is(err) && err.code === 'E_CANCELED') {
+        this.logger.info('console', `${connId} 事务语句已取消（${elapsed}ms）· ${sqlDigest(req.sql)}`);
+      } else {
+        this.logger.error(
+          'console',
+          `${connId} 事务语句失败：${describeError(err)}（${elapsed}ms）· ${sqlDigest(req.sql)}`,
+        );
+      }
+      throw err;
+    }
   }
 
   async commit(connId: string): Promise<void> {

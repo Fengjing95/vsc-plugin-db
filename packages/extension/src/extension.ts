@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ChangeSetService, DriverRegistry, MetadataCache } from '@db-explorer/core';
+import { ChangeSetService, DriverRegistry, InProcessDriverHost, MetadataCache } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { createPostgresDriver } from '@db-explorer/driver-postgres';
@@ -14,6 +14,7 @@ import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { Logger } from './services/logger';
+import { LoggingDriverHost } from './services/loggingDriverHost';
 import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { SessionManager } from './services/sessionManager';
@@ -39,6 +40,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // SSH 主机指纹库（TOFU，globalState 持久化）：ConnectionManager 与连接表单共享同一实例
   const sshFingerprints = new GlobalStateFingerprintStore(context.globalState);
   const connections = new ConnectionManager(registry, store, sshFingerprints, logger);
+  // 查询统一入口（§5.10 拦截）：DriverHost 装饰器——fetchRows/query/applyChanges 全量 info、
+  // previewChanges debug；connId 由懒连接缓存回查。表格取数/编辑提交/导出/Console/DDL 全走此实例
+  const queryHost = new LoggingDriverHost(
+    new InProcessDriverHost(
+      vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
+    ),
+    logger,
+    (conn) => connections.connIdOf(conn),
+  );
   const cache = new MetadataCache();
   // M4 表格编辑：ChangeSet 权威副本（ADR D-06）+ 视图状态快照 + 编辑护栏（§5.8 / D-03）
   const changesets = new ChangeSetService();
@@ -49,6 +59,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     connections,
     () => vscode.workspace.getConfiguration('dbExplorer').get('transaction.idleTimeoutMs', 300_000),
     (message) => void vscode.window.showWarningMessage(message),
+    logger,
   );
   // 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录管理 <查询根>/<connId>/<db>/*.sql；
   // 查询根默认扩展全局存储（不与工作区绑定），dbExplorer.queries.directory 可指向任意磁盘目录
@@ -69,6 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     editGuard,
     history,
     sessions,
+    queryHost,
     logger,
     () => tree.refresh(),
   );
@@ -77,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     connections,
     cache,
     logger,
+    host: queryHost,
     refreshTree: () => tree.refresh(),
     timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
   });
@@ -88,7 +101,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessions,
     treeView,
     consoleService,
-    registerConsoleResultView(context, { connections, logger, console: consoleService }),
+    registerConsoleResultView(context, { connections, logger, host: queryHost, console: consoleService }),
     registerConsoleCompletion(consoleService),
     // SQL CodeLens「▶ 执行」：每条语句上方执行动作（与 Ctrl+Enter 同一执行链，M8 优化）
     registerSqlCodeLens(),
@@ -104,6 +117,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         store,
         connections,
         logger,
+        host: queryHost,
         changesets,
         viewStates,
         editGuard,

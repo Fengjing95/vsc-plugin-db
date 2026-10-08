@@ -64,3 +64,9 @@ export function describeTarget(options: Record<string, unknown>): string {
   const port = typeof options.port === 'number' ? options.port : '?';
   return `${host}:${port}`;
 }
+
+/** SQL 摘要：压平空白并截断（日志单行可读；超长语句以 … 截断示意） */
+export function sqlDigest(sql: string, max = 120): string {
+  const flat = sql.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}

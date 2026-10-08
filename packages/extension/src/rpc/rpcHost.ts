@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DriverError, type EditOp, type InProcessDriverHost } from '@db-explorer/core';
+import { DriverError, type DriverHost, type EditOp } from '@db-explorer/core';
 import {
   ApplyChangesParamsSchema,
   ConsoleCancelParamsSchema,
@@ -42,7 +42,7 @@ export interface RpcHostDeps {
   params: Record<string, string>;
   logger: Logger;
   connections?: ConnectionManager;
-  host?: InProcessDriverHost;
+  host?: DriverHost;
   /** 表格导出（export.run / export.cancel），仅表格视图注入 */
   exporter?: ExportTaskRunner;
   /** 页面自有方法（conn.* 等），命中后优先于内置分发 */
