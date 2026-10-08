@@ -12,6 +12,7 @@ import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
+import { createExecutionAnnotations } from './services/sqlExecutionDecorations';
 import { EditGuard, ViewStateStore } from './services/editGuard';
 import { Logger } from './services/logger';
 import { LoggingDriverHost } from './services/loggingDriverHost';
@@ -73,6 +74,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   tree.attachView(treeView);
   // M5 SQL Console：绑定/执行链/结果面板/历史（概要设计 §5.5）
   const history = new ConsoleHistory(context.workspaceState, connections);
+  // 行内执行结果注记（语句行尾耗时/错误 + gutter 图标，装饰器渲染不入文件）
+  const executionAnnotations = createExecutionAnnotations();
   const consoleService = new ConsoleService(
     context,
     connections,
@@ -83,6 +86,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     queryHost,
     logger,
     () => tree.refresh(),
+    executionAnnotations,
   );
   // M8-B2 表结构编辑（概要 §5.9）：编辑器 RPC + 删表/清空表树操作；成功后缓存失效联动树刷新
   const ddlService = new DdlService({
@@ -101,6 +105,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessions,
     treeView,
     consoleService,
+    executionAnnotations,
     registerConsoleResultView(context, { connections, logger, host: queryHost, console: consoleService }),
     registerConsoleCompletion(consoleService),
     // SQL CodeLens「▶ 执行」：每条语句上方执行动作（与 Ctrl+Enter 同一执行链，M8 优化）

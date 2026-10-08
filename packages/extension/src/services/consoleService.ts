@@ -26,6 +26,7 @@ import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePan
 import type { ConsoleHistory } from './consoleHistory';
 import type { EditGuard } from './editGuard';
 import type { SessionManager } from './sessionManager';
+import type { ExecutionAnnotations } from './sqlExecutionDecorations';
 import { writeXlsxFile } from './xlsxWriter';
 
 /**
@@ -39,6 +40,13 @@ import { writeXlsxFile } from './xlsxWriter';
 const FILE_BINDINGS_KEY = 'dbExplorer.console.fileBindings';
 /** C-9：单次传输行数上限 */
 const MAX_RESULT_ROWS = 5000;
+
+/** 执行来源文档快照：语句偏移随 texts 一一对应（行内执行结果注记用；文档编辑后版本不符即丢弃） */
+interface ExecutionOrigin {
+  uri: vscode.Uri;
+  version: number;
+  ranges: Array<{ start: number; end: number }>;
+}
 
 /** 事务动词识别（§4.6）：BEGIN/START TRANSACTION、COMMIT、ROLLBACK（仅 SQL 模式且驱动具备能力时接管） */
 function matchTxnVerb(sql: string): 'begin' | 'commit' | 'rollback' | undefined {
@@ -124,6 +132,8 @@ export class ConsoleService implements vscode.Disposable {
     private readonly logger: Logger,
     /** DDL 执行后联动树刷新（概要 §7.5） */
     private readonly refreshTree: () => void,
+    /** 行内执行结果注记（sqlExecutionDecorations）：语句行尾耗时/错误 + gutter 图标，缺省不注记 */
+    private readonly annotations?: ExecutionAnnotations,
   ) {
     this.fileBindings = new Map(
       Object.entries(context.workspaceState.get<Record<string, FileBinding>>(FILE_BINDINGS_KEY) ?? {}),
@@ -472,7 +482,12 @@ export class ConsoleService implements vscode.Disposable {
     if (!stmt) {
       return; // 该位置已无语句（文档刚被编辑等）
     }
-    await this.runStatements(state, [stmt.text]);
+    const origin: ExecutionOrigin = {
+      uri,
+      version: doc.version,
+      ranges: [{ start: stmt.start, end: stmt.end }],
+    };
+    await this.runStatements(state, [stmt.text], undefined, origin);
   }
 
   private async executeDocument(
@@ -485,16 +500,27 @@ export class ConsoleService implements vscode.Disposable {
       return; // 未选择连接
     }
     const ranges = this.splitRanges(state.connId, doc.getText());
-    let texts: string[];
+    let texts: string[] = [];
+    let originRanges: Array<{ start: number; end: number }> = [];
     if (scope === 'all') {
       texts = ranges.map((s) => s.text);
+      originRanges = ranges.map((s) => ({ start: s.start, end: s.end }));
     } else if (!editor.selection.isEmpty) {
-      texts = this.splitRanges(state.connId, doc.getText(editor.selection)).map((s) => s.text);
+      // 选区执行：选区内再切分，偏移平移回全文坐标
+      const base = doc.offsetAt(editor.selection.start);
+      const sel = this.splitRanges(state.connId, doc.getText(editor.selection));
+      texts = sel.map((s) => s.text);
+      originRanges = sel.map((s) => ({ start: s.start + base, end: s.end + base }));
     } else {
       const stmt = statementAtOffset(ranges, doc.offsetAt(editor.selection.active));
-      texts = stmt ? [stmt.text] : [];
+      if (stmt) {
+        texts = [stmt.text];
+        originRanges = [{ start: stmt.start, end: stmt.end }];
+      }
     }
-    await this.runStatements(state, texts);
+    const origin: ExecutionOrigin | undefined =
+      texts.length > 0 ? { uri: doc.uri, version: doc.version, ranges: originRanges } : undefined;
+    await this.runStatements(state, texts, undefined, origin);
   }
 
   /** 结果面板「重跑」按钮：对指定 Console 重跑一段 SQL/命令（完整危险判定流程） */
@@ -524,6 +550,7 @@ export class ConsoleService implements vscode.Disposable {
     state: ConsoleState,
     texts: string[],
     override?: { connId: string; db: string | null },
+    origin?: ExecutionOrigin,
   ): Promise<void> {
     if (texts.length === 0) {
       void vscode.window.showInformationMessage('没有可执行的语句。');
@@ -657,6 +684,34 @@ export class ConsoleService implements vscode.Disposable {
     const controller = new AbortController();
     state.controller = controller;
     state.runningTotal = texts.length;
+    // 新一轮执行：清掉上一轮的行内注记（最新结果为准）
+    if (origin) {
+      this.annotations?.clear(origin.uri);
+    }
+    // 逐语句行内注记上报（sqlExecutionDecorations）：ok=耗时绿勾，失败=错误红叉，取消=灰
+    const reportOutcome = (i: number, ok: boolean, durationMs: number, err?: unknown): void => {
+      if (!origin || !this.annotations) {
+        return;
+      }
+      const r = origin.ranges[i];
+      if (!r) {
+        return;
+      }
+      this.annotations.report(origin.uri, origin.version, {
+        start: r.start,
+        end: r.end,
+        ok,
+        durationMs,
+        code: err ? (DriverError.is(err) ? err.code : 'E_INTERNAL') : undefined,
+        message: err
+          ? DriverError.is(err) && err.code === 'E_CANCELED'
+            ? '已取消'
+            : err instanceof Error
+              ? err.message
+              : String(err)
+          : undefined,
+      });
+    };
     const run: ConsoleRun = {
       consoleId: state.consoleId,
       runId,
@@ -682,7 +737,9 @@ export class ConsoleService implements vscode.Disposable {
         { location: vscode.ProgressLocation.Window, title: commandMode ? '执行命令…' : '执行 SQL…', cancellable: true },
         async (_progress, token) => {
           token.onCancellationRequested(() => controller.abort());
-          for (const sqlText of texts) {
+          for (let i = 0; i < texts.length; i++) {
+            const sqlText = texts[i]!;
+            const stmtStart = Date.now();
             if (controller.signal.aborted) {
               throw new DriverError('E_CANCELED', '已取消');
             }
@@ -737,8 +794,10 @@ export class ConsoleService implements vscode.Disposable {
                 this.cache.invalidateDb(connId, db);
                 this.refreshTree();
               }
+              reportOutcome(i, true, resultSets.reduce((n, rs) => n + (rs.executionMs ?? 0), 0));
             } catch (err) {
               const canceled = DriverError.is(err) && err.code === 'E_CANCELED';
+              reportOutcome(i, false, Date.now() - stmtStart, err);
               run.items.push({
                 seq: run.items.length + 1,
                 sql: sqlText,
