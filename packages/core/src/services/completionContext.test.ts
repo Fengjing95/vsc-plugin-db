@@ -70,6 +70,18 @@ describe('buildCompletionDescriptors', () => {
     expect(labels).toContain('COUNT');
   });
 
+  it('column 上下文含关键字殿后（FROM/WHERE 在列位可提示，M8 修复）', () => {
+    const items = buildCompletionDescriptors(source, { kind: 'column', table: 'users' });
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('WHERE');
+    expect(labels).toContain('FROM');
+    // 顺序：列 → 函数 → 关键字（列不被关键字淹没）
+    const kinds = items.map((i) => i.kind);
+    expect(kinds.indexOf('column')).toBeLessThan(kinds.indexOf('keyword'));
+    const firstKeyword = kinds.indexOf('keyword');
+    expect(kinds.slice(firstKeyword).every((k) => k === 'keyword')).toBe(true);
+  });
+
   it('any 上下文：关键字 + 函数 + 表 + 列 + 库', () => {
     const items = buildCompletionDescriptors(source, { kind: 'any' });
     const labels = items.map((i) => i.label);

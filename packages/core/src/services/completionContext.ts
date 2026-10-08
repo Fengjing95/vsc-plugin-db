@@ -267,6 +267,11 @@ export function buildCompletionDescriptors(source: CompletionSource, ctx: Comple
       for (const f of source.functions) {
         push(f, 'function', '函数');
       }
+      // 关键字殿后：FROM/WHERE/AND 等恰恰多在列位书写（SELECT … FRO|、FROM t WHE|、x=1 AN|），
+      // 缺位会让最高频书写位置关键字无提示；前缀过滤保证有词缀时不污染列列表
+      for (const k of source.keywords) {
+        push(k, 'keyword');
+      }
       break;
     case 'any':
     default:
