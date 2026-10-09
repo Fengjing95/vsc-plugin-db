@@ -9,7 +9,8 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 + 6390 requirepass 供错误密码用例）；
-    # M8-PG：PostgreSQL 契约（本地无实例，PG_HOST 门控 skip / CI 实跑，驱动规范 §11）
+    # M8-PG：PostgreSQL 契约（本地无实例，PG_HOST 门控 skip / CI 实跑，驱动规范 §11）；
+    # M8-Mongo：MongoDB 契约（MONGO_URI 门控同 PG 口径；mongo:7 自带 mongosh 供 health 探测）
     services:
       redis:
         image: redis:7
@@ -43,6 +44,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -65,7 +75,7 @@ jobs:
       - name: 构建
         run: pnpm build
 
-      - name: 测试（含 Redis / PostgreSQL 契约）
+      - name: 测试（含 Redis / PostgreSQL / MongoDB 契约）
         run: pnpm test
         env:
           REDIS_HOST: 127.0.0.1
@@ -76,3 +86,4 @@ jobs:
           PG_USER: postgres
           PG_PASSWORD: postgres
           PG_DATABASE: postgres
+          MONGO_URI: mongodb://127.0.0.1:27017
