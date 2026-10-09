@@ -5,6 +5,7 @@ import type {
   ConnTestResult,
   FormFieldPayload,
   FormSchemaPayload,
+  PickFileResult,
 } from '@db-explorer/protocol';
 import { request } from '../rpc/client';
 import { DbDriverIcon } from '../components/ui/dbIcons';
@@ -670,6 +671,43 @@ function FieldRow({
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
       />
+    );
+  } else if (field.type === 'file') {
+    // 文件选择（M8-SQLite，交互稿 §3.2）：输入框 + 「浏览…」——浏览经 sys.pickFile 原生对话框，
+    // 选中回填、取消不改动现值；输入保持自由（手输/粘帖路径同样有效，旧宿主无该方法时无感降级）
+    input = (
+      <div className="flex gap-1.5">
+        <input
+          id={inputId}
+          aria-describedby={describedBy}
+          type="text"
+          className={`${inputCls} flex-1`}
+          value={value === undefined || value === null ? '' : String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          aria-label={`浏览${field.label}`}
+          title={`浏览${field.label}`}
+          className="h-7 shrink-0 rounded-sm bg-[var(--vscode-button-secondaryBackground)] px-2.5 text-[13px] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)]"
+          onClick={() => {
+            void (async () => {
+              try {
+                const res = await request<PickFileResult>('sys.pickFile', { title: `选择${field.label}` });
+                if (res.path) {
+                  onChange(res.path);
+                }
+              } catch {
+                // 无感降级为纯手输（对话框失败/宿主无该方法）
+              }
+            })();
+          }}
+        >
+          浏览…
+        </button>
+      </div>
     );
   } else if (field.dynamicOptions === 'databases') {
     // 动态建议输入框（M8-PG B5，交互稿 §3.2）：聚焦拉取 + 候选下拉，输入保持自由。

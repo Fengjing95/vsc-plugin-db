@@ -76,7 +76,7 @@ const formSchema: FormSchema = {
     {
       key: 'path',
       label: '数据库文件路径',
-      type: 'string',
+      type: 'file', // file 控件（首次落地）：输入框 + 「浏览…」原生选择，输入保持可手输（§5.4）
       required: true,
       placeholder: '~/data/app.db',
       hint: 'SQLite 单文件数据库；支持 ~（主目录）与相对工作区路径；文件必须已存在（不会自动创建）',

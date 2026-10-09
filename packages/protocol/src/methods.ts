@@ -30,6 +30,7 @@ export const RpcMethods = {
   ddlExecute: 'ddl.execute',
   ddlClose: 'ddl.close',
   copyText: 'sys.copyText',
+  pickFile: 'sys.pickFile',
 } as const;
 
 /** Host → Webview 单向推送事件（概要设计 7.4.2） */
@@ -695,6 +696,23 @@ export const CopyTextResultSchema = z.object({
   written: z.number().int().min(0),
 });
 export type CopyTextResult = z.infer<typeof CopyTextResultSchema>;
+
+// ── sys.pickFile（Host 原生文件选择对话框：webview 无宿主文件系统能力；FormSchema type='file'
+//    字段的「浏览…」按钮数据源。选中返回绝对路径，取消返回 null——调用方据此决定是否回填）──
+export const PickFileParamsSchema = z.object({
+  /** 对话框标题（缺省「选择文件」） */
+  title: z.string().optional(),
+  /** 确认按钮文案（缺省「选择」） */
+  openLabel: z.string().optional(),
+  /** 扩展名过滤器，如 { 'SQLite 数据库': ['db', 'sqlite', 'sqlite3'] }；缺省不过滤 */
+  filters: z.record(z.string(), z.array(z.string().min(1))).optional(),
+});
+export type PickFileParams = z.infer<typeof PickFileParamsSchema>;
+
+export const PickFileResultSchema = z.object({
+  path: z.string().nullable(),
+});
+export type PickFileResult = z.infer<typeof PickFileResultSchema>;
 
 /** evt:console.banner 负载（banner=null 表示横幅已关闭） */
 export const ConsoleBannerEventSchema = z.object({

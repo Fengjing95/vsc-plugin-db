@@ -12,6 +12,7 @@ import {
   FetchRowsParamsSchema,
   GetDdlParamsSchema,
   HandshakeParamsSchema,
+  PickFileParamsSchema,
   PreviewChangesParamsSchema,
   RevertChangesParamsSchema,
   RPC_PROTOCOL_VERSION,
@@ -369,6 +370,22 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           const p = CopyTextParamsSchema.parse(req.params);
           await vscode.env.clipboard.writeText(p.text);
           respond(true, { result: { written: Buffer.byteLength(p.text) } });
+          return;
+        }
+
+        case RpcMethods.pickFile: {
+          // 任意 webview 通用：原生文件选择对话框（FormSchema type='file' 的「浏览…」数据源）；
+          // 取消选择返回 path=null，由调用方决定是否回填
+          const p = PickFileParamsSchema.parse(req.params);
+          const uris = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            title: p.title,
+            openLabel: p.openLabel,
+            filters: p.filters,
+          });
+          respond(true, { result: { path: uris?.[0]?.fsPath ?? null } });
           return;
         }
       }
