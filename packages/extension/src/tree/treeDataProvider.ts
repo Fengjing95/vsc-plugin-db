@@ -159,13 +159,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
         arguments: [node],
       };
     }
-    // 查询节点单击 = 打开 .sql 文件（原生编辑器承载，绑定/执行走既有 Console 链路）
+    // 查询节点单击 = 打开 .sql 文件并自动绑定所属连接/库（原生编辑器承载，执行走既有 Console 链路）
     if (node.type === 'query' && node.payload.file && this.queryFiles && node.payload.connId && node.payload.db) {
-      const dir = this.queryFiles.dirUri(node.payload.connId, node.payload.db);
       item.command = {
-        command: 'vscode.open',
+        command: 'dbExplorer.queries.open',
         title: '打开查询',
-        arguments: [vscode.Uri.joinPath(dir, node.payload.file)],
+        arguments: [node],
       };
     }
     return item;

@@ -381,6 +381,17 @@ export class ConsoleService implements vscode.Disposable {
     this.bindingsChangedEmitter.fire();
   }
 
+  /** 查询文件重命名：绑定随路径迁移（fileBindings 以 fsPath 为键；旧路径无绑定则无操作）。
+   *  迁移后 fire onBindingsChanged——补全 provider 按绑定路径重注册，新路径立即可执行/补全 */
+  async renameFileBinding(oldFsPath: string, newFsPath: string): Promise<void> {
+    const entry = this.fileBindings.get(oldFsPath);
+    if (!entry) {
+      return;
+    }
+    this.fileBindings.delete(oldFsPath);
+    await this.saveFileBinding(newFsPath, entry);
+  }
+
   private onDocumentOpened(doc: vscode.TextDocument): void {
     if (doc.uri.scheme === 'file' && doc.languageId === 'sql' && this.fileBindings.has(doc.uri.fsPath)) {
       this.updateStatusBar();

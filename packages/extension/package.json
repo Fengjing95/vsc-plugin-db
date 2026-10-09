@@ -173,6 +173,18 @@
         "icon": "$(trash)"
       },
       {
+        "command": "dbExplorer.queries.rename",
+        "title": "重命名查询",
+        "category": "数据库",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "dbExplorer.queries.open",
+        "title": "打开查询",
+        "category": "数据库",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "dbExplorer.executeQuery",
         "title": "执行 SQL",
         "category": "数据库"
@@ -275,6 +287,11 @@
           "command": "dbExplorer.queries.openDir",
           "when": "viewItem =~ /^queries$/",
           "group": "inline@1"
+        },
+        {
+          "command": "dbExplorer.queries.rename",
+          "when": "viewItem =~ /^query$/",
+          "group": "2_object@0"
         },
         {
           "command": "dbExplorer.queries.delete",

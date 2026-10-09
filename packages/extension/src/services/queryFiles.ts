@@ -100,6 +100,15 @@ export class QueryFilesService {
     return vscode.workspace.fs.delete(uri, { useTrash: true });
   }
 
+  /** 同目录内重命名查询文件（自动补 .sql 后缀；目标重名由调用方预检，overwrite=false 双保险） */
+  rename(dir: vscode.Uri, fileName: string, newBaseName: string): Thenable<void> {
+    return vscode.workspace.fs.rename(
+      vscode.Uri.joinPath(dir, fileName),
+      vscode.Uri.joinPath(dir, `${newBaseName}.sql`),
+      { overwrite: false },
+    );
+  }
+
   /** 单目录 .sql 列表（过滤 + 显示名排序，list/listAll 共用） */
   private async listIn(dir: vscode.Uri): Promise<QueryFileEntry[]> {
     let entries: Array<[string, vscode.FileType]>;

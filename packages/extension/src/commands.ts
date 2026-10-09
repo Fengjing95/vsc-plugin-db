@@ -251,6 +251,82 @@ export function registerCommands(
       tree.refresh();
     }),
 
+    // 单击查询节点 = 打开 .sql 文件并自动绑定其所属连接/库（交互稿 §8.2 v0.1.14）：
+    // ensureBinding 已绑定即返回（不覆盖手动改绑），未绑定则按节点携带的 connId/db 静默建立——
+    // 免手动绑定，元数据补全与 Ctrl+Enter 执行直接可用（走既有 Console 链路）
+    vscode.commands.registerCommand('dbExplorer.queries.open', async (node?: DbTreeNode) => {
+      if (node?.type !== 'query' || !node.payload.file || !node.payload.connId || !node.payload.db) {
+        return;
+      }
+      const uri = vscode.Uri.joinPath(
+        services.queries.dirUri(node.payload.connId, node.payload.db),
+        node.payload.file,
+      );
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preview: true });
+      await services.console.ensureBinding(editor.document, {
+        connId: node.payload.connId,
+        db: node.payload.db,
+      });
+    }),
+
+    // 重命名查询：输入框预填当前名并全选（直接输入即替换），重名/非法字符即时校验；
+    // 文件经 WorkspaceEdit.renameFile 迁移（打开中的编辑器标签自动跟随，对齐资源管理器语义；
+    // applyEdit 失败回落 fs.rename），绑定随 fsPath 迁移——新路径补全/执行立即可用
+    vscode.commands.registerCommand('dbExplorer.queries.rename', async (node?: DbTreeNode) => {
+      if (node?.type !== 'query' || !node.payload.file || !node.payload.connId || !node.payload.db) {
+        return;
+      }
+      const { connId, db, file } = node.payload;
+      const dir = services.queries.dirUri(connId, db);
+      const oldUri = vscode.Uri.joinPath(dir, file);
+      const current = file.replace(/\.sql$/i, '');
+      const name = await vscode.window.showInputBox({
+        title: '重命名查询',
+        prompt: '新的查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）',
+        value: current,
+        valueSelection: [0, current.length],
+        validateInput: async (v) => {
+          const safe = sanitizeQueryFileName(v.replace(/\.sql$/i, ''));
+          if (!safe) {
+            return '名称无效';
+          }
+          if (safe === current) {
+            return undefined;
+          }
+          try {
+            await vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, `${safe}.sql`));
+            return '同名查询已存在';
+          } catch {
+            return undefined;
+          }
+        },
+      });
+      if (name === undefined) {
+        return; // 用户取消
+      }
+      const safe = sanitizeQueryFileName(name.replace(/\.sql$/i, ''));
+      if (!safe || safe === current) {
+        return;
+      }
+      const newUri = vscode.Uri.joinPath(dir, `${safe}.sql`);
+      const edit = new vscode.WorkspaceEdit();
+      edit.renameFile(oldUri, newUri, { overwrite: false });
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        try {
+          await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
+        } catch (err) {
+          void vscode.window.showErrorMessage(
+            `重命名失败：${err instanceof Error ? err.message : String(err)}（同名查询已存在？）`,
+          );
+          return;
+        }
+      }
+      await services.console.renameFileBinding(oldUri.fsPath, newUri.fsPath);
+      tree.refresh();
+    }),
+
     // SQL 格式化（概要 §5.5.2 P1）：按绑定连接的方言格式化整个文档/选区（sql-formatter，T-10）
     vscode.commands.registerCommand('dbExplorer.formatSql', async () => {
       const editor = vscode.window.activeTextEditor;
