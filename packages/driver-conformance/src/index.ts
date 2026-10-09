@@ -7,6 +7,7 @@ import {
   type FilterOp,
   type IConnection,
   type NormalizedType,
+  type ObjectMeta,
   type RowKey,
   type TableSpec,
 } from '@db-explorer/core';
@@ -64,24 +65,27 @@ function assert(condition: unknown, message: string): asserts condition {
 async function firstTable(conn: IConnection): Promise<{ db: string; obj: string }> {
   const dbs = await conn.listDatabases();
   assert(dbs.length > 0, 'listDatabases 返回空数组');
-  const objs = await conn.listObjects(dbs[0].name);
-  // 优先 table/view（SQL 数据源）；键值数据源退回 collection（M6）。
+  // 跨库回退（@since M8-Mongo）：MongoDB 等数据源的首个库是系统库（无用户对象）——
+  // 逐库尝试；优先 table/view（SQL 数据源），键值数据源退回 collection（M6）。
   // 跳过取列失败（E_UNSUPPORTED，如 stream 键）或空列的条目
-  const candidates = [
-    ...objs.filter((o) => o.kind === 'table' || o.kind === 'view'),
-    ...objs.filter((o) => o.kind === 'collection'),
-  ];
-  for (const obj of candidates) {
-    try {
-      const cols = await conn.listColumns(dbs[0].name, obj.name);
-      if (cols.length > 0) {
-        return { db: dbs[0].name, obj: obj.name };
+  for (const db of dbs) {
+    const objs = await conn.listObjects(db.name);
+    const candidates = [
+      ...objs.filter((o) => o.kind === 'table' || o.kind === 'view'),
+      ...objs.filter((o) => o.kind === 'collection'),
+    ];
+    for (const obj of candidates) {
+      try {
+        const cols = await conn.listColumns(db.name, obj.name);
+        if (cols.length > 0) {
+          return { db: db.name, obj: obj.name };
+        }
+      } catch {
+        continue; // 该条目不支持列展示，尝试下一个
       }
-    } catch {
-      continue; // 该条目不支持列展示，尝试下一个
     }
   }
-  assert(false, '首个库没有可取样的对象');
+  assert(false, '所有库都没有可取样的对象');
   return { db: dbs[0].name, obj: '?' };
 }
 
@@ -551,7 +555,14 @@ export async function runMetadataChecks(create: () => Promise<IConnection>): Pro
 
     await check(results, 'metadata', 'listObjects：kind 合法', async () => {
       const dbs = await conn.listDatabases();
-      const objs = await conn.listObjects(dbs[0].name);
+      // 跨库回退（@since M8-Mongo）：系统库（如 Mongo admin/config）可能无用户对象
+      let objs: ObjectMeta[] = [];
+      for (const db of dbs) {
+        objs = await conn.listObjects(db.name);
+        if (objs.length > 0) {
+          break;
+        }
+      }
       assert(objs.length > 0, '对象列表为空');
       const kinds = new Set(['table', 'view', 'materialized-view', 'collection']);
       for (const o of objs) {

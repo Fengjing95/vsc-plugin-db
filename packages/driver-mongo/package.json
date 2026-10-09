@@ -1,0 +1,18 @@
+{
+  "name": "@db-explorer/driver-mongo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MongoDB 驱动（官方 mongodb，M8-Mongo，D-17）：collection 树（动态列采样）、文档浏览（cursor 游标）、筛选下推、mongosh 命令控制台（首批只读）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "mongodb": "^6.10.0"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-conformance": "workspace:*"
+  }
+}
