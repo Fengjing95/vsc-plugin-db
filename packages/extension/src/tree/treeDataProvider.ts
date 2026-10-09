@@ -325,6 +325,25 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
         ];
       }
 
+      // M8-Mongo：supportsSQL=false 数据源的 collection 子级（字段目录 = 采样推断动态列 +
+      // 索引目录）。是否展开由 capabilities.hierarchy 含 column 声明驱动（Redis 无此层级保持叶子）
+      case 'collection': {
+        const connId = node.payload.connId!;
+        const db = node.payload.db!;
+        const obj = node.payload.obj!;
+        const conn = await this.connections.ensureConnected(connId);
+        const [cols, indexes] = await Promise.all([
+          this.cache.getColumns(connId, db, obj, () => conn.listColumns(db, obj)),
+          this.cache.getIndexes(connId, db, obj, () =>
+            conn.listIndexes ? conn.listIndexes(db, obj) : Promise.resolve([]),
+          ),
+        ]);
+        return [
+          this.folderNode(node, 'columns', '字段', 'symbol-field', countLabel(cols.length)),
+          this.folderNode(node, 'indexes', '索引', 'list-ordered', countLabel(indexes.length)),
+        ];
+      }
+
       case 'folder': {
         return this.getFolderChildren(node);
       }
@@ -361,9 +380,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
     if (kind === 'collection') {
       // M6 键值数据源：仅列出该分组（payload.group = ObjectMeta.schema）的条目；
-      // 模式分组节点（名称含 glob）与单键都打开表格视图
+      // 模式分组节点（名称含 glob）与单键都打开表格视图。
+      // M8-Mongo：hierarchy 含 column 的驱动 collection 可展开字段/索引目录（Collapsed），
+      // Redis 等无此层级保持叶子（None）
       const group = node.payload.group ?? '';
       const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
+      const expandable = this.collectionExpandable(connId);
       return objs
         .filter((o) => o.kind === 'collection' && (o.schema ?? '') === group)
         .map((o) => ({
@@ -371,7 +393,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           type: 'collection' as const,
           label: o.name,
           description: o.comment,
-          collapsibleState: None,
+          collapsibleState: expandable ? Collapsed : None,
           contextValue: 'collection',
           iconId: o.name.includes('*') || o.name.includes('?') ? 'search' : 'key',
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
@@ -464,6 +486,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   /** 驱动是否支持表结构编辑（概要 §5.9 supportsDdlEditor）；驱动未注册时保守为不支持 */
   private ddlCapable(connId: string): boolean {
     return this.connections.getDriver(connId)?.capabilities.supportsDdlEditor === true;
+  }
+
+  /** supportsSQL=false 数据源的 collection 是否可展开字段/索引目录（M8-Mongo）：
+   *  以 capabilities.hierarchy 含 column 为声明信号；未注册驱动保守为不可展开 */
+  private collectionExpandable(connId: string): boolean {
+    return this.connections.getDriver(connId)?.capabilities.hierarchy.includes('column') === true;
   }
 }
 

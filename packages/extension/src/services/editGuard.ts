@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import {
   DriverError,
+  assessMongoCommand,
   assessRedisCommand,
   assessStatementDanger,
+  isProvablyReadMongoCommand,
   isProvablyReadRedisCommand,
   isReadStatement,
   type DangerAssessment,
@@ -66,9 +68,11 @@ export class EditGuard {
     }
   }
 
-  /** M6：命令危险判定（core 命令白名单，驱动规范 §5.3；横幅/Modal 与 SQL 同构） */
-  assessCommandDanger(commandText: string): DangerAssessment {
-    const a = assessRedisCommand(commandText);
+  /** M6：命令危险判定（core 命令白名单，驱动规范 §5.3/§5.5；横幅/Modal 与 SQL 同构）。
+   *  M8-Mongo：supportsSQL=false 的命令域按驱动选择白名单（redis / mongo） */
+  assessCommandDanger(commandText: string, commandFlavor: 'redis' | 'mongo' = 'redis'): DangerAssessment {
+    const a =
+      commandFlavor === 'mongo' ? assessMongoCommand(commandText) : assessRedisCommand(commandText);
     const assessment: DangerAssessment = {
       dangerous: a.dangerous,
       reasons: a.reasons,
@@ -80,10 +84,14 @@ export class EditGuard {
     return assessment;
   }
 
-  /** M6：只读连接命令白名单 fail-closed（§5.3）：不可证明为读 → E_READONLY */
-  assertCommandsReadable(commands: string[]): void {
+  /** M6：只读连接命令白名单 fail-closed（§5.3/§5.5）：不可证明为读 → E_READONLY */
+  assertCommandsReadable(commands: string[], commandFlavor: 'redis' | 'mongo' = 'redis'): void {
     for (const command of commands) {
-      if (!isProvablyReadRedisCommand(command)) {
+      const readable =
+        commandFlavor === 'mongo'
+          ? isProvablyReadMongoCommand(command)
+          : isProvablyReadRedisCommand(command);
+      if (!readable) {
         this.logger.warn('dangerGuard', '只读连接拒绝非读命令（fail-closed）');
         throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许读命令');
       }

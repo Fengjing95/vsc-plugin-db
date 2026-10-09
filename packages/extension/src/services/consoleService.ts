@@ -2,9 +2,12 @@ import * as vscode from 'vscode';
 import {
   DriverError,
   isDdlStatement,
+  isProvablyReadMongoCommand,
   isProvablyReadRedisCommand,
   isSessionStateStatement,
+  parseMongoUse,
   splitCommandLines,
+  splitMongoCommandLines,
   splitSqlStatements,
   statementAtOffset,
   type CompletionSource,
@@ -502,10 +505,29 @@ export class ConsoleService implements vscode.Disposable {
     await this.executeDocument(editor, scope);
   }
 
-  /** 命令模式（驱动规范 §5.3）：supportsSQL=false 的驱动按行切分命令，危险/只读走 core 命令白名单 */
-  private splitRanges(connId: string, raw: string): SqlStatement[] {
+  /** 命令模式（驱动规范 §5.3/§5.5）：supportsSQL=false 的驱动按行切分命令，危险/只读走 core 命令白名单；
+   *  M8-Mongo：mongosh 域用 mongo 切分（// 注释行）与白名单（切分形状与 SqlStatement 兼容） */
+  private commandFlavor(connId: string): 'redis' | 'mongo' | undefined {
     const driver = this.connections.getDriver(connId);
-    if (driver && !driver.capabilities.supportsSQL) {
+    if (!driver || driver.capabilities.supportsSQL) {
+      return undefined;
+    }
+    return driver.id === 'mongodb' ? 'mongo' : 'redis';
+  }
+
+  /** 命令白名单判定按驱动域选择（M8-Mongo：mongo 域；其余命令模式驱动沿用 redis 白名单） */
+  private isProvablyReadCommand(flavor: 'redis' | 'mongo', text: string): boolean {
+    return flavor === 'mongo'
+      ? isProvablyReadMongoCommand(text)
+      : isProvablyReadRedisCommand(text);
+  }
+
+  private splitRanges(connId: string, raw: string): SqlStatement[] {
+    const flavor = this.commandFlavor(connId);
+    if (flavor === 'mongo') {
+      return splitMongoCommandLines(raw);
+    }
+    if (flavor === 'redis') {
       return splitCommandLines(raw); // 与 SqlStatement 形状兼容，statementAtOffset 通用
     }
     return splitSqlStatements(raw);
@@ -631,6 +653,7 @@ export class ConsoleService implements vscode.Disposable {
     // 命令模式（驱动规范 §5.3 / 评审 P1-6）：supportsSQL=false 仍提供命令控制台，
     // 危险判定/只读 fail-closed 改用 core 命令白名单，其余流程（横幅/Modal/执行/历史）复用
     const commandMode = !driver.capabilities.supportsSQL;
+    const commandFlavor = this.commandFlavor(connId) ?? 'redis';
 
     let conn;
     try {
@@ -674,7 +697,7 @@ export class ConsoleService implements vscode.Disposable {
     if (cfg.readOnly) {
       try {
         if (commandMode) {
-          this.editGuard.assertCommandsReadable(texts);
+          this.editGuard.assertCommandsReadable(texts, commandFlavor);
         } else {
           this.editGuard.assertReadable(texts, dialectId);
         }
@@ -687,7 +710,7 @@ export class ConsoleService implements vscode.Disposable {
     // 危险判定（概要 §5.8 / 交互稿 §7.4）：任一语句/命令危险 → 横幅（dev/test）或 Modal（prod）
     const assessments = texts.map((t) =>
       commandMode
-        ? this.editGuard.assessCommandDanger(t)
+        ? this.editGuard.assessCommandDanger(t, commandFlavor)
         : this.editGuard.assessDanger(t, dialectId),
     );
     const dangerReasons = [...new Set(assessments.flatMap((a) => a.reasons))];
@@ -800,13 +823,19 @@ export class ConsoleService implements vscode.Disposable {
             }
             try {
               // 交互式事务（§4.6/D-09）：事务动词由 SessionManager 接管；会话内语句走连接级事务上下文
-              // USE 语句改绑定不下发（P-36：池化连接上 USE 只改写单个物理连接，不可靠）
+              // USE/use 语句改绑定不下发（P-36：池化连接上 USE 只改写单个物理连接，不可靠；
+              // M8-Mongo：命令模式 `use <db>` 同语义拦截，只更新 Console 绑定）
               const txnVerb =
                 !commandMode && driver.capabilities.supportsInteractiveTransaction
                   ? matchTxnVerb(sqlText)
                   : undefined;
-              const useTarget =
-                !commandMode && driver.capabilities.supportsSQL ? parseUseStatement(sqlText) : undefined;
+              const useTarget = !commandMode
+                ? driver.capabilities.supportsSQL
+                  ? parseUseStatement(sqlText)
+                  : undefined
+                : commandFlavor === 'mongo'
+                  ? parseMongoUse(sqlText)
+                  : undefined;
               let resultSets: import('@db-explorer/core').ResultSet[];
               if (useTarget !== undefined) {
                 if (useTarget === null) {
@@ -840,7 +869,7 @@ export class ConsoleService implements vscode.Disposable {
                 item.seq = run.items.length + 1;
                 run.items.push(item);
               }
-              if (commandMode && db && !isProvablyReadRedisCommand(sqlText)) {
+              if (commandMode && db && !this.isProvablyReadCommand(commandFlavor, sqlText)) {
                 // 写命令失效联动（概要 §7.5 的命令版）：失效该库元数据缓存并联动树刷新
                 this.cache.invalidateDb(connId, db);
                 this.refreshTree();
