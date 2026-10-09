@@ -171,6 +171,8 @@ export function columnsFromDocs(docs: Array<Record<string, unknown>>): ColumnMet
       normalizedType: t.normalizedType,
       nullable: !isPk,
       isPrimaryKey: isPk,
+      // _id 缺省即服务器生成（ObjectId），insert 可省略（D-18 编辑回填 rowKey）
+      autoIncrement: isPk ? true : undefined,
       ordinal: i + 1,
     };
   });

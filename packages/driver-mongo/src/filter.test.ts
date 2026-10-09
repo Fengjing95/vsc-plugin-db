@@ -43,6 +43,12 @@ describe('buildFilterDoc（逐 FilterOp 形状）', () => {
     });
   });
 
+  it('like 对 objectId 列 → $toString + $regexMatch（$regex 不作用于 ObjectId hex 形态）', () => {
+    expect(buildFilterDoc([{ column: '_id', op: 'like', value: '67' }], types)).toEqual({
+      $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: '67' } },
+    });
+  });
+
   it('in / notIn（notIn 排除 NULL 与缺失）', () => {
     expect(buildFilterDoc([{ column: 'name', op: 'in', values: ['a', 'b'] }], types)).toEqual({
       name: { $in: ['a', 'b'] },
@@ -126,12 +132,21 @@ describe('buildSortDoc / buildSearchDoc / escapeRegex', () => {
     expect(buildSortDoc([{ column: '_id', dir: 'desc' }])).toEqual({ _id: -1 });
   });
 
-  it('search → 各 string 列 $or 转义子串；无 string 列 → undefined', () => {
-    expect(buildSearchDoc('a.c', ['name', 'note'])).toEqual({
-      $or: [{ name: { $regex: 'a\\.c' } }, { note: { $regex: 'a\\.c' } }],
+  it('search → 各 string 列 $or 转义子串（objectId 列走 $toString）；无 string 列 → undefined', () => {
+    const cols = [
+      { name: 'name', dataType: 'string' },
+      { name: 'note', dataType: 'string' },
+      { name: '_id', dataType: 'objectId' },
+    ];
+    expect(buildSearchDoc('a.c', cols)).toEqual({
+      $or: [
+        { name: { $regex: 'a\\.c' } },
+        { note: { $regex: 'a\\.c' } },
+        { $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: 'a\\.c' } } },
+      ],
     });
     expect(buildSearchDoc('x', [])).toBeUndefined();
-    expect(buildSearchDoc(undefined, ['name'])).toBeUndefined();
+    expect(buildSearchDoc(undefined, cols)).toBeUndefined();
   });
 
   it('escapeRegex 覆盖全部正则特殊字符', () => {

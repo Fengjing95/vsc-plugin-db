@@ -27,6 +27,7 @@ import { bsonDataTypeOf, columnsFromDocs, encodeValue, normalizedOf } from './do
 import { buildFilterDoc, buildSearchDoc, buildSortDoc, type ColumnTypes, type Filter } from './filter';
 import { decodeCursorOrThrow, encodeCursor, resumeFilter } from './cursor';
 import { parseMongoArgs } from './commands';
+import { buildChangeOps } from './changes';
 import { mongoCompletionSource } from './completion';
 import { toMongoError } from './errors';
 
@@ -43,7 +44,7 @@ export const MONGO_DRIVER_ID = 'mongodb';
 
 const capabilities: DriverCapabilities = {
   supportsSQL: false, // mongosh 命令控制台（core 命令白名单 §5.5）
-  supportsTransaction: false, // 首批只读，无编辑场景
+  supportsTransaction: false, // 多文档事务需副本集（standalone 不支持）：逐条 + 失败即停（D-18，§8-5）
   supportsInteractiveTransaction: false,
   supportsMultipleDatabases: true,
   supportsMultiStatement: false, // 命令控制台逐条执行（core 按行切分）
@@ -51,7 +52,7 @@ const capabilities: DriverCapabilities = {
   supportsDdl: false,
   // hierarchy 含 column → 树为 collection 节点展开「字段/索引」目录（treeDataProvider 数据驱动）
   hierarchy: ['connection', 'database', 'folder', 'collection', 'column'],
-  editable: false,
+  editable: true, // D-18：字段级 $set 乐观锁（表格编辑；危险/只读护栏在 Host 侧）
   pagination: 'cursor',
 };
 
@@ -91,6 +92,12 @@ const formSchema: FormSchema = {
 const SAMPLE_DOCS = 200;
 /** 系统库（listDatabases 过滤） */
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
+
+/** 命令控制台放行的文档写方法（D-18：经 Host 危险判定链后可执行；结构类恒不支持） */
+const DOC_WRITE_METHODS: ReadonlySet<string> = new Set([
+  'insertOne', 'insertMany', 'updateOne', 'updateMany', 'replaceOne',
+  'deleteOne', 'deleteMany', 'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete',
+]);
 
 type RawDoc = Record<string, unknown>;
 
@@ -133,6 +140,14 @@ function normalizeSortSpec(input: unknown): Record<string, 1 | -1> | undefined {
     return Object.keys(out).length > 0 ? out : undefined;
   }
   return undefined;
+}
+
+/** 写命令第三参 options：仅识别 upsert（其余忽略） */
+function writeOptions(input: unknown): { upsert?: boolean } {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    return (input as Record<string, unknown>).upsert === true ? { upsert: true } : {};
+  }
+  return {};
 }
 
 /** 文档数组 → 动态列表格（columns 取前 100 篇样本保证列集稳定，rows 全量编码） */
@@ -295,6 +310,7 @@ export class MongoConnection implements IConnection {
 
   async listObjects(db: string): Promise<ObjectMeta[]> {
     this.assertOpen();
+    await this.getClient(); // db() 依赖懒连接句柄（P-30 同族：入口统一 ensure）
     const infos = await this.guard(
       this.db(db)
         .listCollections({}, { nameOnly: false, authorizedCollections: true })
@@ -312,6 +328,7 @@ export class MongoConnection implements IConnection {
 
   async listColumns(db: string, obj: string): Promise<ColumnMeta[]> {
     this.assertOpen();
+    await this.getClient();
     const database = this.db(db);
     const exists = await this.guard(
       database.listCollections({ name: obj }, { nameOnly: true, authorizedCollections: true }).hasNext(),
@@ -337,6 +354,7 @@ export class MongoConnection implements IConnection {
 
   async fetchRows(req: FetchRowsRequest): Promise<ResultSet> {
     this.assertOpen();
+    await this.getClient(); // 懒连接（db() 句柄依赖）
     if (req.whereSql?.trim()) {
       throw new DriverError('E_VALIDATION', 'MongoDB 取数不支持 WHERE 片段（可用筛选条件与全局搜索）');
     }
@@ -365,7 +383,7 @@ export class MongoConnection implements IConnection {
     if (req.search) {
       const stringCols = [...(types?.entries() ?? [])]
         .filter(([, t]) => t.normalizedType === 'string')
-        .map(([n]) => n);
+        .map(([name, t]) => ({ name, dataType: t.dataType }));
       const searchDoc = buildSearchDoc(req.search, stringCols);
       if (searchDoc) {
         clauses.push(searchDoc);
@@ -389,6 +407,11 @@ export class MongoConnection implements IConnection {
     const page = docs.slice(0, req.limit) as RawDoc[];
 
     let cols = columnsFromDocs(page);
+    if (page.length === 0) {
+      // 空页（如筛选无命中 / 尽头页）：回退采样列集，保证列骨架（含 _id 首列）可用
+      const sample = await this.guard(coll.find({}).limit(SAMPLE_DOCS).toArray(), req.timeoutMs, req.signal);
+      cols = columnsFromDocs(sample as RawDoc[]);
+    }
     if (req.columns?.length) {
       const set = new Set(req.columns);
       cols = cols.filter((c) => set.has(c.name));
@@ -433,10 +456,8 @@ export class MongoConnection implements IConnection {
     }
     const text = lines[0].text;
     const started = Date.now();
-    // 只读闸门（D-17 首批）：白名单在 core（横幅/只读判定同源），驱动兜底双保险
-    if (!isProvablyReadMongoCommand(text)) {
-      throw new DriverError('E_UNSUPPORTED', `MongoDB 首批仅支持只读命令："${text.slice(0, 80)}"`);
-    }
+    // D-18 放行面：读命令（provablyRead）+ 文档写五类；其余（aggregate $out/$merge、runCommand
+    // 写命令、drop/createIndex 等结构类）恒 E_UNSUPPORTED。危险判定/只读护栏在 Host（横幅/Modal）
     const show = /^show\s+(\S+)\s*$/i.exec(text);
     if (show) {
       return [await this.execShow(show[1]!.toLowerCase(), req, started)];
@@ -448,6 +469,12 @@ export class MongoConnection implements IConnection {
     const chain = parseMongoChain(text);
     if (!chain) {
       throw new DriverError('E_SYNTAX', `无法解析 mongosh 命令："${text.slice(0, 80)}"`);
+    }
+    if (!isProvablyReadMongoCommand(text) && !DOC_WRITE_METHODS.has(chain.method)) {
+      throw new DriverError(
+        'E_UNSUPPORTED',
+        `命令 "${chain.method}" 不在命令控制台放行范围（读命令 + 文档写，D-18）`,
+      );
     }
     const args = parseMongoArgs(chain.argsSrc);
     return [await this.execChain(chain, args, req, started)];
@@ -652,19 +679,169 @@ export class MongoConnection implements IConnection {
         const reply = await this.guard(database.command(doc as never), req.timeoutMs, req.signal);
         return objectToRows(reply, Date.now() - started);
       }
+      // ── 文档写命令（D-18 放开；危险判定/只读护栏在 Host，write 命令后由 consoleService 失效缓存）──
+      case 'insertOne': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', 'insertOne 需要 collection');
+        }
+        const doc = args[0];
+        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+          throw new DriverError('E_SYNTAX', 'insertOne 需要文档对象参数');
+        }
+        const r = await this.guard(coll.insertOne(doc as never), req.timeoutMs, req.signal);
+        return objectToRows({ insertedId: encodeValue(r.insertedId), acknowledged: r.acknowledged }, Date.now() - started);
+      }
+      case 'insertMany': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', 'insertMany 需要 collection');
+        }
+        const docs = args[0];
+        if (!Array.isArray(docs)) {
+          throw new DriverError('E_SYNTAX', 'insertMany 需要文档数组参数');
+        }
+        const r = await this.guard(coll.insertMany(docs as never), req.timeoutMs, req.signal);
+        return objectToRows({ insertedCount: r.insertedCount, acknowledged: r.acknowledged }, Date.now() - started);
+      }
+      case 'updateOne':
+      case 'updateMany': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 collection`);
+        }
+        const filter = args[0];
+        const update = args[1];
+        if (!filter || typeof filter !== 'object' || !update || typeof update !== 'object') {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 (filter, update) 两个对象参数`);
+        }
+        const r =
+          chain.method === 'updateOne'
+            ? await this.guard(coll.updateOne(filter as never, update as never, writeOptions(args[2])), req.timeoutMs, req.signal)
+            : await this.guard(coll.updateMany(filter as never, update as never, writeOptions(args[2])), req.timeoutMs, req.signal);
+        return objectToRows(
+          { matchedCount: r.matchedCount, modifiedCount: r.modifiedCount, upsertedId: r.upsertedId ? encodeValue(r.upsertedId) : null },
+          Date.now() - started,
+        );
+      }
+      case 'replaceOne': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', 'replaceOne 需要 collection');
+        }
+        const [filter, doc] = args;
+        if (!filter || typeof filter !== 'object' || !doc || typeof doc !== 'object' || Array.isArray(doc)) {
+          throw new DriverError('E_SYNTAX', 'replaceOne 需要 (filter, document) 参数');
+        }
+        const r = await this.guard(coll.replaceOne(filter as never, doc as never, writeOptions(args[2])), req.timeoutMs, req.signal);
+        return objectToRows({ matchedCount: r.matchedCount, modifiedCount: r.modifiedCount }, Date.now() - started);
+      }
+      case 'deleteOne':
+      case 'deleteMany': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 collection`);
+        }
+        const filter = args[0];
+        if (!filter || typeof filter !== 'object') {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 filter 对象参数`);
+        }
+        const r =
+          chain.method === 'deleteOne'
+            ? await this.guard(coll.deleteOne(filter as never), req.timeoutMs, req.signal)
+            : await this.guard(coll.deleteMany(filter as never), req.timeoutMs, req.signal);
+        return objectToRows({ deletedCount: r.deletedCount }, Date.now() - started);
+      }
+      case 'findOneAndUpdate':
+      case 'findOneAndReplace':
+      case 'findOneAndDelete': {
+        if (!coll) {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 collection`);
+        }
+        const filter = args[0];
+        if (!filter || typeof filter !== 'object') {
+          throw new DriverError('E_SYNTAX', `${chain.method} 需要 filter 对象参数`);
+        }
+        const opts = (args[2] ?? {}) as { sort?: unknown; projection?: unknown };
+        const findOpts = {
+          sort: normalizeSortSpec(opts.sort),
+          projection: (opts.projection ?? undefined) as never,
+        };
+        const doc =
+          chain.method === 'findOneAndUpdate'
+            ? await this.guard(coll.findOneAndUpdate(filter as never, args[1] as never, findOpts), req.timeoutMs, req.signal)
+            : chain.method === 'findOneAndReplace'
+              ? await this.guard(coll.findOneAndReplace(filter as never, (args[1] ?? {}) as never, findOpts), req.timeoutMs, req.signal)
+              : await this.guard(coll.findOneAndDelete(filter as never, findOpts), req.timeoutMs, req.signal);
+        if (doc === null) {
+          return scalarRs('document', 'json', null, Date.now() - started);
+        }
+        return tabularFromDocs([doc as RawDoc], Date.now() - started);
+      }
       default:
-        throw new DriverError('E_UNSUPPORTED', `命令 "${chain.method}" 未被命令控制台支持`);
+        throw new DriverError('E_UNSUPPORTED', `命令 "${chain.method}" 未被命令控制台支持（结构类命令恒不支持，D-18）`);
     }
   }
 
-  // ── 不可编辑（editable=false，D-17 首批）：P-19 契约以 E_UNSUPPORTED 跳过变更集组 ──
+  // ── 编辑（D-18）：字段级 $set 乐观锁，逐条 + 失败即停（supportsTransaction=false，§8-5）──
 
-  previewChanges(_db: string, _obj: string, _cs: ChangeSet): Promise<PreviewItem[]> {
-    return Promise.reject(new DriverError('E_UNSUPPORTED', 'MongoDB 首批不支持表格编辑（只读浏览）'));
+  /** 编辑值转换用的采样列类型（与 fetchRows 筛选转换同源） */
+  private async sampleTypes(db: string, obj: string): Promise<ColumnTypes> {
+    await this.getClient();
+    const docs = await this.guard(this.db(db).collection(obj).find({}).limit(SAMPLE_DOCS).toArray(), 15_000);
+    const types: ColumnTypes = new Map();
+    for (const c of columnsFromDocs(docs as RawDoc[])) {
+      types.set(c.name, { normalizedType: c.normalizedType, dataType: c.dataType });
+    }
+    return types;
   }
 
-  applyChanges(_db: string, _obj: string, _cs: ChangeSet): Promise<ApplyResult> {
-    return Promise.reject(new DriverError('E_UNSUPPORTED', 'MongoDB 首批不支持表格编辑（只读浏览）'));
+  async previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
+    this.assertOpen();
+    const types = await this.sampleTypes(db, obj);
+    return buildChangeOps(obj, cs, types).map((op) => ({
+      kind: op.kind,
+      tempId: op.tempId,
+      rowKey: op.rowKey,
+      sql: op.sql,
+      params: op.params,
+    }));
+  }
+
+  async applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult> {
+    this.assertOpen();
+    const types = await this.sampleTypes(db, obj);
+    const ops = buildChangeOps(obj, cs, types);
+    const coll = this.db(db).collection(obj);
+    const items: ApplyResult['items'] = [];
+    const started = Date.now();
+    for (const op of ops) {
+      let affected: number;
+      let rowKey = op.rowKey;
+      try {
+        if (op.exec.type === 'insertOne') {
+          const r = await this.guard(coll.insertOne(op.exec.doc as never), 15_000);
+          affected = 1;
+          rowKey = { _id: encodeValue(r.insertedId) }; // §8-3：回填生成主键（ObjectId hex / 字符串原文）
+        } else if (op.exec.type === 'updateOne') {
+          const r = await this.guard(
+            coll.updateOne(op.exec.filter as never, op.exec.update as never),
+            15_000,
+          );
+          affected = r.matchedCount; // 乐观锁口径：同值写回 modified=0 不是冲突
+        } else {
+          const r = await this.guard(coll.deleteOne(op.exec.filter as never), 15_000);
+          affected = r.deletedCount;
+        }
+      } catch (err) {
+        const e = DriverError.is(err) ? err : toMongoError(err);
+        throw new DriverError(e.code, `已应用 ${items.length}/${ops.length} 项后失败（无事务，已应用项保留）：${e.message}`, {
+          meta: { kind: op.kind, tempId: op.tempId, rowKey },
+        });
+      }
+      if (affected !== 1) {
+        throw new DriverError('E_CONFLICT', `乐观锁冲突：数据已被他人修改（matched ${affected}）`, {
+          meta: { kind: op.kind, tempId: op.tempId, rowKey },
+        });
+      }
+      items.push({ kind: op.kind, tempId: op.tempId, rowKey, sql: op.sql, affectedRows: affected });
+    }
+    return { items, executionMs: Date.now() - started };
   }
 
   async getCompletionSource(): Promise<CompletionSource> {

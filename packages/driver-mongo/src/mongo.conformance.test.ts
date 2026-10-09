@@ -18,7 +18,8 @@ import { createMongoDriver, MONGO_DRIVER_ID, type MongoConnection } from './inde
  * - `MONGO_URI` 环境变量门控（PG 先例）：未设 → 整套 skip；CI mongo:7 service 实跑
  *   （.github/workflows/ci.yml，驱动规范 §11「MongoDB 门控与组取舍」注记）
  * - fixture 库 cf_mongo 由测试自持（beforeAll drop 重建 + 种子、afterAll drop）；
- *   驱动首批只读（D-17），种子经官方 mongodb 客户端写入——禁止触碰其他库
+ *   种子经官方 mongodb 客户端写入（与被测驱动解耦）——禁止触碰其他库
+ * - 编辑（D-18）：变更集组以 supportsTransaction=false 实跑（混合原子性两项按能力跳过）
  * - 值编码取舍：SQL 形态往返组依赖 buildCreateTable/applyChanges → P-19 探针跳过；
  *   通用 JSON 安全组实跑；BSON→§5 精确断言见下方驱动侧 describe
  * - 取消组模板：$where 有界忙循环（自终止，abort 先行返回 E_CANCELED，不留永久服务端负载）
@@ -139,11 +140,13 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
     expect(s.results.filter((r) => !r.skipped)).toHaveLength(15);
   });
 
-  it('changeset 组按 P-19 跳过（editable=false → E_UNSUPPORTED，非假绿）', async () => {
-    const s = await runChangesetChecks(makeConn);
-    const skipped = s.results.filter((r) => r.skipped);
-    expect(s.failed).toBe(0);
-    expect(skipped.length).toBeGreaterThan(0);
+  it('changeset 组（D-18 编辑实跑；无事务 → 混合原子性两项按能力跳过）', async () => {
+    const s = await runChangesetChecks(makeConn, { supportsTransaction: false });
+    assertGroup('changeset', s.failed, s.results);
+    // 实跑 3 项：insert 回填 / preview 参数化 / NULL 原值按 null 匹配；
+    // 跳过 2 项：update 冲突无半提交 + 混合事务原子性（supportsTransaction=false）
+    expect(s.results.filter((r) => !r.skipped)).toHaveLength(3);
+    expect(s.results.filter((r) => r.skipped)).toHaveLength(2);
   });
 
   it('cursor-pagination 组（游标闭环：走完 = 全量，无重复无遗漏）', async () => {
@@ -167,8 +170,9 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
   it('cancellation 组（$where 有界忙循环；supportsCancel 以实跑为准）', async () => {
     const s = await runCancellationChecks(makeConn, {
       supportsCancel: true,
+      // db 参数缺省（suite 不传）→ 模板用 getSiblingDB 显式定位 fixture 库（chain.dbTarget）
       longQuerySql: (seconds) =>
-        `db.cf_cancel_t.find({ $where: function() { var start = Date.now(); while (Date.now() - start < ${seconds * 1000}) {} } })`,
+        `db.getSiblingDB("cf_mongo").cf_cancel_t.find({ $where: function() { var start = Date.now(); while (Date.now() - start < ${seconds * 1000}) {} } })`,
       probeSql: 'db.runCommand({ ping: 1 })',
     });
     assertGroup('cancellation', s.failed, s.results);
@@ -284,15 +288,45 @@ d('mongo 连接与错误映射（真实 MongoDB）', () => {
     await expect(conn.ping()).rejects.toMatchObject({ code: 'E_CONN' });
   }, 20_000);
 
-  it('未实现编辑：applyChanges/previewChanges 抛 E_UNSUPPORTED（P-19 探测路径）', async () => {
+  it('编辑（D-18）：陈旧原值提交 → E_CONFLICT（字段级乐观锁）', async () => {
     const conn = await makeConn();
     try {
+      const rs = await conn.fetchRows({
+        db: FIXTURE_DB,
+        obj: 'cf_main',
+        filters: [{ column: 'name', op: 'eq', value: 'item-01' }],
+        limit: 5,
+        timeoutMs: 10_000,
+      });
+      const rowKey = { _id: rs.rows[0][0] };
+      // 他人先改：note-1 → tmp
+      await conn.applyChanges(FIXTURE_DB, 'cf_main', {
+        inserts: [],
+        updates: [{ rowKey, original: {}, changes: { note: { old: 'note-1', new: 'tmp' } } }],
+        deletes: [],
+      });
+      // 陈旧 changeset（基于 old=note-1）→ matched 0 → E_CONFLICT
       await expect(
-        conn.applyChanges(FIXTURE_DB, 'cf_main', { inserts: [], updates: [], deletes: [] }),
-      ).rejects.toMatchObject({ code: 'E_UNSUPPORTED' });
-      await expect(
-        conn.previewChanges(FIXTURE_DB, 'cf_main', { inserts: [], updates: [], deletes: [] }),
-      ).rejects.toMatchObject({ code: 'E_UNSUPPORTED' });
+        conn.applyChanges(FIXTURE_DB, 'cf_main', {
+          inserts: [],
+          updates: [{ rowKey, original: {}, changes: { note: { old: 'note-1', new: 'stale' } } }],
+          deletes: [],
+        }),
+      ).rejects.toMatchObject({ code: 'E_CONFLICT' });
+      // 库中数据未变（仍是 tmp），恢复 note-1
+      await conn.applyChanges(FIXTURE_DB, 'cf_main', {
+        inserts: [],
+        updates: [{ rowKey, original: {}, changes: { note: { old: 'tmp', new: 'note-1' } } }],
+        deletes: [],
+      });
+      const after = await conn.fetchRows({
+        db: FIXTURE_DB,
+        obj: 'cf_main',
+        filters: [{ column: 'name', op: 'eq', value: 'item-01' }],
+        limit: 5,
+        timeoutMs: 10_000,
+      });
+      expect(after.rows[0][after.columns.findIndex((c) => c.name === 'note')]).toBe('note-1');
     } finally {
       await conn.dispose();
     }
@@ -350,13 +384,28 @@ d('mongo 命令控制台（mongosh 域，首批只读）', () => {
     expect(cols[0].rows.flat()).toContain('cf_main');
   });
 
-  it('写命令一律 E_UNSUPPORTED（首批只读，双保险——横幅之外驱动兜底）', async () => {
+  it('文档写命令放开（D-18）：经危险判定链后可执行，insert/update/delete 生效', async () => {
+    // 草稿 collection 上走一轮写（危险横幅/只读判定在 Host 层，此处验证驱动执行面）；
+    // 写结果为 key/value 行（objectToRows）
+    const ins = await q("db.cf_console_t.insertOne({ name: 'w1', qty: 1 })");
+    expect(ins[0].rows.map((r) => r[0])).toContain('insertedId'); // 回填 _id（hex 或字符串）
+    const upd = await q("db.cf_console_t.updateOne({ name: 'w1' }, { $set: { qty: 2 } })");
+    expect(upd[0].rowCount).toBe(3); // matchedCount / modifiedCount / upsertedId
+    const cnt = await q('db.cf_console_t.countDocuments({ qty: 2 })');
+    expect(cnt[0].rows).toEqual([[1]]);
+    const del = await q("db.cf_console_t.deleteOne({ name: 'w1' })");
+    expect(del[0].rows).toEqual([['deletedCount', 1]]); // key/value 行（objectToRows）
+    const after = await q('db.cf_console_t.countDocuments({ name: "w1" })');
+    expect(after[0].rows).toEqual([[0]]);
+  });
+
+  it('结构类命令恒 E_UNSUPPORTED（D-18 范围边界）；aggregate 带 $out 仍拒', async () => {
     for (const cmd of [
-      'db.cf_main.deleteMany({})',
-      'db.cf_main.insertOne({ a: 1 })',
-      'db.cf_main.updateMany({}, { $set: { a: 1 } })',
-      'db.dropDatabase()',
       'db.cf_main.drop()',
+      'db.dropDatabase()',
+      'db.createCollection("nope")',
+      'db.cf_main.createIndex({ a: 1 })',
+      'db.users.noSuchWrite({ a: 1 })',
       'db.cf_main.aggregate([ { $out: "copy" } ])',
       'db.runCommand({ dropDatabase: 1 })',
     ]) {

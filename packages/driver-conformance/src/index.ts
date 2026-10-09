@@ -734,13 +734,23 @@ function cellSame(a: unknown, b: unknown): boolean {
   return String(a) === String(b);
 }
 
+export interface ChangesetOptions {
+  /** supportsTransaction=false 的数据源（如 MongoDB，D-18）：逐条 + 失败即停语义——
+   *  混合批次「无半提交」断言不适用（前序 insert 先落库、后续 update 失败属预期），
+   *  「update 冲突无半提交」与「混合事务原子性」两项检查按能力跳过；缺省实跑（向后兼容） */
+  supportsTransaction?: boolean;
+}
+
 /**
  * 变更集组（M4，概要设计 §12.2-5 / 驱动规范 §8）：
  * insert 回填主键；update 冲突 → E_CONFLICT 且库中数据未变（无半提交）；
  * 混合事务原子性；NULL 原值按 IS NULL 匹配。
  * 语句形状（参数化/无值拼接）由各驱动 SQL 构建层单测覆盖（同 M3 筛选下推的处理，P-9）。
  */
-export async function runChangesetChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+export async function runChangesetChecks(
+  create: () => Promise<IConnection>,
+  opts?: ChangesetOptions,
+): Promise<ConformanceSummary> {
   const results: CheckResult[] = [];
   const conn = await create();
   try {
@@ -824,7 +834,16 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
       }
     });
 
-    await check(results, 'changeset', 'update 冲突 → E_CONFLICT 且库中数据未变（无半提交）', async () => {
+    if (opts?.supportsTransaction === false) {
+      // 无事务数据源（D-18）：混合批次（陈旧 update + 混入 insert）按逐条+失败即停执行，
+      // insert 先落库属预期，「无半提交」断言不适用 → 按能力跳过
+      await skip(
+        results,
+        'changeset',
+        'update 冲突无半提交（无事务数据源：逐条+失败即停，混合批次断言不适用，跳过）',
+        'supportsTransaction=false',
+      );
+    } else await check(results, 'changeset', 'update 冲突 → E_CONFLICT 且库中数据未变（无半提交）', async () => {
       const rs = await conn.fetchRows({
         db, obj, limit: 1,
         sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),
@@ -875,7 +894,9 @@ export async function runChangesetChecks(create: () => Promise<IConnection>): Pr
       }));
     });
 
-    await check(results, 'changeset', 'insert/update/delete 混合事务原子性', async () => {
+    if (opts?.supportsTransaction === false) {
+      await skip(results, 'changeset', '混合事务原子性（无事务数据源：逐条+失败即停，跳过）', 'supportsTransaction=false');
+    } else await check(results, 'changeset', 'insert/update/delete 混合事务原子性', async () => {
       const rs = await conn.fetchRows({
         db, obj, limit: 2,
         sorts: primaryKey.map((c) => ({ column: c, dir: 'asc' as const })),

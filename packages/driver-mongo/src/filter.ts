@@ -82,12 +82,32 @@ function columnType(types: ColumnTypes, column: string): { normalizedType: Norma
   return t;
 }
 
+/** like 条件（按列类型）：string 列 → 原生 $regex；objectId 列 → $toString + $regexMatch
+ *  （$regex 不作用于 ObjectId 的 hex 串形态；浏览路径不走索引，语义与内存基准 includes 一致） */
+function likeCondition(
+  col: string,
+  type: { dataType: string } | undefined,
+  pattern: string,
+): Filter {
+  if (type?.dataType === 'objectId') {
+    return { $expr: { $regexMatch: { input: { $toString: `$${col}` }, regex: pattern } } };
+  }
+  return { [col]: { $regex: pattern } };
+}
+
 function buildClause(f: FilterCondition, types: ColumnTypes): Filter {
   switch (f.op) {
     case 'isNull':
       return { [f.column]: null }; // 命中显式 null 与缺失字段（Mongo 原生语义即文档模型口径）
     case 'isNotNull':
       return { [f.column]: { $ne: null } };
+    case 'like':
+      // 子串语义：正则在「编码形态」（字符串）上匹配，不做列类型转换（如 objectId hex 前缀）
+      return likeCondition(f.column, types.get(f.column), escapeRegex(String(f.value ?? '')));
+    case 'notLike':
+      return {
+        $nor: [likeCondition(f.column, types.get(f.column), escapeRegex(String(f.value ?? '')))],
+      };
     default:
       break;
   }
@@ -106,10 +126,6 @@ function buildClause(f: FilterCondition, types: ColumnTypes): Filter {
       return { [f.column]: { $lt: v } };
     case 'le':
       return { [f.column]: { $lte: v } };
-    case 'like':
-      return { [f.column]: { $regex: escapeRegex(String(f.value ?? '')) } };
-    case 'notLike':
-      return { $nor: [{ [f.column]: { $regex: escapeRegex(String(f.value ?? '')) } }] };
     case 'in':
       return { [f.column]: { $in: (f.values ?? []).map((x) => toBsonValue(t, x)) } };
     case 'notIn':
@@ -145,9 +161,14 @@ export function buildSortDoc(sorts?: Array<{ column: string; dir: 'asc' | 'desc'
 }
 
 /** search 全局关键字：各 string 列转义子串 $or（与内存基准 includes 一致）；无 string 列 → undefined */
-export function buildSearchDoc(search: string | undefined, stringColumns: string[]): Filter | undefined {
+export function buildSearchDoc(
+  search: string | undefined,
+  stringColumns: Array<{ name: string; dataType: string }>,
+): Filter | undefined {
   if (!search || stringColumns.length === 0) {
     return undefined;
   }
-  return { $or: stringColumns.map((c) => ({ [c]: { $regex: escapeRegex(search) } })) };
+  return {
+    $or: stringColumns.map((c) => likeCondition(c.name, c, escapeRegex(search))),
+  };
 }
