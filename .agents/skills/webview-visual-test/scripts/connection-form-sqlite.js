@@ -1,4 +1,5 @@
-// 连接表单场景：M8-SQLite——SQLite 类型卡片（品牌图标）+ 文件路径 string 字段（hint ⓘ）+ 只读高级开关。
+// 连接表单场景：M8-SQLite——SQLite 类型卡片（品牌图标）+ 文件路径 file 控件（输入框+浏览按钮，
+// 浏览经 sys.pickFile 原生选择，stub 回放选中路径验证回填链路）+ 只读高级开关。
 // 注意（P-47）：本场景 schema 是手写镜像，须与 driver-sqlite index.ts 的 formSchema 同步维护。
 window.__DBX_STUB__ = {
   delayMs: 30,
@@ -16,6 +17,8 @@ window.__DBX_STUB__ = {
       edit: { enabled: false, reason: '连接表单视图' },
       capabilities: { supportsSQL: false, supportsDdl: false },
     }),
+    // 浏览按钮（file 控件）数据源：模拟原生对话框选中结果（取消场景 path=null 由页面吞掉）
+    'sys.pickFile': () => ({ path: '/Users/demo/data/app.db' }),
     'conn.getMeta': () => ({
       drivers: [
         { id: 'mysql', displayName: 'MySQL' },
@@ -44,7 +47,7 @@ window.__DBX_STUB__ = {
               {
                 key: 'path',
                 label: '数据库文件路径',
-                type: 'string',
+                type: 'file',
                 required: true,
                 placeholder: '~/data/app.db',
                 hint: 'SQLite 单文件数据库；支持 ~（主目录）与相对工作区路径；文件必须已存在（不会自动创建）',
