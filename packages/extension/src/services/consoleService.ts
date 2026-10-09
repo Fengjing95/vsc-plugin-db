@@ -275,10 +275,36 @@ export class ConsoleService implements vscode.Disposable {
     }
     state.connId = picked.connId;
     state.db = picked.db;
+    if (doc.uri.scheme === 'file') {
+      // 改绑持久化（§7.1）：状态栏切换对 file 文档写 fileBindings——否则重启后悄悄回退到旧绑定（串库观感）
+      await this.saveFileBinding(doc.uri.fsPath, {
+        consoleId: state.consoleId,
+        connId: state.connId,
+        db: state.db,
+      });
+    }
     this.logger.info('console', `${state.consoleId} 重新绑定 → ${picked.connId}${picked.db ? `/${picked.db}` : ''}`);
     this.preheatCompletions(state);
     this.bindingsChangedEmitter.fire();
     this.updateStatusBar();
+  }
+
+  /** 查询目录语义的强制绑定（树打开校正，交互稿 §8.2 v0.1.15）：与 ensureBinding 的「已绑定即返回」
+   *  相反——覆盖现有绑定并持久化（file 文档写 fileBindings，untitled 写内存映射）。
+   *  用于查询文件与其所在 <connId>/<db> 目录不一致时的校正（文件被移动/复制、早期绑定残留）。 */
+  async bindDocument(
+    doc: vscode.TextDocument,
+    target: { connId: string; db?: string | null },
+  ): Promise<ConsoleState> {
+    const key = doc.uri.scheme === 'untitled' ? doc.uri.toString() : doc.uri.fsPath;
+    const consoleId = `console-${++this.seq}`;
+    if (doc.uri.scheme === 'untitled') {
+      this.untitledBindings.set(key, consoleId);
+    } else {
+      await this.saveFileBinding(key, { consoleId, connId: target.connId, db: target.db ?? null });
+    }
+    this.updateStatusBar();
+    return this.createState(consoleId, target.connId, target.db ?? null);
   }
 
   /**
@@ -461,7 +487,7 @@ export class ConsoleService implements vscode.Disposable {
     const cfg = this.connections.getConfig(state.connId);
     const label = cfg?.name ?? state.connId;
     this.statusItem.text = `$(database) ${label}${state.db ? ` · ${state.db}` : ''} $(chevron-down)`;
-    this.statusItem.tooltip = `${label}${state.db ? ` / ${state.db}` : ''}（点击切换连接/库）`;
+    this.statusItem.tooltip = `${label}${state.db ? ` / ${state.db}` : ''} · ${doc.fileName}（点击切换连接/库）`;
   }
 
   // ── 执行（§7.2）──────────────────────────────────────────
@@ -629,6 +655,15 @@ export class ConsoleService implements vscode.Disposable {
       if (picked !== null) {
         state.db = picked;
         db = picked;
+        // 执行时选库同样持久化（§7.1）：file 文档写 fileBindings——重启不回退到旧库
+        const boundUri = origin?.uri ?? vscode.window.activeTextEditor?.document.uri;
+        if (boundUri?.scheme === 'file') {
+          await this.saveFileBinding(boundUri.fsPath, {
+            consoleId: state.consoleId,
+            connId: state.connId,
+            db: picked,
+          });
+        }
         this.bindingsChangedEmitter.fire();
         this.updateStatusBar();
         this.logger.info('console', `${state.consoleId} 绑定库 → ${picked}（执行时选择）`);

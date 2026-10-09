@@ -251,9 +251,9 @@ export function registerCommands(
       tree.refresh();
     }),
 
-    // 单击查询节点 = 打开 .sql 文件并自动绑定其所属连接/库（交互稿 §8.2 v0.1.14）：
-    // ensureBinding 已绑定即返回（不覆盖手动改绑），未绑定则按节点携带的 connId/db 静默建立——
-    // 免手动绑定，元数据补全与 Ctrl+Enter 执行直接可用（走既有 Console 链路）
+    // 单击查询节点 = 打开 .sql 文件并绑定其所属连接/库（交互稿 §8.2 v0.1.15：目录即事实源）：
+    // 查询文件位于 <connId>/<db> 目录，绑定以目录为准校正——文件被移动/复制或早期绑定残留时
+    // 不再串到旧库执行；一致或未绑定时零交互静默建绑。元数据补全与 Ctrl+Enter 直接可用
     vscode.commands.registerCommand('dbExplorer.queries.open', async (node?: DbTreeNode) => {
       if (node?.type !== 'query' || !node.payload.file || !node.payload.connId || !node.payload.db) {
         return;
@@ -264,10 +264,17 @@ export function registerCommands(
       );
       const doc = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(doc, { preview: true });
-      await services.console.ensureBinding(editor.document, {
-        connId: node.payload.connId,
-        db: node.payload.db,
-      });
+      const existing = services.console.bindingForDocument(editor.document);
+      if (
+        !existing ||
+        existing.connId !== node.payload.connId ||
+        (existing.db ?? null) !== (node.payload.db ?? null)
+      ) {
+        await services.console.bindDocument(editor.document, {
+          connId: node.payload.connId,
+          db: node.payload.db,
+        });
+      }
     }),
 
     // 重命名查询：输入框预填当前名并全选（直接输入即替换），重名/非法字符即时校验；
