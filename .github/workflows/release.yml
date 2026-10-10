@@ -191,5 +191,7 @@ jobs:
             echo "::notice::未配置 Secret VSCE_PAT，跳过 Marketplace 自动发布（可从 GitHub Release 手动上传 VSIX）"
             exit 0
           fi
+          # 注意：pnpm --filter exec 的 cwd 是包目录（packages/extension）——产物路径必须用
+          # 仓库级绝对路径，包内相对路径会变成双重前缀 ENOENT（CI 实测）
           pnpm --filter db-kit exec vsce publish -p "$VSCE_PAT" \
-            --packagePath packages/extension/db-kit-*.vsix
+            --packagePath "$GITHUB_WORKSPACE"/packages/extension/db-kit-*.vsix
