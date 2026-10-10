@@ -28,6 +28,25 @@ describe('buildChangeStatements · INSERT', () => {
       }),
     ).toThrow(/E_VALIDATION|没有任何列值/);
   });
+
+  it('JSON 列的对象/数组值参数化为 JSON 文本（对象原样绑定会被 mysql2 转成 [object Object] → ER_INVALID_JSON_TEXT）', () => {
+    const cs: ChangeSet = {
+      inserts: [
+        {
+          tempId: 't1',
+          values: { name: '张三', data: { k: 1, arr: [1, 2, null], s: '汉' }, tags: ['a', 'b'] },
+        },
+      ],
+      updates: [],
+      deletes: [],
+    };
+    const [item] = buildChangeStatements(DB, 'users', cs);
+    expect(item.params).toEqual([
+      '张三',
+      JSON.stringify({ k: 1, arr: [1, 2, null], s: '汉' }),
+      JSON.stringify(['a', 'b']),
+    ]);
+  });
 });
 
 describe('buildChangeStatements · UPDATE（WHERE = 主键 + 变更列原值，规范 §8-2）', () => {

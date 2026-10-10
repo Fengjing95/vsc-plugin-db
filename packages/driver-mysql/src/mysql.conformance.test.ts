@@ -220,8 +220,19 @@ const MYSQL_VE_CASES: SqlValueEncodingCase[] = [
   { column: 'c_json', dataType: 'json', write: { k: 1, arr: [1, 2, null], s: '汉' } },
 ];
 
-function logFailures(summary: { failed: number; results: Array<{ ok: boolean; name: string; error?: string }> }): void {
-  if (summary.failed > 0) {
-    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+function logFailures(summary: {
+  failed: number;
+  results: Array<{ ok: boolean; group: string; name: string; error?: string }>;
+}): void {
+  const failed = summary.results.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    console.error(JSON.stringify(failed, null, 2));
+    // CI 注记只显示断言/抛错 message（完整日志需登录才可见）——把 check 级失败详情塞进抛错文本，
+    // 首轮推送即可在 annotations 里拿到每项失败的具体错误
+    throw new Error(
+      `契约组失败 ${failed.length} 项：\n${failed
+        .map((f) => `- [${f.group}] ${f.name}: ${f.error ?? '（无错误文本）'}`)
+        .join('\n')}`,
+    );
   }
 }

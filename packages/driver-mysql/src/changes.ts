@@ -27,7 +27,7 @@ export function buildChangeStatements(db: string, obj: string, cs: ChangeSet): P
       sql: `INSERT INTO ${table} (${cols.map(quoteMysqlIdentifier).join(', ')}) VALUES (${cols
         .map(() => '?')
         .join(', ')})`,
-      params: cols.map((c) => ins.values[c]),
+      params: cols.map((c) => toMysqlParam(ins.values[c])),
     });
   }
 
@@ -56,7 +56,7 @@ export function buildChangeStatements(db: string, obj: string, cs: ChangeSet): P
       sql: `UPDATE ${table} SET ${setCols
         .map((c) => `${quoteMysqlIdentifier(c)} = ?`)
         .join(', ')} WHERE ${where.join(' AND ')}`,
-      params: [...setCols.map((c) => upd.changes[c].new), ...whereParams],
+      params: [...setCols.map((c) => toMysqlParam(upd.changes[c].new)), ...whereParams],
     });
   }
 
@@ -85,8 +85,21 @@ function appendWhereValue(where: string[], params: unknown[], col: string, value
     where.push(`${quoteMysqlIdentifier(col)} IS NULL`);
   } else {
     where.push(`${quoteMysqlIdentifier(col)} = ?`);
-    params.push(value);
+    params.push(toMysqlParam(value));
   }
+}
+
+/**
+ * JS 对象/数组 → JSON 文本（C-7 的 JSON=已解析对象在 mysql 绑定边界收口）：
+ * 对象参数原样交给 mysql2 会被 sqlstring `.toString()` 成 '[object Object]'，
+ * JSON 列服务端报 ER_INVALID_JSON_TEXT（契约 sql-value-encoding/changeset 组 CI 实跑暴露）。
+ * Buffer 透传（JSON 化会破坏二进制语义；二进制列本就不走编辑，D-03 口径）。
+ */
+function toMysqlParam(value: unknown): unknown {
+  if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value)) {
+    return JSON.stringify(value);
+  }
+  return value;
 }
 
 function appendWhereParts(where: string[], params: unknown[], rowKey: Record<string, unknown>): void {

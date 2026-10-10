@@ -672,7 +672,7 @@ function toNativeParam(column: string, value: unknown, typeByName: Map<string, N
 }
 
 /** @types/pg 未声明运行时存在的 Client.cancel（pg ≥ 8.5 经独立连接下发取消请求） */
-type CancelableClient = PoolClient & { cancel?: () => Promise<void> };
+type CancelableClient = PoolClient & { cancel?: (client: unknown, query: unknown) => void };
 
 /**
  * 取消/超时语义（驱动规范 §7）：
@@ -688,19 +688,26 @@ async function runCancelableOn(
   opts: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<QueryResult | QueryResult[]> {
   const cancelable = client as CancelableClient;
-  const cancelServerSide = (): void => {
-    cancelable.cancel?.().catch(() => undefined);
-  };
-
-  if (opts.signal?.aborted) {
-    throw new DriverError('E_CANCELED', '查询已取消');
-  }
-
+  // pg ≥8.19 起 Client.cancel 签名为 (client, query)（8.23 实测）：须传入发起查询的 client 与
+  // 在途 Query 实例（client.query() 的返回值即被 _activeQuery/_sentQueryQueue 跟踪的对象）。
+  // 无参调用会在 pg 内部读 undefined.activeQuery 抛 TypeError（契约 cancellation 组 CI 首跑暴露，
+  // P-46 同族——签名变化 typings 不拦）。
   const pending =
     params && params.length > 0
       ? client.query({ text: sql, values: params })
       : // 无参数走简单协议：多语句返回结果数组（supportsMultiStatement=false 下 core 不下发，防御性兼容）
         client.query(sql);
+  const cancelServerSide = (): void => {
+    try {
+      cancelable.cancel?.(cancelable, pending);
+    } catch {
+      // 尽力而为：服务端取消失败不影响本地 E_CANCELED/E_TIMEOUT 语义（查询完成后再取消为 no-op）
+    }
+  };
+
+  if (opts.signal?.aborted) {
+    throw new DriverError('E_CANCELED', '查询已取消');
+  }
 
   return new Promise<QueryResult | QueryResult[]>((resolve, reject) => {
     let settled = false;
