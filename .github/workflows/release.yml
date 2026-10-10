@@ -1,0 +1,138 @@
+# 发布流水线（D-20）：tag `vX.Y.Z` 触发 → 版本/CHANGELOG 守卫 → 四道门禁（含全部契约 service 实跑）
+# → minify 构建 → vsce 打包（--no-dependencies，external 闭包随包见 esbuild.mjs）→ GitHub Release 附 VSIX。
+# 发布三处同步纪律：package.json version ↔ tag ↔ CHANGELOG 条目，守卫步骤强制检查。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # gh release create
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    services:
+      # 与 ci.yml 同矩阵：契约测试必须真实实例（Mysql 为发布 Must 口径，D-20/§12.5）
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis-auth:
+        image: redis:7
+        ports:
+          - 6390:6390
+        options: >-
+          --requirepass m6cipass
+          --health-cmd "redis-cli -a m6cipass ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
+      mysql:
+        image: mysql:8
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 发布守卫（tag = package.json version，且 CHANGELOG 有对应条目）
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./packages/extension/package.json').version")"
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 packages/extension/package.json version ($PKG_VERSION) 不一致"
+            exit 1
+          fi
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md 缺少 [${VERSION}] 条目——发布三处同步（tag/version/CHANGELOG）"
+            exit 1
+          fi
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: 构建（webview + extension）
+        run: pnpm build
+
+      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
+        run: pnpm test
+        env:
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          REDIS_AUTH_PORT: 6390
+          PG_HOST: 127.0.0.1
+          PG_PORT: 5432
+          PG_USER: postgres
+          PG_PASSWORD: postgres
+          PG_DATABASE: postgres
+          MONGO_URI: mongodb://127.0.0.1:27017
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root
+
+      - name: 发布构建（minify）
+        run: |
+          pnpm --filter @db-explorer/webview-ui build
+          pnpm --filter db-explorer build -- --minify
+
+      - name: 打包 VSIX
+        run: pnpm --filter db-explorer exec vsce package --no-dependencies
+
+      - name: 创建 GitHub Release 并附产物
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            packages/extension/db-explorer-*.vsix

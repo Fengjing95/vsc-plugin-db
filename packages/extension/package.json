@@ -475,6 +475,11 @@
           "default": 15000,
           "description": "驱动调用默认超时（毫秒）"
         },
+        "dbExplorer.connection.connectTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "description": "建连超时（毫秒，含 SSH 隧道建立）"
+        },
         "dbExplorer.export.chunkRows": {
           "type": "number",
           "default": 1000,
