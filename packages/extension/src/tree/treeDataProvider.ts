@@ -191,7 +191,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           collapsibleState: Collapsed,
           // 已连接节点附加 connected 令牌：package.json when 据此隐藏未连接时的
           // 新建 Console/刷新/断开按钮（M7 评审：未连接时这三个操作要么强制建连要么无意义）
-          contextValue: this.connections.isConnected(c.id) ? 'connection connected' : 'connection',
+          // M8-DBDDL：连接节点追加 dbddl 令牌（驱动实现 buildCreateDatabase 且已连接 →「新建库」菜单）
+          contextValue: this.connections.isConnected(c.id)
+            ? this.dbCreateCapable(c.id)
+              ? 'connection connected dbddl'
+              : 'connection connected'
+            : 'connection',
           iconId: 'database',
           payload: { connId: c.id, driverId: c.driverId },
         };
@@ -225,7 +230,15 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           description: db.comment,
           collapsibleState: Collapsed,
           // M8-B2：支持表结构编辑的驱动追加 ddl 令牌（package.json when 控制新建表入口显隐）
-          contextValue: this.ddlCapable(connId) ? 'database ddl' : 'database',
+          // M8-DBDDL：dbddl=实现 buildDropDatabase（删除库菜单）；dbddl-alter=另实现 buildAlterDatabase（编辑库）
+          contextValue: [
+            'database',
+            this.ddlCapable(connId) ? 'ddl' : null,
+            this.dbDropCapable(connId) ? 'dbddl' : null,
+            this.dbAlterCapable(connId) ? 'dbddl-alter' : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
           iconId: 'server',
           payload: { connId, db: db.name },
         }));
@@ -492,6 +505,19 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
    *  以 capabilities.hierarchy 含 column 为声明信号；未注册驱动保守为不可展开 */
   private collectionExpandable(connId: string): boolean {
     return this.connections.getDriver(connId)?.capabilities.hierarchy.includes('column') === true;
+  }
+
+  /** 库级 DDL 能力（M8-DBDDL / D-19）：方法存在性裁剪（P-19 同族），未注册驱动保守为不支持 */
+  private dbCreateCapable(connId: string): boolean {
+    return typeof this.connections.getDriver(connId)?.buildCreateDatabase === 'function';
+  }
+
+  private dbDropCapable(connId: string): boolean {
+    return typeof this.connections.getDriver(connId)?.buildDropDatabase === 'function';
+  }
+
+  private dbAlterCapable(connId: string): boolean {
+    return typeof this.connections.getDriver(connId)?.buildAlterDatabase === 'function';
   }
 }
 

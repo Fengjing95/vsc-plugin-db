@@ -13,6 +13,7 @@ import { ConnectionStore } from './services/connectionStore';
 import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
+import { DbDdlService } from './services/dbDdlService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { createExecutionAnnotations } from './services/sqlExecutionDecorations';
@@ -113,6 +114,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshTree: () => tree.refresh(),
     timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
   });
+  // M8-DBDDL 库级 DDL（概要 D-19 / 交互稿 §8.3）：新建/编辑库面板 RPC + 删库树操作；
+  // 成功后 invalidateConnection（库列表变更）+ 树刷新
+  const dbDdlService = new DbDdlService({
+    connections,
+    cache,
+    logger,
+    host: queryHost,
+    refreshTree: () => tree.refresh(),
+    timeoutMs: vscode.workspace.getConfiguration('dbExplorer').get('query.timeoutMs', 15_000),
+  });
 
   context.subscriptions.push(
     registry,
@@ -147,6 +158,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         queries: queryFiles,
         sshFingerprints,
         ddl: ddlService,
+        dbddl: dbDdlService,
       },
       tree,
     ),

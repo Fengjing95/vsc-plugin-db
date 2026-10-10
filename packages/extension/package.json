@@ -95,6 +95,23 @@
         "category": "数据库"
       },
       {
+        "command": "dbExplorer.createDatabase",
+        "title": "新建库",
+        "icon": "$(add)",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.alterDatabase",
+        "title": "编辑库",
+        "icon": "$(edit)",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.dropDatabase",
+        "title": "删除库",
+        "category": "数据库"
+      },
+      {
         "command": "dbExplorer.createTable",
         "title": "新建表",
         "category": "数据库",
@@ -325,7 +342,7 @@
         },
         {
           "command": "dbExplorer.refreshNode",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?$/",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl(-alter)?)?$/",
           "group": "navigation@1"
         },
         {
@@ -344,8 +361,23 @@
           "group": "7_danger@0"
         },
         {
+          "command": "dbExplorer.createDatabase",
+          "when": "viewItem =~ /^connection connected dbddl$/",
+          "group": "2_object@4"
+        },
+        {
+          "command": "dbExplorer.alterDatabase",
+          "when": "viewItem =~ /^database( ddl)? dbddl-alter$/",
+          "group": "2_object@4"
+        },
+        {
+          "command": "dbExplorer.dropDatabase",
+          "when": "viewItem =~ /^database( ddl)? dbddl/",
+          "group": "7_danger@0"
+        },
+        {
           "command": "dbExplorer.createTable",
-          "when": "viewItem =~ /^database ddl$/ || viewItem =~ /^folder-table ddl$/",
+          "when": "viewItem =~ /^database ddl( dbddl(-alter)?)?$/ || viewItem =~ /^folder-table ddl$/",
           "group": "2_object@5"
         },
         {

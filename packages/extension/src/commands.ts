@@ -15,6 +15,7 @@ import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvide
 import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
+import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
@@ -40,6 +41,8 @@ export interface AppServices {
   sshFingerprints: import('./services/sshTunnel').FingerprintStore;
   /** M8-B2 表结构编辑（DDL）：编辑器 RPC + 删表/清空表树操作 */
   ddl: DdlService;
+  /** M8-DBDDL 库级 DDL（D-19）：新建/编辑库面板 RPC + 删库树操作 */
+  dbddl: import('./services/dbDdlService').DbDdlService;
 }
 
 function copy(text: string, hint: string): void {
@@ -490,6 +493,48 @@ export function registerCommands(
         return;
       }
       openTableDesignPanel(context, services, { connId, db, obj });
+    }),
+
+    // ── M8-DBDDL 库级 DDL（概要 D-19 / 交互稿 §8.3；入口仅右键菜单，按驱动方法存在性裁剪）──
+
+    vscode.commands.registerCommand('dbExplorer.createDatabase', (node?: DbTreeNode) => {
+      const { connId } = node?.payload ?? {};
+      if (!connId) {
+        return;
+      }
+      const driver = connections.getDriver(connId);
+      if (!driver || typeof driver.buildCreateDatabase !== 'function') {
+        void vscode.window.showInformationMessage('当前驱动不支持新建库。');
+        return;
+      }
+      openDatabaseDesignPanel(context, services, { connId, kind: 'create' });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.alterDatabase', (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        return;
+      }
+      const driver = connections.getDriver(connId);
+      if (!driver || typeof driver.buildAlterDatabase !== 'function') {
+        void vscode.window.showInformationMessage('当前驱动不支持编辑库。');
+        return;
+      }
+      openDatabaseDesignPanel(context, services, { connId, db, kind: 'alter' });
+    }),
+
+    vscode.commands.registerCommand('dbExplorer.dropDatabase', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        return;
+      }
+      try {
+        await services.dbddl.dropDatabase(connId, db);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `删除库失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }),
 
     vscode.commands.registerCommand('dbExplorer.dropTable', async (node?: DbTreeNode) => {
