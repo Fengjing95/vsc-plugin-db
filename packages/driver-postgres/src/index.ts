@@ -170,7 +170,7 @@ export class PostgresConnection implements IConnection {
     return { id: 'postgresql', quote: ['"', '"'], formatter: 'postgresql', keywords: KEYWORDS };
   }
 
-  constructor(private readonly cfg: ConnectionConfig, secret: string) {
+  constructor(private readonly cfg: ConnectionConfig, private readonly secret: string) {
     this.connectionId = cfg.id;
     this.defaultDatabase = cfg.options.database ? String(cfg.options.database) : undefined;
     this.pool = new pg.Pool(buildClientConfig(cfg, secret));
@@ -188,6 +188,19 @@ export class PostgresConnection implements IConnection {
     const res = await this.pool.query(sql, params);
     return res.rows;
   }
+
+  /** SQL 级服务端取消（契约 cancellation 组 CI 超时暴露）：pg 的 Client.cancel 会重置在途连接
+   *  本身——池化/会话下毒化该连接（后续查询挂死）。改走 pg_cancel_backend(pid)：专用临时连接
+   *  随用随建随关（取消为低频路径）。C-10：连接参数含密钥，仅闭包内使用、永不入日志 */
+  private readonly cancelBackend = (pid: number): void => {
+    const c = new pg.Client(buildClientConfig(this.cfg, this.secret));
+    c.connect()
+      .then(() => c.query('SELECT pg_cancel_backend($1)', [pid]))
+      .catch(() => undefined)
+      .finally(() => {
+        c.end().catch(() => undefined);
+      });
+  };
 
   async ping(): Promise<void> {
     this.assertLive();
@@ -245,7 +258,7 @@ export class PostgresConnection implements IConnection {
         normalizedType: normalizePgType(String(r.dtype)),
         nullable: !r.notnull,
         isPrimaryKey: r.ispk === true,
-        autoIncrement: r.identity === 'a' || r.identity === 'b',
+        autoIncrement: r.identity === 'a' || r.identity === 'd',
         defaultValue: r.defaultexpr !== undefined && r.defaultexpr !== null ? String(r.defaultexpr) : undefined,
         comment: r.comment ? String(r.comment) : undefined,
         ordinal: Number(r.ord),
@@ -354,6 +367,7 @@ export class PostgresConnection implements IConnection {
         runCancelableOn(client, built.sql, built.params, {
           timeoutMs: req.timeoutMs,
           signal: req.signal,
+          cancelBackend: this.cancelBackend,
         }),
       );
       const single = Array.isArray(result) ? result[0] : result;
@@ -386,12 +400,20 @@ export class PostgresConnection implements IConnection {
         if (req.db && req.db !== DEFAULT_SCHEMA && req.db !== this.defaultDatabase) {
           await client.query(`SET search_path TO ${quotePgIdentifier(req.db)}`);
           try {
-            return await runCancelableOn(client, req.sql, req.params, req);
+            return await runCancelableOn(client, req.sql, req.params, {
+              timeoutMs: req.timeoutMs,
+              signal: req.signal,
+              cancelBackend: this.cancelBackend,
+            });
           } finally {
             await client.query('RESET search_path').catch(() => undefined);
           }
         }
-        return await runCancelableOn(client, req.sql, req.params, req);
+        return await runCancelableOn(client, req.sql, req.params, {
+          timeoutMs: req.timeoutMs,
+          signal: req.signal,
+          cancelBackend: this.cancelBackend,
+        });
       });
       const executionMs = Date.now() - started;
       return mapQueryResults(results, req.maxRows, executionMs);
@@ -425,28 +447,35 @@ export class PostgresConnection implements IConnection {
       }
       return await this.withClient(async (client) => {
         await client.query('BEGIN');
-        const items: ApplyResult['items'] = [];
-        for (const stmt of statements) {
-          const res = await client.query(stmt.sql, stmt.params);
-          const affectedRows = res.rowCount ?? 0;
-          if (affectedRows !== 1) {
-            throw new DriverError('E_CONFLICT', '数据已被他人修改，本次提交已回滚', {
-              meta: { kind: stmt.kind, tempId: stmt.tempId, rowKey: stmt.rowKey },
+        try {
+          const items: ApplyResult['items'] = [];
+          for (const stmt of statements) {
+            const res = await client.query(stmt.sql, stmt.params);
+            const affectedRows = res.rowCount ?? 0;
+            if (affectedRows !== 1) {
+              throw new DriverError('E_CONFLICT', '数据已被他人修改，本次提交已回滚', {
+                meta: { kind: stmt.kind, tempId: stmt.tempId, rowKey: stmt.rowKey },
+              });
+            }
+            items.push({
+              kind: stmt.kind,
+              tempId: stmt.tempId,
+              rowKey:
+                stmt.kind === 'insert'
+                  ? this.backfillInsertKey(pkCols, res, typeByName, cs, stmt.tempId)
+                  : stmt.rowKey,
+              sql: stmt.sql,
+              affectedRows,
             });
           }
-          items.push({
-            kind: stmt.kind,
-            tempId: stmt.tempId,
-            rowKey:
-              stmt.kind === 'insert'
-                ? this.backfillInsertKey(pkCols, res, typeByName, cs, stmt.tempId)
-                : stmt.rowKey,
-            sql: stmt.sql,
-            affectedRows,
-          });
+          await client.query('COMMIT');
+          return { items, executionMs: Date.now() - started };
+        } catch (err) {
+          // 失败必须回滚后归还：PG 连接带 aborted 事务回池会毒化后续查询
+          // （25P02 current transaction is aborted 连坐，契约 changeset 组 CI 首跑暴露）
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw err;
         }
-        await client.query('COMMIT');
-        return { items, executionMs: Date.now() - started };
       });
     } catch (err) {
       throw DriverError.is(err) ? err : toDriverError(err);
@@ -632,7 +661,11 @@ export class PostgresConnection implements IConnection {
             appliedDb = req.db;
           }
           const started = Date.now();
-          const results = await runCancelableOn(client, req.sql, req.params, req);
+          const results = await runCancelableOn(client, req.sql, req.params, {
+            timeoutMs: req.timeoutMs,
+            signal: req.signal,
+            cancelBackend: this.cancelBackend,
+          });
           return mapQueryResults(results, req.maxRows, Date.now() - started);
         },
         commit: () => end('COMMIT'),
@@ -672,36 +705,31 @@ function toNativeParam(column: string, value: unknown, typeByName: Map<string, N
 }
 
 /** @types/pg 未声明运行时存在的 Client.cancel（pg ≥ 8.5 经独立连接下发取消请求） */
-type CancelableClient = PoolClient & { cancel?: (client: unknown, query: unknown) => void };
-
 /**
  * 取消/超时语义（驱动规范 §7）：
  * - signal 已中止 → SQL 下发前立即 E_CANCELED（预中止检查点）
- * - 在途：abort → client.cancel() 尽力取消服务端执行，同时 E_CANCELED 拒绝
- * - deadline（timeoutMs）→ client.cancel() + E_TIMEOUT
+ * - 在途：abort → pg_cancel_backend(pid) 尽力取消服务端执行，同时 E_CANCELED 拒绝
+ * - deadline（timeoutMs）→ 同上 + E_TIMEOUT
  * settle 后底层查询的后续回包/错误被吞（避免未处理 rejection 毒化进程，P-30 同族）
  */
 async function runCancelableOn(
   client: PoolClient,
   sql: string,
   params: unknown[] | undefined,
-  opts: { timeoutMs?: number; signal?: AbortSignal },
+  opts: { timeoutMs?: number; signal?: AbortSignal; cancelBackend?: (pid: number) => void },
 ): Promise<QueryResult | QueryResult[]> {
-  const cancelable = client as CancelableClient;
-  // pg ≥8.19 起 Client.cancel 签名为 (client, query)（8.23 实测）：须传入发起查询的 client 与
-  // 在途 Query 实例（client.query() 的返回值即被 _activeQuery/_sentQueryQueue 跟踪的对象）。
-  // 无参调用会在 pg 内部读 undefined.activeQuery 抛 TypeError（契约 cancellation 组 CI 首跑暴露，
-  // P-46 同族——签名变化 typings 不拦）。
   const pending =
     params && params.length > 0
       ? client.query({ text: sql, values: params })
       : // 无参数走简单协议：多语句返回结果数组（supportsMultiStatement=false 下 core 不下发，防御性兼容）
         client.query(sql);
   const cancelServerSide = (): void => {
-    try {
-      cancelable.cancel?.(cancelable, pending);
-    } catch {
-      // 尽力而为：服务端取消失败不影响本地 E_CANCELED/E_TIMEOUT 语义（查询完成后再取消为 no-op）
+    // pg 的 Client.cancel 会重置在途连接本身（池化/会话下毒化该连接，后续查询挂死——契约
+    // cancellation 组 CI 超时暴露）→ 改走 SQL 级取消：pg_cancel_backend(pid) 经专用连接，
+    // 在途连接保持完好；57014 → E_CANCELED 由错误映射表承载
+    const pid = (client as { processID?: number }).processID;
+    if (pid) {
+      opts.cancelBackend?.(pid);
     }
   };
 

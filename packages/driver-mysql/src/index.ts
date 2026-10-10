@@ -36,7 +36,7 @@ import {
   buildCreateTableStatements,
   buildDropDatabaseStatements,
 } from './ddl';
-import { buildSelect, encodeValue, filterMysqlDatabases, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
+import { buildSelect, encodeValue, filterMysqlDatabases, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, stripMysqlColumnDefault, toDriverError } from './sql';
 
 /**
  * MySQL 驱动（mysql2/promise）。
@@ -95,6 +95,7 @@ interface RawColumnRow {
   ckey: string;
   extra: string;
   comment: string;
+  dflt: string | null;
   ord: number;
 }
 
@@ -184,7 +185,7 @@ export class MysqlConnection implements IConnection {
   async listColumns(db: string, obj: string): Promise<ColumnMeta[]> {
     try {
       const rows = await this.queryRows(
-        'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, DATA_TYPE AS dtype, IS_NULLABLE AS nullable, COLUMN_KEY AS ckey, EXTRA AS extra, COLUMN_COMMENT AS comment, ORDINAL_POSITION AS ord FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
+        'SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, DATA_TYPE AS dtype, IS_NULLABLE AS nullable, COLUMN_KEY AS ckey, EXTRA AS extra, COLUMN_COMMENT AS comment, COLUMN_DEFAULT AS dflt, ORDINAL_POSITION AS ord FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
         [db, obj],
       );
       return (rows as unknown as RawColumnRow[]).map((r) => ({
@@ -195,6 +196,7 @@ export class MysqlConnection implements IConnection {
         isPrimaryKey: r.ckey === 'PRI',
         autoIncrement: r.extra.includes('auto_increment'),
         comment: r.comment || undefined,
+        defaultValue: stripMysqlColumnDefault(r.dflt),
         ordinal: Number(r.ord),
       }));
     } catch (err) {

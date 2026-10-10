@@ -208,6 +208,21 @@ export function encodeValue(v: unknown): unknown {
 /** MySQL 系统库（SHOW DATABASES 结果过滤；连接表单列库建议，驱动规范 §3 @since v0.1.4） */
 const MYSQL_SYSTEM_DATABASES = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
+/**
+ * information_schema.COLUMNS.COLUMN_DEFAULT 去引号 roundtrip（契约 ddl 组默认值检查；
+ * P-49 SQLite 同款口径）：字符串字面量默认值存储为 `'anon'`（含引号）→ 还原 `anon`，
+ * `''` 翻倍还原原值；数值与 CURRENT_* 原样；NULL 列无默认 → undefined
+ */
+export function stripMysqlColumnDefault(raw: string | null | undefined): string | undefined {
+  if (raw === null || raw === undefined) {
+    return undefined;
+  }
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1).replace(/''/g, "'");
+  }
+  return raw;
+}
+
 export function filterMysqlDatabases(names: string[]): string[] {
   return names.filter((n) => !MYSQL_SYSTEM_DATABASES.has(n.toLowerCase()));
 }

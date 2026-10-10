@@ -115,14 +115,26 @@ export function buildAlterTableStatements(
   const curPk = current.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
   const tgtPk = spec.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
   const pkChanged = curPk.join(',') !== tgtPk.join(',');
-  // 主键变化需先 DROP PRIMARY KEY（MySQL 语义：一个表只有一个主键索引；删主键列时必须先删键）
+  // 主键变更：DROP PRIMARY KEY 必须与 ADD PRIMARY KEY / 自增列的 DROP COLUMN 合并**单句**——
+  // 表含 AUTO_INCREMENT 列时，单独 DROP PRIMARY KEY（瞬时自增列无键）被 MySQL 拒绝
+  // （there can be only one auto column...，契约主键变更 check CI 实跑暴露）；合并句按语句
+  // 末状态校验，合法
   if (pkChanged && curPk.length > 0) {
-    statements.push({ sql: `ALTER TABLE ${alterPrefix} DROP PRIMARY KEY`, destructive: true });
+    const clauses = ['DROP PRIMARY KEY'];
+    if (tgtPk.length > 0) {
+      clauses.push(`ADD PRIMARY KEY (${tgtPk.map((n) => `\`${n}\``).join(', ')})`);
+    }
+    for (const c of current.columns) {
+      if (c.autoIncrement && !tgtByName.has(c.name)) {
+        clauses.push(`DROP COLUMN \`${c.name}\``);
+      }
+    }
+    statements.push({ sql: `ALTER TABLE ${alterPrefix} ${clauses.join(', ')}`, destructive: true });
   }
 
-  // 删列（可能丢数据 → destructive）
+  // 删列（可能丢数据 → destructive；自增列若已并入上方主键变更单句则跳过）
   for (const cur of current.columns) {
-    if (!tgtByName.has(cur.name)) {
+    if (!tgtByName.has(cur.name) && !(pkChanged && curPk.length > 0 && cur.autoIncrement)) {
       statements.push({
         sql: `ALTER TABLE ${alterPrefix} DROP COLUMN \`${cur.name}\``,
         destructive: true,
@@ -152,12 +164,7 @@ export function buildAlterTableStatements(
     }
   }
 
-  // 主键重建（DROP 已在上文）
-  if (pkChanged && tgtPk.length > 0) {
-    statements.push({
-      sql: `ALTER TABLE ${alterPrefix} ADD PRIMARY KEY (${tgtPk.map((n) => `\`${n}\``).join(', ')})`,
-    });
-  }
+  // 主键重建：已并入上方主键变更单句（此处不再重复生成）
 
   // 表注释
   if ((spec.comment ?? '') !== (current.comment ?? '') && spec.comment) {

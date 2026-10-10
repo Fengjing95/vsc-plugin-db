@@ -100,7 +100,7 @@ describe('buildAlterTableStatements（M8-B2）', () => {
     ]);
   });
 
-  it('主键变更：先 DROP PRIMARY KEY（destructive）后 ADD PRIMARY KEY', () => {
+  it('主键变更：DROP PRIMARY KEY 与 ADD PRIMARY KEY 合并单句（表含自增列时单句 DROP 会被 MySQL 拒）', () => {
     const current = baseSpec();
     const target: TableSpec = {
       ...current,
@@ -108,11 +108,9 @@ describe('buildAlterTableStatements（M8-B2）', () => {
     };
     const stmts = buildAlterTableStatements('myapp', 'users', target, current);
     expect(stmts.map((s) => s.sql)).toEqual([
-      'ALTER TABLE `myapp`.`users` DROP PRIMARY KEY',
-      'ALTER TABLE `myapp`.`users` ADD PRIMARY KEY (`id`, `uname`)',
+      'ALTER TABLE `myapp`.`users` DROP PRIMARY KEY, ADD PRIMARY KEY (`id`, `uname`)',
     ]);
     expect(stmts[0].destructive).toBe(true);
-    expect(stmts[1].destructive).toBeUndefined();
   });
 
   it('表重命名：RENAME TO 首条语句，后续变更用新名', () => {
@@ -128,13 +126,12 @@ describe('buildAlterTableStatements（M8-B2）', () => {
     expect(buildAlterTableStatements('myapp', 'users', current, current)).toEqual([]);
   });
 
-  it('删主键列：先 DROP PRIMARY KEY 再 DROP COLUMN（MySQL 顺序约束）', () => {
+  it('删自增主键列：DROP PRIMARY KEY 与 DROP COLUMN 合并单句（自增列瞬时无键会被 MySQL 拒）', () => {
     const current = baseSpec();
     const target: TableSpec = { ...current, columns: current.columns.slice(1) };
     const stmts = buildAlterTableStatements('myapp', 'users', target, current);
     expect(stmts.map((s) => s.sql)).toEqual([
-      'ALTER TABLE `myapp`.`users` DROP PRIMARY KEY',
-      'ALTER TABLE `myapp`.`users` DROP COLUMN `id`',
+      'ALTER TABLE `myapp`.`users` DROP PRIMARY KEY, DROP COLUMN `id`',
     ]);
     expect(stmts.every((s) => s.destructive === true)).toBe(true);
   });

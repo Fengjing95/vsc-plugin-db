@@ -650,9 +650,11 @@ const CT: Record<string, unknown> = {
 /** 按列类型构造契约测试值（值编码契约 §5） */
 function sampleValueFor(c: ColumnMeta, salt: string): unknown {
   const base = CT[c.normalizedType] ?? CT.unknown;
-  const isTimestampLike = c.normalizedType === 'date' || c.normalizedType === 'time' || c.normalizedType === 'datetime' || c.normalizedType === 'uuid';
-  if (typeof base === 'string' && !isTimestampLike) {
-    return salt ? `${base}-${salt}` : base;
+  // 仅字符串型列可加盐（搜索探针按字符串特征值匹配）。decimal/binary 等以字符串形态承载的
+  // 数值/二进制编码加盐即非法——真实实例校验值（'42.42-ins' → ER_INVALID_DECIMAL /
+  // invalid input syntax for type numeric；mock 不校验值故此前未暴露，CI 首跑踩）
+  if (c.normalizedType === 'string' && salt) {
+    return `${base}-${salt}`;
   }
   return base;
 }

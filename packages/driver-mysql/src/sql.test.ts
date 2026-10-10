@@ -9,6 +9,7 @@ import {
   quoteMysqlIdentifier,
   toDriverError,
   filterMysqlDatabases,
+  stripMysqlColumnDefault,
 } from './sql';
 
 describe('quoteMysqlIdentifier', () => {
@@ -284,5 +285,19 @@ describe('filterMysqlDatabases（表单列库建议，§3 @since v0.1.4）', () 
     expect(
       filterMysqlDatabases(['information_schema', 'mysql', 'performance_schema', 'sys', 'myapp', 'MyApp_Prod']),
     ).toEqual(['myapp', 'MyApp_Prod']);
+  });
+});
+
+describe('stripMysqlColumnDefault（COLUMN_DEFAULT 去引号 roundtrip，P-49 同 SQLite 口径）', () => {
+  it('字符串字面量含引号存储 → 还原原文；翻倍单引号还原', () => {
+    expect(stripMysqlColumnDefault("'anon'")).toBe('anon');
+    expect(stripMysqlColumnDefault("'it''s'")).toBe("it's");
+  });
+
+  it('数值/CURRENT_* 原样；NULL 无默认 → undefined', () => {
+    expect(stripMysqlColumnDefault('0')).toBe('0');
+    expect(stripMysqlColumnDefault('CURRENT_TIMESTAMP')).toBe('CURRENT_TIMESTAMP');
+    expect(stripMysqlColumnDefault(null)).toBeUndefined();
+    expect(stripMysqlColumnDefault(undefined)).toBeUndefined();
   });
 });
