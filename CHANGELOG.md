@@ -2,6 +2,18 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.1.1] - 2026-10-10
+
+展示与文档优化（无功能变更）。
+
+### 变更
+
+- **Marketplace 详情页全面改版**：价值主张 hero + 界面截图（总览 / Console / 表结构 / 库级操作 / 后台导出）+ 按用户价值组织的亮点说明 + 紧凑支持矩阵；实现细节与已知限制长文移至仓库文档
+- 详情页横幅配色（galleryBanner）与图标渐变对齐
+- 扩展图标更换为矢量渲染版（0.1.0 上架素材的形变修正）
+
+[0.1.1]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.1.1
+
 ## [0.1.0] - 2026-10-10
 
 首次发布（GitHub Release + VSIX 分发）。
