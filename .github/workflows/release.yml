@@ -128,8 +128,8 @@ jobs:
           MYSQL_USER: root
           MYSQL_PASSWORD: root
 
-      # 同 ci.yml：失败输出转运行摘要（Summary 页匿名可读，远程诊断用）
-      - name: 失败输出转运行摘要
+      # 同 ci.yml：失败输出转运行摘要 + ::error:: 注记分块（匿名可读，远程诊断用）+ artifact
+      - name: 失败输出转运行摘要与注记
         if: failure()
         run: |
           {
@@ -141,6 +141,24 @@ jobs:
             echo '```'
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/vitest-output.txt ]; then
+            tail -n 150 /tmp/vitest-output.txt > /tmp/tail.txt
+            echo "::error::vitest 输出尾部共 $(wc -l < /tmp/tail.txt | tr -d ' ') 行，分块见后续注记（另有 artifact vitest-output）"
+            split -l 25 /tmp/tail.txt /tmp/chunk_
+            for f in /tmp/chunk_*; do
+              echo "::error::$(sed 's/%/%25/g; s/\r/%0D/g; :a;N;$!ba;s/\n/%0A/g' "$f")"
+            done
+            rm -f /tmp/chunk_*
+          fi
+
+      - name: 上传测试输出（诊断 artifact）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-output
+          path: /tmp/vitest-output.txt
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: 发布构建（minify）
         run: |
