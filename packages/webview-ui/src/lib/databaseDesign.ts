@@ -49,7 +49,7 @@ export function validateFieldValues(
   return errors;
 }
 
-/** values → DatabaseSpec（name/charset/collation 之外的字段为驱动私有展示项，不进 spec） */
+/** values → DatabaseSpec（name/charset/collation/collection 之外的字段为驱动私有展示项，不进 spec） */
 export function specOf(values: Record<string, unknown>): DatabaseSpecPayload {
   const pick = (key: string): string | undefined => {
     const v = values[key];
@@ -60,5 +60,6 @@ export function specOf(values: Record<string, unknown>): DatabaseSpecPayload {
     name: pick('name') ?? '',
     charset: pick('charset'),
     collation: pick('collation'),
+    collection: pick('collection'),
   };
 }

@@ -697,6 +697,8 @@ export const DatabaseSpecSchema = z.object({
   name: z.string().min(1).max(128),
   charset: z.string().max(128).optional(),
   collation: z.string().max(256).optional(),
+  /** @since D-19 修订：MongoDB 建库所需的首个 collection 名 */
+  collection: z.string().min(1).max(120).optional(),
 });
 export type DatabaseSpecPayload = z.infer<typeof DatabaseSpecSchema>;
 

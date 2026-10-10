@@ -1606,7 +1606,8 @@ export async function runDatabaseDdlChecks(
       await check(results, 'database-ddl', 'create → listDatabases 命中 → drop → 消失（周期闭环）', async () => {
         const before = (await conn.listDatabases()).map((d) => d.name);
         assert(!before.includes(unique), `fixture 库 ${unique} 已存在（前次残留）`);
-        const stmts = await driver.buildCreateDatabase!({ name: unique });
+        // collection 字段仅 MongoDB 消费（首个 collection 隐式建库，D-19 修订）；SQL 驱动忽略
+        const stmts = await driver.buildCreateDatabase!({ name: unique, collection: 'cf_init' });
         assert(stmts.length > 0, 'buildCreateDatabase 返回空语句集');
         for (const s of stmts) {
           await conn.query({ sql: s.sql, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });

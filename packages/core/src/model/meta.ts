@@ -27,11 +27,14 @@ export interface DatabaseMeta {
 }
 
 /** 库级 DDL 目标模型（@since v0.1.11，M8-DBDDL / D-19）：buildCreateDatabase/buildAlterDatabase 输入。
- *  charset/collation 仅 MySQL 消费（PG schema / Mongo 不参与建库） */
+ *  charset/collation 仅 MySQL 消费（PG schema / Mongo 不参与建库）；
+ *  collection 仅 MongoDB 建库消费（D-19 修订：建库 = 创建首个 collection 隐式建库，SQL 驱动忽略） */
 export interface DatabaseSpec {
   name: string;
   charset?: string;
   collation?: string;
+  /** @since v0.1.11 修订（D-19）：MongoDB 建库所需的首个 collection 名 */
+  collection?: string;
 }
 
 export interface ObjectMeta {

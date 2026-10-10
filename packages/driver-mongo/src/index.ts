@@ -7,6 +7,7 @@ import {
   splitMongoCommandLines,
   type ApplyResult,
   type ChangeSet,
+  type DatabaseSpec,
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
@@ -53,7 +54,7 @@ const capabilities: DriverCapabilities = {
   // hierarchy 含 column → 树为 collection 节点展开「字段/索引」目录（treeDataProvider 数据驱动）
   hierarchy: ['connection', 'database', 'folder', 'collection', 'column'],
   editable: true, // D-18：字段级 $set 乐观锁（表格编辑；危险/只读护栏在 Host 侧）
-  supportsDatabaseDdl: true, // M8-DBDDL / D-19：仅 dropDatabase（建库=写数据隐式创建，无表单无编辑）
+  supportsDatabaseDdl: true, // M8-DBDDL / D-19 及修订：建库（首个 collection 隐式创建）+ dropDatabase；无编辑
   pagination: 'cursor',
 };
 
@@ -95,19 +96,28 @@ const SAMPLE_DOCS = 200;
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
 /** 命令控制台放行的文档写方法（D-18：经 Host 危险判定链后可执行；结构类恒不支持。
- *  D-19 修订：dropDatabase 放行——树删库与命令行同一护栏（危险横幅/prod Modal/只读拒） */
+ *  D-19 修订：dropDatabase 放行——树删库与命令行同一护栏（危险横幅/prod Modal/只读拒）；
+ *  D-19 修订 2：createCollection 放行——树建库（首个 collection 隐式建库）与命令行同一护栏 */
 const DOC_WRITE_METHODS: ReadonlySet<string> = new Set([
   'insertOne', 'insertMany', 'updateOne', 'updateMany', 'replaceOne',
   'deleteOne', 'deleteMany', 'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete',
-  'dropDatabase',
+  'dropDatabase', 'createCollection',
 ]);
 
-/** Mongo 库名校验（D-19 删库）：禁 / \ " $ 与空字符，≤63 字节（Mongo 命名约束） */
+/** Mongo 库名校验（D-19 删库/建库）：禁 / \ " $ 与空字符，≤63 字节（Mongo 命名约束） */
 function assertMongoDbName(db: string): string {
   if (!db || /[/$"\\\0]/.test(db) || db.includes('/') || db.length > 63) {
     throw new DriverError('E_VALIDATION', `非法库名："${db.slice(0, 32)}"（禁 / \\ " $ 与空字符，≤63 字符）`);
   }
   return db;
+}
+
+/** Mongo collection 名校验（D-19 建库）：禁 $ 与空字符，≤120 字符 */
+function assertMongoCollectionName(name: string): string {
+  if (!name || /[$\0]/.test(name) || name.length > 120) {
+    throw new DriverError('E_VALIDATION', `非法 collection 名："${name.slice(0, 32)}"（禁 $ 与空字符，≤120 字符）`);
+  }
+  return name;
 }
 
 type RawDoc = Record<string, unknown>;
@@ -791,8 +801,22 @@ export class MongoConnection implements IConnection {
         await this.guard(this.client!.db(target).dropDatabase(), req.timeoutMs, req.signal);
         return objectToRows({ dropped: true, database: target }, Date.now() - started);
       }
+      case 'createCollection': {
+        // M8-DBDDL / D-19 修订：树建库（首个 collection 隐式创建）与命令行同一护栏
+        const target = assertMongoDbName(chain.dbTarget ?? req.db ?? '');
+        const coll = args[0];
+        if (!coll || typeof coll !== 'string') {
+          throw new DriverError('E_SYNTAX', 'createCollection 需要集合名参数（db.createCollection("name")）');
+        }
+        await this.getClient();
+        await this.guard(this.client!.db(target).createCollection(coll), req.timeoutMs, req.signal);
+        return objectToRows({ created: `${target}.${coll}` }, Date.now() - started);
+      }
       default:
-        throw new DriverError('E_UNSUPPORTED', `命令 "${chain.method}" 未被命令控制台支持（结构类命令恒不支持，D-18）`);
+        throw new DriverError(
+          'E_UNSUPPORTED',
+          `命令 "${chain.method}" 未被命令控制台支持（放行面 = 读命令 + 文档写 + 建删库，D-18/D-19）`,
+        );
     }
   }
 
@@ -893,8 +917,27 @@ export function createMongoDriver(): IDatabaseDriver {
     apiVersion: 1,
     capabilities,
     getConnectionFormSchema: () => formSchema,
-    // ── 库级 DDL（M8-DBDDL / D-19）：仅 dropDatabase——建库 = 写数据隐式创建，无表单无编辑；
-    //    语句为命令控制台命令文本（getSiblingDB 显式定位，quoteKey 同源 JSON 引号化防注入）──
+    // ── 库级 DDL（M8-DBDDL / D-19 及修订）：建库 = 首个 collection 隐式创建（DatabaseSpec.collection，
+    //    Compass 同款语义——空库不真正存在）；删库 = dropDatabase。语句为命令控制台命令文本
+    //    （getSiblingDB 显式定位，JSON 引号化防注入）；树建/删库与命令行同一护栏 ──
+    getDatabaseFormSchema: () => ({
+      fields: [
+        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'mydb' },
+        {
+          key: 'collection',
+          label: '首个集合名',
+          type: 'string',
+          required: true,
+          placeholder: 'init',
+          hint: 'MongoDB 库在拥有首个集合后才会真正创建（空库不显示）',
+        },
+      ],
+    }),
+    buildCreateDatabase: async (spec: DatabaseSpec) => {
+      assertMongoDbName(spec.name);
+      const coll = assertMongoCollectionName(spec.collection ?? '');
+      return [{ sql: `db.getSiblingDB(${JSON.stringify(spec.name)}).createCollection(${JSON.stringify(coll)})` }];
+    },
     buildDropDatabase: async (db: string) => {
       assertMongoDbName(db);
       return [{ sql: `db.getSiblingDB(${JSON.stringify(db)}).dropDatabase()`, destructive: true }];

@@ -367,7 +367,7 @@
         },
         {
           "command": "dbExplorer.alterDatabase",
-          "when": "viewItem =~ /^database( ddl)? dbddl-alter$/",
+          "when": "viewItem =~ /^database( ddl)?( dbddl)? dbddl-alter$/",
           "group": "2_object@4"
         },
         {

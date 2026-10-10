@@ -179,11 +179,12 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
     assertGroup('cancellation', s.failed, s.results);
   }, 30_000);
 
-  it('database-ddl 组（M8-DBDDL / D-19：仅 dropDatabase——组内三项全跳过，删库闭环见下方驱动侧直测）', async () => {
+  it('database-ddl 组（M8-DBDDL / D-19 修订：建库+删库实跑；alter 未实现跳过、标识符 fail-closed 命令域跳过）', async () => {
     const s = await runDatabaseDdlChecks(createMongoDriver(), makeConn);
     assertGroup('database-ddl', s.failed, s.results);
-    expect(s.results.filter((r) => !r.skipped)).toHaveLength(0);
-    expect(s.results.filter((r) => r.skipped)).toHaveLength(3);
+    // 实跑 1 项：create（首个 collection 隐式建库）→ drop 周期；跳过 2 项：fail-closed（supportsSQL=false）/ alter
+    expect(s.results.filter((r) => !r.skipped)).toHaveLength(1);
+    expect(s.results.filter((r) => r.skipped)).toHaveLength(2);
   });
 });
 
@@ -407,10 +408,9 @@ d('mongo 命令控制台（mongosh 域，首批只读）', () => {
     expect(after[0].rows).toEqual([[0]]);
   });
 
-  it('结构类命令恒 E_UNSUPPORTED（D-18/D-19 边界：dropDatabase 已放行见删库闭环；aggregate 带 $out 仍拒）', async () => {
+  it('结构类命令恒 E_UNSUPPORTED（D-18/D-19 边界：dropDatabase/createCollection 已放行见建删库闭环；aggregate 带 $out 仍拒）', async () => {
     for (const cmd of [
       'db.cf_main.drop()',
-      'db.createCollection("nope")',
       'db.cf_main.createIndex({ a: 1 })',
       'db.users.noSuchWrite({ a: 1 })',
       'db.cf_main.aggregate([ { $out: "copy" } ])',
@@ -463,10 +463,13 @@ d('mongo 库级 DDL（D-19：删库闭环）', () => {
     }
   }, 20_000);
 
-  it('非法库名 fail-closed（E_VALIDATION）', async () => {
+  it('非法库名/集合名 fail-closed（E_VALIDATION）', async () => {
     const driver = createMongoDriver();
     await expect(driver.buildDropDatabase!('a/b')).rejects.toMatchObject({ code: 'E_VALIDATION' });
     await expect(driver.buildDropDatabase!('a$b')).rejects.toMatchObject({ code: 'E_VALIDATION' });
+    await expect(driver.buildCreateDatabase!({ name: 'a/b', collection: 't' })).rejects.toMatchObject({ code: 'E_VALIDATION' });
+    await expect(driver.buildCreateDatabase!({ name: 'gooddb' })).rejects.toMatchObject({ code: 'E_VALIDATION' }); // 缺 collection
+    await expect(driver.buildCreateDatabase!({ name: 'gooddb', collection: 'a$b' })).rejects.toMatchObject({ code: 'E_VALIDATION' });
   });
 });
 
