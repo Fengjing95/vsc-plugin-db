@@ -1,0 +1,16 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- 扩展市场图标矢量源：圆角渐变底 + 白色数据库圆柱（与活动栏 database.svg 同构字形）
+       PNG 由 packages/extension/media/ 同名 .png 承载（vsce icon 字段要求 PNG） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b7fff"/>
+      <stop offset="1" stop-color="#1554c0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="14">
+    <ellipse cx="128" cy="80" rx="60" ry="23"/>
+    <path d="M68 80v96c0 12.7 26.86 23 60 23s60-10.3 60-23V80"/>
+    <path d="M68 127c0 12.7 26.86 23 60 23s60-10.3 60-23"/>
+  </g>
+</svg>

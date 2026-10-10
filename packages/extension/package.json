@@ -1,11 +1,24 @@
 {
   "name": "db-explorer",
   "displayName": "数据库浏览器 DB Explorer",
-  "description": "在 VSCode 内浏览、查询、编辑数据库。M0：资源树 + 表格视图 RPC 演示。",
+  "description": "在 VSCode 内浏览、查询、编辑 MySQL / PostgreSQL / Redis / SQLite / MongoDB：资源树、表格视图、SQL Console、结构管理与流式导出。",
   "version": "0.1.0",
-  "private": true,
   "publisher": "db-explorer-dev",
   "license": "Apache-2.0",
+  "icon": "media/extension-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fengjing95/vsc-plugin-db.git"
+  },
+  "keywords": [
+    "database",
+    "mysql",
+    "postgresql",
+    "redis",
+    "sqlite",
+    "mongodb",
+    "sql"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
