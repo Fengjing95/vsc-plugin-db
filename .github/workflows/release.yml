@@ -26,11 +26,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       redis-auth:
-        image: redis:7
+        # 同 ci.yml（P-52）：--requirepass 非 docker 旗标，bitnami 经 REDIS_PASSWORD env 设密
+        image: bitnami/redis:7.2
         ports:
-          - 6390:6390
+          - 6390:6379
+        env:
+          REDIS_PASSWORD: m6cipass
         options: >-
-          --requirepass m6cipass
           --health-cmd "redis-cli -a m6cipass ping"
           --health-interval 10s
           --health-timeout 5s
@@ -67,7 +69,7 @@ jobs:
           --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 15
+          --health-retries 30
     steps:
       - uses: actions/checkout@v4
 

@@ -21,12 +21,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # 错误密码用例（E_AUTH）：bitnami 镜像经 REDIS_PASSWORD 环境变量设密——GH Actions service
+      # 的 options 会原样传给 docker create，官方 redis:7 的 --requirepass 不是 docker 旗标
+      # （unknown flag → exit 125，容器创建即失败，P-52）；bitnami 监听 6379，映射到宿主 6390
       redis-auth:
-        image: redis:7
+        image: bitnami/redis:7.2
         ports:
-          - 6390:6390
+          - 6390:6379
+        env:
+          REDIS_PASSWORD: m6cipass
         options: >-
-          --requirepass m6cipass
           --health-cmd "redis-cli -a m6cipass ping"
           --health-interval 10s
           --health-timeout 5s
@@ -64,7 +68,7 @@ jobs:
           --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 15
+          --health-retries 30
     steps:
       - uses: actions/checkout@v4
 
