@@ -73,7 +73,7 @@ pnpm typecheck      # TS 全仓类型检查
 # （启动 Extension Development Host，活动栏出现数据库图标）
 
 # 打包 VSIX（发布口径：--no-dependencies + external 闭包随包，见 esbuild.mjs）
-pnpm --filter db-explorer exec vsce package --no-dependencies
+pnpm --filter db-kit exec vsce package --no-dependencies
 ```
 
 ### 工程结构

@@ -163,16 +163,19 @@ jobs:
       - name: 发布构建（minify）
         run: |
           pnpm --filter @db-explorer/webview-ui build
-          pnpm --filter db-explorer build -- --minify
+          pnpm --filter db-kit build -- --minify
 
       - name: 打包 VSIX
-        run: pnpm --filter db-explorer exec vsce package --no-dependencies
+        run: pnpm --filter db-kit exec vsce package --no-dependencies
 
       - name: 创建 GitHub Release 并附产物
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 产物名跟随包名（更名后为 db-kit-*.vsix）；同 tag 重发时先删旧 Release
+          # （--cleanup-tag=false 保留 tag 本身，仅替换 Release 及其资产）
+          gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false 2>/dev/null || true
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            packages/extension/db-explorer-*.vsix
+            packages/extension/db-kit-*.vsix
