@@ -86,6 +86,10 @@ importers:
       mysql2:
         specifier: ^3.11.0
         version: 3.24.4(@types/node@20.19.43)
+    devDependencies:
+      '@db-explorer/driver-conformance':
+        specifier: workspace:^
+        version: link:../driver-conformance
 
   packages/driver-postgres:
     dependencies:

@@ -53,6 +53,18 @@ jobs:
           --health-interval 10s
           --health-timeout 10s
           --health-retries 10
+      # 发布准备批次：MySQL 契约（MYSQL_HOST 门控同 PG/MONGO 口径；此前仅生成层单测）
+      mysql:
+        image: mysql:8
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v4
 
@@ -87,3 +99,7 @@ jobs:
           PG_PASSWORD: postgres
           PG_DATABASE: postgres
           MONGO_URI: mongodb://127.0.0.1:27017
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root

@@ -124,6 +124,7 @@
 | 查询参数/分页文案 | `webview-ui/src/lib/queryState.ts`（纯函数，有单测） |
 | ChangeSet 权威副本 | `packages/core/src/services/changeSetService.ts`（合并语义单测覆盖） |
 | MySQL 变更语句生成 | `packages/driver-mysql/src/changes.ts`（preview/apply 同源） |
+| MySQL 契约测试（发布批次） | `packages/driver-mysql/src/mysql.conformance.test.ts`（`MYSQL_HOST` 门控：本地 skip、CI `mysql:8` service 实跑——PG/MONGO 同口径；fixture 专用库 cf_test 整库重建 + cf_db_* 残库清扫；值编码用例对 mysql 的三处裁剪见文件头注释；样例发现依赖 `listDatabases` 系统库过滤——D-15 同口径，mysql 此前不过滤已修） |
 | Redis 驱动（M6） | `packages/driver-redis`（SCAN/cursor/值编码见其 README；纯函数层 `keys.ts`、错误映射 `errors.ts`） |
 | PostgreSQL 驱动（M8-PG） | `packages/driver-postgres`（D-15：db 参数=schema 名、obj 恒为裸名；纯函数层 `sql.ts`（$n 占位符/类型归一/时间文本规范化）、变更 `changes.ts`（RETURNING 回填）、DDL 生成器 `ddl.ts`、SQLSTATE 映射 `errors.ts`；契约 `postgres.conformance.test.ts` 经 PG_HOST 门控——本地 skip、CI service 实跑） |
 | SQLite 驱动（M8-SQLite） | `packages/driver-sqlite`（D-16：sql.js WASM 单引擎——整库内存 + 同步执行，限中小库 ≤100MB；wasm 构建期拷 `extension/media/sql-wasm.wasm`（esbuild.mjs createRequire 解析），extension.ts 显式传 wasmPath + 工作区路径 resolver，P-48；写批次后原子落盘 temp+rename，事务内/只读不落盘；db 参数恒 `'main'`；FormSchema path 字段 `type='file'` 首例——浏览经 RPC `sys.pickFile` 原生选择、输入保持可手输（交互稿 §3.2 v0.1.13）；纯函数层 `sql.ts`（? 占位符/instr search/类型归一/useBigInt 通道 encodeCell）、`changes.ts`（RETURNING 回填/IS NULL 乐观锁）、`ddl.ts`（加列原地/其余表重建序列，P-49）、`errors.ts`（消息特征映射）、`completion.ts`（方言全量词表 C-14）；连接打开前魔数校验防空库误覆写；契约 `sqlite.conformance.test.ts` 进程内实跑无需实例；D05 复核 `d05.eval.test.ts`（P-50 测法口径） |

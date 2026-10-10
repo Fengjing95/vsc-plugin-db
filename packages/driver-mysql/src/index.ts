@@ -150,11 +150,15 @@ export class MysqlConnection implements IConnection {
       const rows = await this.queryRows(
         'SELECT SCHEMA_NAME AS name, DEFAULT_CHARACTER_SET_NAME AS charset, DEFAULT_COLLATION_NAME AS collation FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME',
       );
-      return rows.map((r) => ({
+      const metas = rows.map((r) => ({
         name: String(r.name),
         charset: r.charset ? String(r.charset) : undefined,
         collation: r.collation ? String(r.collation) : undefined,
       }));
+      // 系统库硬过滤（D-15 在 PG 上立的同口径）：information_schema/mysql/performance_schema/sys
+      // 不上树、不入契约样例发现（firstTable 按库序取样，不过滤会落在 information_schema 上）
+      const allowed = new Set(filterMysqlDatabases(metas.map((m) => m.name)));
+      return metas.filter((m) => allowed.has(m.name));
     } catch (err) {
       throw toDriverError(err);
     }
