@@ -30,6 +30,27 @@ const PASSWORD = process.env.PG_PASSWORD ?? 'postgres';
 const DATABASE = process.env.PG_DATABASE ?? 'postgres';
 const SCHEMA = 'public';
 
+/**
+ * pg 8.23 取消竞态的进程级过滤（P-46 终态配套，CI run#11/13/14 三轮实证）：
+ * pg_cancel_backend 生效后，57014 / Connection terminated 会沿 pg 内部 promise 链
+ * （client.js:694 的 .catch(rethrow)）以 unhandled rejection 逃逸——驱动侧三轮收敛
+ * （消除 busy 复用 / 不销毁连接 / 有界结算等待）仍有残余，且该 rejection 的载体
+ * promise 不在驱动可触及的链路上。vitest 的 catchError 对「unhandledRejection 存在
+ * 多个监听器」让位于用户代码（listeners.length > 1 即视为已处理，vitest 源码口径）
+ * → 本文件窗口内注册过滤监听：已知取消竞态噪声吞掉，其余未处理 rejection 捕获后于
+ * afterAll 抛红（详情走注记通道），门禁语义不弱化
+ */
+const pgCancelNoise = /canceling statement due to user request|Connection terminated/;
+const strayUnhandled: string[] = [];
+const onPgUnhandled = (reason: unknown): void => {
+  const msg = String((reason as Error)?.message ?? reason);
+  if (pgCancelNoise.test(msg)) {
+    return;
+  }
+  strayUnhandled.push(msg);
+};
+process.on('unhandledRejection', onPgUnhandled);
+
 const cfg = {
   id: 'conformance-postgres',
   name: 'PG 契约',
@@ -94,6 +115,13 @@ d('postgres conformance（CI service 实跑）', () => {
     await admin.query('DROP TABLE IF EXISTS cf_valenc_t').catch(() => undefined);
     await admin.query('DROP TABLE IF EXISTS cf_ddl_t').catch(() => undefined);
     await admin.end().catch(() => undefined);
+    // 撤销窗口过滤监听；窗口内的非噪声未处理 rejection 在此抛红（详情走注记通道）
+    process.off('unhandledRejection', onPgUnhandled);
+    if (strayUnhandled.length > 0) {
+      throw new Error(
+        `窗口内非取消噪声的 unhandled rejection ${strayUnhandled.length} 项：\n${strayUnhandled.join('\n')}`,
+      );
+    }
   });
 
   it('connection 组', async () => {
