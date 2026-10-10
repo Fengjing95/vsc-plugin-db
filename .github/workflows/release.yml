@@ -179,3 +179,17 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             packages/extension/db-kit-*.vsix
+
+      # Marketplace 自动发布：仓库 Secret VSCE_PAT（Azure DevOps PAT，Marketplace→Manage
+      # scope + All accessible organizations）存在时执行；未配置则跳过（Web 上传兜底）。
+      # Marketplace 拒绝同版本重复发布——重跑同 tag 前先 bump 版本
+      - name: 发布到 VSCode Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::未配置 Secret VSCE_PAT，跳过 Marketplace 自动发布（可从 GitHub Release 手动上传 VSIX）"
+            exit 0
+          fi
+          pnpm --filter db-kit exec vsce publish -p "$VSCE_PAT" \
+            --packagePath packages/extension/db-kit-*.vsix
