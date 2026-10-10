@@ -1,4 +1,4 @@
-# 数据库浏览器 DB Explorer
+# DB Kit
 
 在 VSCode 内浏览、查询、编辑 MySQL / PostgreSQL / SQLite / MongoDB / Redis：资源树、表格视图、SQL Console、结构管理与流式导出。
 

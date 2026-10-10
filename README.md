@@ -1,4 +1,4 @@
-# 数据库浏览器 DB Explorer（VSCode 插件）
+# DB Kit — 数据库浏览器（VSCode 插件）
 
 在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖「看结构 → 查数据 → 改数据 → 写 SQL」的完整链路。支持 MySQL、PostgreSQL、SQLite、MongoDB、Redis 五类外部数据源 + 内置 Mock 演示源，单文件 VSIX 分发、零原生依赖。
 

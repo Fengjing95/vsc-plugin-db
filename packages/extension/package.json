@@ -1,6 +1,6 @@
 {
-  "name": "db-explorer",
-  "displayName": "数据库浏览器 DB Explorer",
+  "name": "db-kit",
+  "displayName": "DB Kit",
   "description": "在 VSCode 内浏览、查询、编辑 MySQL / PostgreSQL / Redis / SQLite / MongoDB：资源树、表格视图、SQL Console、结构管理与流式导出。",
   "version": "0.1.0",
   "publisher": "db-explorer-dev",
