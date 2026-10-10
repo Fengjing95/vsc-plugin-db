@@ -30,7 +30,12 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 import { buildChangeStatements } from './changes';
-import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
+import {
+  buildCreateSchemaStatements,
+  buildCreateTableStatements,
+  buildAlterTableStatements,
+  buildDropSchemaStatements,
+} from './ddl';
 import { toDriverError } from './errors';
 import {
   bootstrapDatabaseCandidates,
@@ -66,6 +71,7 @@ const capabilities: DriverCapabilities = {
   supportsCancel: true, // signal → client.cancel()，57014 → E_CANCELED（CI postgres service 实跑取消组）
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
+  supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-15）——buildCreateDatabase/buildDropDatabase
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -770,6 +776,21 @@ export function createPostgresDriver(): IDatabaseDriver {
     apiVersion: 1,
     capabilities,
     getConnectionFormSchema: () => formSchema,
+    // ── 库级 DDL（M8-DBDDL / D-19）：树上「库」= schema（D-15）——CREATE / DROP SCHEMA（CASCADE 标 destructive）──
+    getDatabaseFormSchema: () => ({
+      fields: [
+        {
+          key: 'name',
+          label: 'Schema 名',
+          type: 'string',
+          required: true,
+          placeholder: 'appdata',
+          hint: '树上的「库」为 PostgreSQL schema（D-15，连接协议绑定单库）；删除 schema 将连带删其下全部表（CASCADE）',
+        },
+      ],
+    }),
+    buildCreateDatabase: async (spec) => buildCreateSchemaStatements(spec),
+    buildDropDatabase: async (db) => buildDropSchemaStatements(db),
     testConnection: async (cfg: ConnectionConfig, secret: string): Promise<TestResult> => {
       const started = Date.now();
       let client: pg.Client | undefined;

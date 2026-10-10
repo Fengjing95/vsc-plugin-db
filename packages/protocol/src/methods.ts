@@ -29,6 +29,11 @@ export const RpcMethods = {
   ddlPreview: 'ddl.preview',
   ddlExecute: 'ddl.execute',
   ddlClose: 'ddl.close',
+  /** @since v0.2.21（M8-DBDDL / D-19）：库级 DDL（新建/编辑库弹窗；删除走树命令无 RPC） */
+  dbddlLoad: 'dbddl.load',
+  dbddlPreview: 'dbddl.preview',
+  dbddlExecute: 'dbddl.execute',
+  dbddlClose: 'dbddl.close',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
 } as const;
@@ -685,6 +690,66 @@ export type DdlExecuteResult = z.infer<typeof DdlExecuteResultSchema>;
 /** 关闭表结构编辑器面板（Webview 侧「关闭」按钮；Host dispose 面板。未保存确认在 Webview） */
 export const DdlCloseParamsSchema = z.object({}).optional();
 export type DdlCloseParams = z.infer<typeof DdlCloseParamsSchema>;
+
+// ── dbddl.*（库级 DDL，M8-DBDDL / D-19 @since v0.2.21；删除库走树命令，不经 RPC）──────────
+
+export const DatabaseSpecSchema = z.object({
+  name: z.string().min(1).max(128),
+  charset: z.string().max(128).optional(),
+  collation: z.string().max(256).optional(),
+});
+export type DatabaseSpecPayload = z.infer<typeof DatabaseSpecSchema>;
+
+export const DbDdlLoadParamsSchema = z.object({
+  connId: z.string().min(1),
+  kind: z.enum(['create', 'alter']),
+  /** alter 态必填：目标库名（仅改 charset/collation 维度，不支持重命名） */
+  db: z.string().min(1).optional(),
+});
+export type DbDdlLoadParams = z.infer<typeof DbDdlLoadParamsSchema>;
+
+export const DbDdlLoadResultSchema = z.object({
+  kind: z.enum(['create', 'alter']),
+  /** 驱动自定义表单（getDatabaseFormSchema；未实现回落最小 name 必填字段） */
+  schema: FormSchemaSchema,
+  /** create 态为 null；alter 态为当前库元数据预填（name/charset/collation） */
+  spec: DatabaseSpecSchema.nullable(),
+  /** 驱动是否实现 buildAlterDatabase（菜单已裁剪，此处防御性携带） */
+  alterable: z.boolean(),
+});
+export type DbDdlLoadResult = z.infer<typeof DbDdlLoadResultSchema>;
+
+export const DbDdlPreviewParamsSchema = z.object({
+  connId: z.string().min(1),
+  kind: z.enum(['create', 'alter']),
+  db: z.string().min(1).optional(),
+  spec: DatabaseSpecSchema,
+});
+export type DbDdlPreviewParams = z.infer<typeof DbDdlPreviewParamsSchema>;
+
+export const DbDdlPreviewResultSchema = z.object({
+  statements: z.array(DdlStatementSchema).max(64),
+});
+export type DbDdlPreviewResult = z.infer<typeof DbDdlPreviewResultSchema>;
+
+/** 执行参数与 preview 同形；Host 侧重新调用同一 builder（预览与执行同源，不信任回传 SQL） */
+export const DbDdlExecuteParamsSchema = DbDdlPreviewParamsSchema;
+export type DbDdlExecuteParams = z.infer<typeof DbDdlExecuteParamsSchema>;
+
+export const DbDdlExecuteResultSchema = z.object({
+  executed: z.number().int().min(0),
+  failed: z
+    .object({
+      index: z.number().int().min(1),
+      code: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+});
+export type DbDdlExecuteResult = z.infer<typeof DbDdlExecuteResultSchema>;
+
+export const DbDdlCloseParamsSchema = z.object({}).optional();
+export type DbDdlCloseParams = z.infer<typeof DbDdlCloseParamsSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({

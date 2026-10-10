@@ -6,6 +6,7 @@ import {
   type FilterCondition,
   type FilterOp,
   type IConnection,
+  type IDatabaseDriver,
   type NormalizedType,
   type ObjectMeta,
   type RowKey,
@@ -1542,6 +1543,98 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
     await check(results, 'ddl', 'fixture 清理', async () => {
       await dropFixture();
     });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+// ───────────────────────── M8-DBDDL：库级 DDL（D-19）─────────────────────────
+
+/**
+ * 库级 DDL 契约组（@since M8-DBDDL / D-19）：按方法存在性裁剪（P-19 同族）——
+ * - create 周期（buildCreateDatabase + buildDropDatabase）：create 唯一库 → listDatabases 命中 → drop → 消失
+ * - alter（buildAlterDatabase）：以 current 同值提交 → 空数组（无差异口径）
+ * - 标识符 fail-closed：注入分号/反引号的库名 → E_VALIDATION（仅 supportsSQL 驱动——
+ *   命令域数据源（Mongo）库名字符集更宽，安全由引号化 + 删除名称确认承载）
+ * 方法在 driver 层（懒连接树菜单同口径）；语句执行经 conn.query（同 runDdlChecks 口径）。
+ */
+export async function runDatabaseDdlChecks(
+  driver: IDatabaseDriver,
+  create: () => Promise<IConnection>,
+): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  const unique = `cf_db_${Date.now()}`;
+  const hasCreate = typeof driver.buildCreateDatabase === 'function';
+  const hasDrop = typeof driver.buildDropDatabase === 'function';
+  const hasAlter = typeof driver.buildAlterDatabase === 'function';
+  try {
+    if (!hasCreate && !hasDrop && !hasAlter) {
+      await skip(results, 'database-ddl', '整组跳过', '驱动未实现库级 DDL 方法（supportsDatabaseDdl 未声明）');
+      return summarize(results);
+    }
+
+    if (driver.capabilities.supportsSQL) {
+      await check(results, 'database-ddl', '非法标识符 fail-closed（E_VALIDATION）', async () => {
+        const bad = async (run: () => Promise<unknown>): Promise<void> => {
+          try {
+            await run();
+          } catch (err) {
+            assert(
+              DriverError.is(err) && err.code === 'E_VALIDATION',
+              `非法标识符应抛 E_VALIDATION，实际 ${String(err)}`,
+            );
+            return;
+          }
+          assert(false, '非法标识符未被拒绝');
+        };
+        if (hasCreate) {
+          await bad(() => driver.buildCreateDatabase!({ name: 'cf_db; DROP DATABASE x' }));
+        }
+        if (hasDrop) {
+          await bad(() => driver.buildDropDatabase!('cf`_db'));
+        }
+      });
+    } else {
+      await skip(results, 'database-ddl', '标识符 fail-closed（命令域数据源：库名字符集更宽，安全由引号化承载，跳过）', 'supportsSQL=false');
+    }
+
+    if (!hasCreate || !hasDrop) {
+      await skip(results, 'database-ddl', 'create 周期（驱动未实现 create/drop 对，跳过）', '方法缺失');
+    } else {
+      await check(results, 'database-ddl', 'create → listDatabases 命中 → drop → 消失（周期闭环）', async () => {
+        const before = (await conn.listDatabases()).map((d) => d.name);
+        assert(!before.includes(unique), `fixture 库 ${unique} 已存在（前次残留）`);
+        const stmts = await driver.buildCreateDatabase!({ name: unique });
+        assert(stmts.length > 0, 'buildCreateDatabase 返回空语句集');
+        for (const s of stmts) {
+          await conn.query({ sql: s.sql, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        }
+        const mid = (await conn.listDatabases()).map((d) => d.name);
+        assert(mid.includes(unique), 'create 后 listDatabases 未命中新库');
+        const dropStmts = await driver.buildDropDatabase!(unique);
+        assert(dropStmts.length > 0, 'buildDropDatabase 返回空语句集');
+        for (const s of dropStmts) {
+          await conn.query({ sql: s.sql, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        }
+        const after = (await conn.listDatabases()).map((d) => d.name);
+        assert(!after.includes(unique), 'drop 后 listDatabases 仍命中');
+      });
+    }
+
+    if (!hasAlter) {
+      await skip(results, 'database-ddl', 'alter 无差异（驱动未实现 buildAlterDatabase，跳过）', '方法缺失');
+    } else {
+      await check(results, 'database-ddl', 'alter 无差异返回空数组', async () => {
+        const dbs = await conn.listDatabases();
+        assert(dbs.length > 0, 'listDatabases 为空');
+        const current = dbs[0]!;
+        const spec = { name: current.name, charset: current.charset, collation: current.collation };
+        const stmts = await driver.buildAlterDatabase!(current.name, spec, current);
+        assert(Array.isArray(stmts) && stmts.length === 0, `无差异应返回空数组，实际 ${stmts.length} 条`);
+      });
+    }
   } finally {
     await conn.dispose();
   }

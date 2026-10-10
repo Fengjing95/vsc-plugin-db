@@ -1,4 +1,4 @@
-import { DriverError, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import { DriverError, type DatabaseMeta, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
 
 /**
  * MySQL 表结构编辑语句生成（M8-B2，概要 §5.9 / 驱动规范 §3 @since v0.1.2）：
@@ -165,4 +165,45 @@ export function buildAlterTableStatements(
   }
 
   return statements;
+}
+
+// ── 库级 DDL（M8-DBDDL / D-19）：CREATE / ALTER / DROP DATABASE（纯函数）──────────
+
+export function buildCreateDatabaseStatements(spec: DatabaseSpec): DdlStatement[] {
+  assertIdentifier('库名', spec.name);
+  const parts = [`CREATE DATABASE \`${spec.name}\``];
+  if (spec.charset) {
+    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+  }
+  if (spec.collation) {
+    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+  }
+  return [{ sql: parts.join(' ') }];
+}
+
+export function buildAlterDatabaseStatements(
+  db: string,
+  spec: DatabaseSpec,
+  current: DatabaseMeta,
+): DdlStatement[] {
+  assertIdentifier('库名', db);
+  if (spec.name !== db) {
+    throw new DriverError('E_VALIDATION', '不支持重命名库（ALTER DATABASE 仅字符集/排序规则维度）');
+  }
+  const parts: string[] = [];
+  if (spec.charset && spec.charset !== current.charset) {
+    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+  }
+  if (spec.collation && spec.collation !== current.collation) {
+    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+  }
+  if (parts.length === 0) {
+    return []; // 无差异（契约组口径）
+  }
+  return [{ sql: `ALTER DATABASE \`${db}\` ${parts.join(' ')}` }];
+}
+
+export function buildDropDatabaseStatements(db: string): DdlStatement[] {
+  assertIdentifier('库名', db);
+  return [{ sql: `DROP DATABASE \`${db}\``, destructive: true }];
 }

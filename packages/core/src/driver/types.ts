@@ -12,6 +12,7 @@ import type {
 import type {
   ColumnMeta,
   DatabaseMeta,
+  DatabaseSpec,
   DdlStatement,
   IndexMeta,
   KeyMeta,
@@ -44,6 +45,9 @@ export interface DriverCapabilities {
   supportsDdl: boolean;
   /** @since M8-B2：表结构编辑器（概要 §5.9）——true 时必须实现 buildCreateTable/buildAlterTable */
   supportsDdlEditor?: boolean;
+  /** @since v0.1.11（M8-DBDDL / D-19）：库级 DDL——按需实现 buildCreateDatabase/buildAlterDatabase/
+   *  buildDropDatabase + getDatabaseFormSchema（菜单按方法存在性裁剪，P-19 同族口径） */
+  supportsDatabaseDdl?: boolean;
   hierarchy: NodeLevel[];
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';
@@ -120,6 +124,17 @@ export interface IDatabaseDriver {
    *  不复用连接池、不产生任何持久化），建连库自行兜底（PG 引导链 postgres→用户名→template1）；
    *  失败/不可达一律 resolve 空数组、禁止 reject——UI 无感降级为自由手输。cfg 为表单草稿（id 等为占位值） */
   listDatabaseOptions?(cfg: ConnectionConfig, secret: string): Promise<string[]>;
+  /** @since v0.1.11（M8-DBDDL / D-19，capabilities.supportsDatabaseDdl = true 时按需实现）
+   *  库级 DDL 三方法：语句为方言原文（destructive 标记、标识符 fail-closed E_VALIDATION，同 buildCreateTable
+   *  口径）。各驱动只实现有意义的操作（菜单按方法存在性裁剪）：MySQL 全三（charset/collation）；
+   *  PG 建/删 schema（D-15「库」即 schema——DROP SCHEMA CASCADE 必须标 destructive）；Mongo 仅 dropDatabase */
+  buildCreateDatabase?(spec: DatabaseSpec): Promise<DdlStatement[]>;
+  /** diff `spec` 与 `current`（listDatabases 命中项）：无差异返回空数组（UI 提示「无变更」） */
+  buildAlterDatabase?(db: string, spec: DatabaseSpec, current: DatabaseMeta): Promise<DdlStatement[]>;
+  buildDropDatabase?(db: string): Promise<DdlStatement[]>;
+  /** 建库/编辑库表单（形状同 getConnectionFormSchema；编辑时 Host 以 DatabaseMeta 预填 name/charset/collation）。
+   *  未实现时 Host 回落最小字段集（name 必填） */
+  getDatabaseFormSchema?(): FormSchema;
   connect(cfg: ConnectionConfig, secret: string): Promise<IConnection>;
 }
 

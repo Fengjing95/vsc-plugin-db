@@ -53,6 +53,7 @@ const capabilities: DriverCapabilities = {
   // hierarchy 含 column → 树为 collection 节点展开「字段/索引」目录（treeDataProvider 数据驱动）
   hierarchy: ['connection', 'database', 'folder', 'collection', 'column'],
   editable: true, // D-18：字段级 $set 乐观锁（表格编辑；危险/只读护栏在 Host 侧）
+  supportsDatabaseDdl: true, // M8-DBDDL / D-19：仅 dropDatabase（建库=写数据隐式创建，无表单无编辑）
   pagination: 'cursor',
 };
 
@@ -93,11 +94,21 @@ const SAMPLE_DOCS = 200;
 /** 系统库（listDatabases 过滤） */
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
-/** 命令控制台放行的文档写方法（D-18：经 Host 危险判定链后可执行；结构类恒不支持） */
+/** 命令控制台放行的文档写方法（D-18：经 Host 危险判定链后可执行；结构类恒不支持。
+ *  D-19 修订：dropDatabase 放行——树删库与命令行同一护栏（危险横幅/prod Modal/只读拒） */
 const DOC_WRITE_METHODS: ReadonlySet<string> = new Set([
   'insertOne', 'insertMany', 'updateOne', 'updateMany', 'replaceOne',
   'deleteOne', 'deleteMany', 'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete',
+  'dropDatabase',
 ]);
+
+/** Mongo 库名校验（D-19 删库）：禁 / \ " $ 与空字符，≤63 字节（Mongo 命名约束） */
+function assertMongoDbName(db: string): string {
+  if (!db || /[/$"\\\0]/.test(db) || db.includes('/') || db.length > 63) {
+    throw new DriverError('E_VALIDATION', `非法库名："${db.slice(0, 32)}"（禁 / \\ " $ 与空字符，≤63 字符）`);
+  }
+  return db;
+}
 
 type RawDoc = Record<string, unknown>;
 
@@ -773,6 +784,13 @@ export class MongoConnection implements IConnection {
         }
         return tabularFromDocs([doc as RawDoc], Date.now() - started);
       }
+      case 'dropDatabase': {
+        // M8-DBDDL / D-19：树删库与命令行同一护栏（危险横幅/prod Modal/只读拒）
+        const target = assertMongoDbName(chain.dbTarget ?? req.db ?? '');
+        await this.getClient();
+        await this.guard(this.client!.db(target).dropDatabase(), req.timeoutMs, req.signal);
+        return objectToRows({ dropped: true, database: target }, Date.now() - started);
+      }
       default:
         throw new DriverError('E_UNSUPPORTED', `命令 "${chain.method}" 未被命令控制台支持（结构类命令恒不支持，D-18）`);
     }
@@ -875,6 +893,12 @@ export function createMongoDriver(): IDatabaseDriver {
     apiVersion: 1,
     capabilities,
     getConnectionFormSchema: () => formSchema,
+    // ── 库级 DDL（M8-DBDDL / D-19）：仅 dropDatabase——建库 = 写数据隐式创建，无表单无编辑；
+    //    语句为命令控制台命令文本（getSiblingDB 显式定位，quoteKey 同源 JSON 引号化防注入）──
+    buildDropDatabase: async (db: string) => {
+      assertMongoDbName(db);
+      return [{ sql: `db.getSiblingDB(${JSON.stringify(db)}).dropDatabase()`, destructive: true }];
+    },
     testConnection: async (cfg: ConnectionConfig, secret: string): Promise<TestResult> => {
       const started = Date.now();
       let client: MongoClient | undefined;

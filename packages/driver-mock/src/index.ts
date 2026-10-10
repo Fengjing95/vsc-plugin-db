@@ -7,6 +7,7 @@ import {
   type CompletionSource,
   type ConnectionConfig,
   type DatabaseMeta,
+  type DatabaseSpec,
   type DdlStatement,
   type DriverCapabilities,
   type FetchRowsRequest,
@@ -56,6 +57,7 @@ const capabilities: DriverCapabilities = {
   supportsCancel: false,
   supportsDdl: false,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable + query() 执行 DDL（内存）
+  supportsDatabaseDdl: true, // M8-DBDDL：buildCreateDatabase/buildAlterDatabase/buildDropDatabase（内存库列表）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
   editable: true,
   pagination: 'offset',
@@ -238,6 +240,13 @@ const databases: DatabaseMeta[] = [
 
 /** big 库：t001..t100，每表 5 万行（M3 DoD：5 万行虚拟滚动不卡顿） */
 const BIG_TABLE_COUNT = 100;
+
+/** mock 库名校验（fail-closed，D-19 契约组用例）：仅字母/数字/下划线，防注入 */
+function validateMockDbName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name)) {
+    throw new DriverError('E_VALIDATION', `非法库名："${name.slice(0, 32)}"（仅允许字母/数字/下划线）`);
+  }
+}
 const BIG_TABLE_ROWS = 50_000;
 
 function bigDef(_obj: string): TableDef {
@@ -743,6 +752,34 @@ export class MockConnection implements IConnection {
     if (stmts.length > 1) {
       throw new DriverError('E_VALIDATION', 'mock 驱动不支持一次执行多条语句');
     }
+    // M8-DBDDL：库级 DDL（buildCreateDatabase/... 生成的语句形状；内存库列表变更）
+    const dbDdl = /^(\w+)\s+DATABASE\s+`?([A-Za-z_][A-Za-z0-9_]*)`?/i.exec(stmts[0].text);
+    if (dbDdl) {
+      const verb = dbDdl[1]!.toUpperCase();
+      const name = dbDdl[2]!;
+      const idx = databases.findIndex((d) => d.name === name);
+      if (verb === 'CREATE') {
+        if (idx >= 0) {
+          throw new DriverError('E_CONFLICT', `库 "${name}" 已存在`);
+        }
+        databases.push({ name, charset: 'utf8mb4' });
+      } else if (verb === 'DROP') {
+        if (idx < 0) {
+          throw new DriverError('E_NOT_FOUND', `库 "${name}" 不存在`);
+        }
+        databases.splice(idx, 1);
+      }
+      // ALTER：内存元数据无 charset 语义，语句接受即成功
+      return [
+        {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          affectedRows: verb === 'DROP' ? 1 : 0,
+          executionMs: Math.max(Date.now() - started, 1),
+        },
+      ];
+    }
     // M8-B2：DDL 走表结构编辑执行链（只认本驱动生成的语句形状）
     if (isMockDdlStatement(stmts[0].text)) {
       executeMockDdlSql(mockDdlRegistry, stmts[0].text);
@@ -1046,6 +1083,49 @@ export function createMockDriver(): IDatabaseDriver {
     apiVersion: 1,
     capabilities,
     getConnectionFormSchema: () => formSchema,
+    // ── 库级 DDL（M8-DBDDL / D-19：内存库列表变更，query() 拦截执行对应语句）──
+    getDatabaseFormSchema: () => ({
+      fields: [
+        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'newdb' },
+        {
+          key: 'charset',
+          label: '字符集',
+          type: 'select',
+          default: 'utf8mb4',
+          options: [
+            { label: 'utf8mb4', value: 'utf8mb4' },
+            { label: 'utf8', value: 'utf8' },
+            { label: 'latin1', value: 'latin1' },
+          ],
+        },
+      ],
+    }),
+    buildCreateDatabase: async (spec: DatabaseSpec) => {
+      validateMockDbName(spec.name);
+      if (databases.some((d) => d.name === spec.name)) {
+        throw new DriverError('E_CONFLICT', `库 "${spec.name}" 已存在`);
+      }
+      const charset = spec.charset ?? 'utf8mb4';
+      return [{ sql: `CREATE DATABASE \`${spec.name}\` CHARACTER SET ${charset}` }];
+    },
+    buildAlterDatabase: async (db: string, spec: DatabaseSpec, current: DatabaseMeta) => {
+      validateMockDbName(db);
+      const diff: string[] = [];
+      if (spec.charset && spec.charset !== current.charset) {
+        diff.push(`CHARACTER SET ${spec.charset}`);
+      }
+      if (spec.collation && spec.collation !== current.collation) {
+        diff.push(`COLLATE ${spec.collation}`);
+      }
+      if (diff.length === 0) {
+        return []; // 无差异（契约组口径）
+      }
+      return [{ sql: `ALTER DATABASE \`${db}\` ${diff.join(' ')}` }];
+    },
+    buildDropDatabase: async (db: string) => {
+      validateMockDbName(db);
+      return [{ sql: `DROP DATABASE \`${db}\``, destructive: true }];
+    },
     testConnection: async (): Promise<TestResult> => {
       const start = Date.now();
       return { ok: true, latencyMs: Date.now() - start + 5, serverVersion: 'mock-1.0' };

@@ -29,7 +29,13 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 import { buildChangeStatements } from './changes';
-import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
+import {
+  buildAlterDatabaseStatements,
+  buildAlterTableStatements,
+  buildCreateDatabaseStatements,
+  buildCreateTableStatements,
+  buildDropDatabaseStatements,
+} from './ddl';
 import { buildSelect, encodeValue, filterMysqlDatabases, fragmentHasColumn, normalizeMysqlType, quoteMysqlIdentifier, toDriverError } from './sql';
 
 /**
@@ -48,6 +54,7 @@ const capabilities: DriverCapabilities = {
   supportsCancel: false, // mysql2 无法可靠中止已下发语句，契约如实声明
   supportsDdl: true,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable（DDL 走 query() 执行）
+  supportsDatabaseDdl: true, // M8-DBDDL / D-19：buildCreateDatabase/buildAlterDatabase/buildDropDatabase
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -141,9 +148,13 @@ export class MysqlConnection implements IConnection {
   async listDatabases(): Promise<DatabaseMeta[]> {
     try {
       const rows = await this.queryRows(
-        'SELECT SCHEMA_NAME AS name, DEFAULT_CHARACTER_SET_NAME AS charset FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME',
+        'SELECT SCHEMA_NAME AS name, DEFAULT_CHARACTER_SET_NAME AS charset, DEFAULT_COLLATION_NAME AS collation FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME',
       );
-      return rows.map((r) => ({ name: String(r.name), charset: r.charset ? String(r.charset) : undefined }));
+      return rows.map((r) => ({
+        name: String(r.name),
+        charset: r.charset ? String(r.charset) : undefined,
+        collation: r.collation ? String(r.collation) : undefined,
+      }));
     } catch (err) {
       throw toDriverError(err);
     }
@@ -621,6 +632,41 @@ export function createMysqlDriver(): IDatabaseDriver {
     apiVersion: 1,
     capabilities,
     getConnectionFormSchema: () => formSchema,
+    // ── 库级 DDL（M8-DBDDL / D-19）：语句生成同源（ddl.ts 纯函数），执行走 host.query ──
+    getDatabaseFormSchema: () => ({
+      fields: [
+        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'mydb' },
+        {
+          key: 'charset',
+          label: '字符集',
+          type: 'select',
+          default: 'utf8mb4',
+          options: [
+            { label: 'utf8mb4（推荐，完整 Unicode）', value: 'utf8mb4' },
+            { label: 'utf8（3 字节，遗留）', value: 'utf8' },
+            { label: 'latin1', value: 'latin1' },
+            { label: 'ascii', value: 'ascii' },
+            { label: 'binary', value: 'binary' },
+          ],
+        },
+        {
+          key: 'collation',
+          label: '排序规则',
+          type: 'select',
+          default: 'utf8mb4_general_ci',
+          options: [
+            { label: 'utf8mb4_general_ci', value: 'utf8mb4_general_ci' },
+            { label: 'utf8mb4_0900_ai_ci（MySQL 8 默认）', value: 'utf8mb4_0900_ai_ci' },
+            { label: 'utf8mb4_bin', value: 'utf8mb4_bin' },
+            { label: 'utf8_general_ci', value: 'utf8_general_ci' },
+            { label: 'latin1_swedish_ci', value: 'latin1_swedish_ci' },
+          ],
+        },
+      ],
+    }),
+    buildCreateDatabase: async (spec) => buildCreateDatabaseStatements(spec),
+    buildAlterDatabase: async (db, spec, current) => buildAlterDatabaseStatements(db, spec, current),
+    buildDropDatabase: async (db) => buildDropDatabaseStatements(db),
     testConnection: async (cfg: ConnectionConfig, secret: string): Promise<TestResult> => {
       const o = cfg.options;
       const started = Date.now();

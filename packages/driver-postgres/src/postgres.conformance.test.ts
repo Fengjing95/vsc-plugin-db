@@ -4,6 +4,7 @@ import {
   runCancellationChecks,
   runChangesetChecks,
   runConnectionChecks,
+  runDatabaseDdlChecks,
   runDdlChecks,
   runFilterPushdownChecks,
   runInteractiveTransactionChecks,
@@ -156,6 +157,15 @@ d('postgres conformance（CI service 实跑）', () => {
     logFailures(summary);
     expect(summary.failed).toBe(0);
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
+  });
+
+  it('database-ddl 组（M8-DBDDL / D-19：schema 建删周期 + 标识符 fail-closed；无 ALTER 跳过）', async () => {
+    const summary = await runDatabaseDdlChecks(createPostgresDriver(), makeConn);
+    logFailures(summary);
+    expect(summary.failed).toBe(0);
+    // 实跑 2 项：标识符 fail-closed（supportsSQL）+ create/drop schema 周期；alter 未实现跳过
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(2);
+    expect(summary.results.filter((r) => r.skipped)).toHaveLength(1);
   });
 
   it('interactive-transaction 组（D-09）', async () => {

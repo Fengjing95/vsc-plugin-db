@@ -5,6 +5,7 @@ import {
   runChangesetChecks,
   runConnectionChecks,
   runCursorPaginationChecks,
+  runDatabaseDdlChecks,
   runFilterPushdownChecks,
   runMetadataChecks,
   runPaginationChecks,
@@ -177,6 +178,13 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
     });
     assertGroup('cancellation', s.failed, s.results);
   }, 30_000);
+
+  it('database-ddl 组（M8-DBDDL / D-19：仅 dropDatabase——组内三项全跳过，删库闭环见下方驱动侧直测）', async () => {
+    const s = await runDatabaseDdlChecks(createMongoDriver(), makeConn);
+    assertGroup('database-ddl', s.failed, s.results);
+    expect(s.results.filter((r) => !r.skipped)).toHaveLength(0);
+    expect(s.results.filter((r) => r.skipped)).toHaveLength(3);
+  });
 });
 
 // ── BSON → §5 值编码精确断言（驱动规范 §5.5 映射表）─────────────────────────
@@ -399,10 +407,9 @@ d('mongo 命令控制台（mongosh 域，首批只读）', () => {
     expect(after[0].rows).toEqual([[0]]);
   });
 
-  it('结构类命令恒 E_UNSUPPORTED（D-18 范围边界）；aggregate 带 $out 仍拒', async () => {
+  it('结构类命令恒 E_UNSUPPORTED（D-18/D-19 边界：dropDatabase 已放行见删库闭环；aggregate 带 $out 仍拒）', async () => {
     for (const cmd of [
       'db.cf_main.drop()',
-      'db.dropDatabase()',
       'db.createCollection("nope")',
       'db.cf_main.createIndex({ a: 1 })',
       'db.users.noSuchWrite({ a: 1 })',
@@ -428,6 +435,38 @@ d('mongo 命令控制台（mongosh 域，首批只读）', () => {
     await expect(
       conn.query({ sql: 'db.cf_main.find({})', db: FIXTURE_DB, maxRows: 10, timeoutMs: 5000, signal: ac.signal }),
     ).rejects.toMatchObject({ code: 'E_CANCELED' });
+  });
+});
+
+// ── 库级 DDL（M8-DBDDL / D-19：dropDatabase 闭环）───────────────────────────
+
+d('mongo 库级 DDL（D-19：删库闭环）', () => {
+  it('buildDropDatabase → getSiblingDB dropDatabase 执行后 listDatabases 消失', async () => {
+    const tmp = `cf_dropdb_${Date.now()}`;
+    const admin = await connectAdmin();
+    try {
+      await admin.db(tmp).collection('t').insertOne({ k: 1 }); // 建库 = 写数据隐式创建
+      const conn = await makeConn();
+      try {
+        expect((await conn.listDatabases()).map((x) => x.name)).toContain(tmp);
+        const stmts = await createMongoDriver().buildDropDatabase!(tmp);
+        expect(stmts[0].destructive).toBe(true);
+        for (const s of stmts) {
+          await conn.query({ sql: s.sql, db: FIXTURE_DB, maxRows: 1, timeoutMs: 10_000 });
+        }
+        expect((await conn.listDatabases()).map((x) => x.name)).not.toContain(tmp);
+      } finally {
+        await conn.dispose();
+      }
+    } finally {
+      await admin.close();
+    }
+  }, 20_000);
+
+  it('非法库名 fail-closed（E_VALIDATION）', async () => {
+    const driver = createMongoDriver();
+    await expect(driver.buildDropDatabase!('a/b')).rejects.toMatchObject({ code: 'E_VALIDATION' });
+    await expect(driver.buildDropDatabase!('a$b')).rejects.toMatchObject({ code: 'E_VALIDATION' });
   });
 });
 

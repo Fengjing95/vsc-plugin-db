@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DriverError } from '@db-explorer/core';
 import type { TableSpec } from '@db-explorer/core';
-import { buildAlterTableStatements, buildCreateTableStatements, escapeDdlLiteral } from './ddl';
+import {
+  buildAlterDatabaseStatements,
+  buildAlterTableStatements,
+  buildCreateDatabaseStatements,
+  buildCreateTableStatements,
+  buildDropDatabaseStatements,
+  escapeDdlLiteral,
+} from './ddl';
 
 function baseSpec(overrides: Partial<TableSpec> = {}): TableSpec {
   return {
@@ -130,5 +137,39 @@ describe('buildAlterTableStatements（M8-B2）', () => {
       'ALTER TABLE `myapp`.`users` DROP COLUMN `id`',
     ]);
     expect(stmts.every((s) => s.destructive === true)).toBe(true);
+  });
+});
+
+describe('库级 DDL（M8-DBDDL / D-19）', () => {
+  it('CREATE DATABASE：charset/collation 子句按需拼接', () => {
+    expect(buildCreateDatabaseStatements({ name: 'mydb' })).toEqual([
+      { sql: 'CREATE DATABASE `mydb`' },
+    ]);
+    expect(buildCreateDatabaseStatements({ name: 'mydb', charset: 'utf8mb4', collation: 'utf8mb4_general_ci' })).toEqual([
+      { sql: 'CREATE DATABASE `mydb` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci' },
+    ]);
+  });
+
+  it('ALTER DATABASE：无差异空数组；差异仅含变化维度；重命名拒绝', () => {
+    const current = { name: 'mydb', charset: 'utf8mb4', collation: 'utf8mb4_general_ci' };
+    expect(buildAlterDatabaseStatements('mydb', { name: 'mydb', charset: 'utf8mb4', collation: 'utf8mb4_general_ci' }, current)).toEqual([]);
+    expect(buildAlterDatabaseStatements('mydb', { name: 'mydb', charset: 'utf8', collation: 'utf8mb4_general_ci' }, current)).toEqual([
+      { sql: 'ALTER DATABASE `mydb` CHARACTER SET utf8' },
+    ]);
+    expect(() =>
+      buildAlterDatabaseStatements('mydb', { name: 'other' }, current),
+    ).toThrowError(DriverError);
+  });
+
+  it('DROP DATABASE：destructive 标记', () => {
+    expect(buildDropDatabaseStatements('mydb')).toEqual([
+      { sql: 'DROP DATABASE `mydb`', destructive: true },
+    ]);
+  });
+
+  it('非法库名/字符集 fail-closed（E_VALIDATION）', () => {
+    expect(() => buildCreateDatabaseStatements({ name: 'a; DROP DATABASE x' })).toThrowError(DriverError);
+    expect(() => buildCreateDatabaseStatements({ name: 'mydb', charset: 'utf8; DROP DATABASE x' })).toThrowError(DriverError);
+    expect(() => buildDropDatabaseStatements('cf`_db')).toThrowError(DriverError);
   });
 });

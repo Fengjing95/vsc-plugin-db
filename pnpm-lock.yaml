@@ -60,6 +60,10 @@ importers:
       '@db-explorer/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@db-explorer/driver-conformance':
+        specifier: workspace:*
+        version: link:../driver-conformance
 
   packages/driver-mongo:
     dependencies:

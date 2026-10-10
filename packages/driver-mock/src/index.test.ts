@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DriverError } from '@db-explorer/core';
+import { runDatabaseDdlChecks } from '@db-explorer/driver-conformance';
 import { createMockDriver } from './index';
 import type { ConnectionConfig } from '@db-explorer/core';
 
@@ -151,5 +152,21 @@ describe('driver-mock：M0 可插拔契约演示', () => {
       );
     expect(DriverError.is(err)).toBe(true);
     expect(err && DriverError.is(err) && err.code).toBe('E_NOT_FOUND');
+  });
+});
+
+describe('driver-mock：库级 DDL（M8-DBDDL / D-19）', () => {
+  it('database-ddl 契约组（create 周期闭环 / alter 无差异 / 标识符 fail-closed）', async () => {
+    const driver = createMockDriver();
+    const s = await runDatabaseDdlChecks(driver, connection);
+    const failed = s.results.filter((r) => !r.ok);
+    if (s.failed > 0) {
+      console.error(
+        `[database-ddl] 失败项：\n${failed.map((r) => `  - ${r.name}: ${r.error}`).join('\n')}`,
+      );
+    }
+    expect(s.failed).toBe(0);
+    // 三项全实跑（mock 实现全部三方法且 supportsSQL=true）
+    expect(s.results.filter((r) => !r.skipped)).toHaveLength(3);
   });
 });

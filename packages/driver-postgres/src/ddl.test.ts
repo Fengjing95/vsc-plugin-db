@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DriverError } from '@db-explorer/core';
 import type { TableSpec } from '@db-explorer/core';
-import { buildAlterTableStatements, buildCreateTableStatements, escapeDdlLiteral } from './ddl';
+import {
+  buildCreateSchemaStatements,
+  buildCreateTableStatements,
+  buildAlterTableStatements,
+  buildDropSchemaStatements,
+  escapeDdlLiteral,
+} from './ddl';
 
 function baseSpec(overrides: Partial<TableSpec> = {}): TableSpec {
   return {
@@ -176,5 +182,23 @@ describe('buildAlterTableStatements（M8-PG）', () => {
     expect(buildAlterTableStatements('public', 'users', commentChange, current).map((s) => s.sql)).toEqual([
       'COMMENT ON COLUMN "public"."users"."amount" IS \'金额\'',
     ]);
+  });
+});
+
+describe('库级 DDL（M8-DBDDL / D-19：PG「库」= schema）', () => {
+  it('CREATE SCHEMA：标识符双引号引用', () => {
+    expect(buildCreateSchemaStatements({ name: 'appdata' })).toEqual([
+      { sql: 'CREATE SCHEMA "appdata"' },
+    ]);
+  });
+
+  it('DROP SCHEMA CASCADE：destructive 标记（连带删表在确认层明示）', () => {
+    const stmts = buildDropSchemaStatements('appdata');
+    expect(stmts).toEqual([{ sql: 'DROP SCHEMA "appdata" CASCADE', destructive: true }]);
+  });
+
+  it('非法 schema 名 fail-closed（E_VALIDATION）', () => {
+    expect(() => buildCreateSchemaStatements({ name: 'a; DROP SCHEMA x' })).toThrowError(DriverError);
+    expect(() => buildDropSchemaStatements('a"b')).toThrowError(DriverError);
   });
 });

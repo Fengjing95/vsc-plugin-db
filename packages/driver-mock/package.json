@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "@db-explorer/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-conformance": "workspace:*"
   }
 }

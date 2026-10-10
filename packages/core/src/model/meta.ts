@@ -20,8 +20,18 @@ export type ObjectKind = 'table' | 'view' | 'materialized-view' | 'collection';
 export interface DatabaseMeta {
   name: string;
   charset?: string;
+  /** @since v0.1.11（M8-DBDDL）：排序规则（MySQL 填充，编辑库表单预填） */
+  collation?: string;
   comment?: string;
   sizeBytes?: number;
+}
+
+/** 库级 DDL 目标模型（@since v0.1.11，M8-DBDDL / D-19）：buildCreateDatabase/buildAlterDatabase 输入。
+ *  charset/collation 仅 MySQL 消费（PG schema / Mongo 不参与建库） */
+export interface DatabaseSpec {
+  name: string;
+  charset?: string;
+  collation?: string;
 }
 
 export interface ObjectMeta {

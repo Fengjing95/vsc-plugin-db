@@ -1,4 +1,4 @@
-import { DriverError, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import { DriverError, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
 import { quotePgIdentifier } from './sql';
 
 /**
@@ -210,4 +210,17 @@ export function buildAlterTableStatements(
   }
 
   return statements;
+}
+
+// ── 库级 DDL（M8-DBDDL / D-19）：PG「库」= schema（D-15）——CREATE / DROP SCHEMA（纯函数）──
+
+export function buildCreateSchemaStatements(spec: DatabaseSpec): DdlStatement[] {
+  assertIdentifier('schema 名', spec.name);
+  return [{ sql: `CREATE SCHEMA ${quotePgIdentifier(spec.name)}` }];
+}
+
+export function buildDropSchemaStatements(db: string): DdlStatement[] {
+  assertIdentifier('schema 名', db);
+  // CASCADE：schema 内对象连带删除——destructive 红条 + 树删库名称确认承载（D-19）
+  return [{ sql: `DROP SCHEMA ${quotePgIdentifier(db)} CASCADE`, destructive: true }];
 }
