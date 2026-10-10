@@ -10,3 +10,6 @@ coverage/
 packages/extension/media/logos/
 # sql.js wasm 引擎（M8-SQLite，esbuild 构建期从 driver-sqlite 依赖拷贝的产物，不入库）
 packages/extension/media/sql-wasm.wasm
+# 发布物随包文档副本（esbuild 构建期从仓库根拷贝，权威源在根目录，防双源漂移）
+packages/extension/LICENSE
+packages/extension/CHANGELOG.md

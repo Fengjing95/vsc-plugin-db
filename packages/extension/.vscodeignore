@@ -5,3 +5,5 @@ node_modules/**
 **/*.test.ts
 **/tsconfig.json
 .vscodeignore
+# 26MB sourcemap 仅供本地调试，不入 VSIX（发布准备批次）
+dist/extension.js.map

@@ -6,6 +6,13 @@ import { injectWebviewHtml } from './webviewHtmlInject';
 export type { WebviewBootstrap, WebviewPage } from './webviewHtmlInject';
 
 export function webviewDistRoot(extensionUri: vscode.Uri): string {
+  // VSIX 安装形态（发布）：产物随扩展包分发——esbuild 构建期把 webview-ui/dist 拷到
+  // dist/webview（兄弟目录 ../webview-ui 在安装机上不存在，直读会全部渲染错误页）
+  const bundled = path.join(extensionUri.fsPath, 'dist', 'webview');
+  if (fs.existsSync(path.join(bundled, 'index.html'))) {
+    return bundled;
+  }
+  // monorepo 开发形态（F5）兜底：直读兄弟包产物（webview 独立构建后 extension 未重打包也可用）
   return path.join(extensionUri.fsPath, '..', 'webview-ui', 'dist');
 }
 
