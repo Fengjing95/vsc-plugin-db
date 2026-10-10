@@ -649,6 +649,11 @@ const CT: Record<string, unknown> = {
 
 /** 按列类型构造契约测试值（值编码契约 §5） */
 function sampleValueFor(c: ColumnMeta, salt: string): unknown {
+  // PG 数组列（text[] 等，读侧 §5.2 归一为 json）：必须写数组值（pg 原生序列化）——
+  // 按 json 写对象会产生 malformed array literal（契约 changeset 组 CI 暴露）
+  if (c.normalizedType === 'json' && typeof c.dataType === 'string' && c.dataType.includes('[]')) {
+    return salt ? [`cf-${salt}`] : ['cf'];
+  }
   const base = CT[c.normalizedType] ?? CT.unknown;
   // 仅字符串型列可加盐（搜索探针按字符串特征值匹配）。decimal/binary 等以字符串形态承载的
   // 数值/二进制编码加盐即非法——真实实例校验值（'42.42-ins' → ER_INVALID_DECIMAL /
@@ -921,7 +926,11 @@ export async function runChangesetChecks(
       // delete 指向不存在的主键 → 最后一条失败，前面已执行的必须全部回滚
       const ghostKey: RowKey = {};
       for (const [k, v] of Object.entries(keyB)) {
-        ghostKey[k] = typeof v === 'number' ? -999_999_999 : 'cf-ghost-key';
+        // int8/bigserial 主键经 C-7 读回为数字字符串（typeof 'string'）——按值形态判数值型，
+        // 否则幽灵键 'cf-ghost-key' 绑给 bigint 列会得到 E_INTERNAL 而非预期 E_CONFLICT
+        // （Truncated incorrect DOUBLE value，契约 changeset 组 CI 暴露）
+        const numericish = typeof v === 'number' || (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v));
+        ghostKey[k] = numericish ? -999_999_999 : 'cf-ghost-key';
       }
       let thrown: unknown;
       try {
