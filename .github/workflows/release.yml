@@ -110,7 +110,9 @@ jobs:
           done
 
       - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
-        run: pnpm test
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee /tmp/vitest-output.txt
         env:
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: 6379
@@ -125,6 +127,20 @@ jobs:
           MYSQL_PORT: 3306
           MYSQL_USER: root
           MYSQL_PASSWORD: root
+
+      # 同 ci.yml：失败输出转运行摘要（Summary 页匿名可读，远程诊断用）
+      - name: 失败输出转运行摘要
+        if: failure()
+        run: |
+          {
+            echo '## 测试失败输出（vitest 尾部 300 行）'
+            echo '<details open><summary>展开</summary>'
+            echo ''
+            echo '```text'
+            tail -n 300 /tmp/vitest-output.txt 2>/dev/null || echo '（无输出文件）'
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 发布构建（minify）
         run: |
