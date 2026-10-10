@@ -686,7 +686,10 @@ export class PostgresConnection implements IConnection {
     try {
       return await fn(client);
     } finally {
-      client.release();
+      // 取消过的连接状态不可信（服务端 57014 与客户端状态机竞态）→ release(err) 让 pg-pool
+      // 销毁而非复用；pg-pool 会在下次 connect 自动补建
+      const poisoned = (client as { poisoned?: boolean }).poisoned === true;
+      client.release(poisoned ? new Error('查询已取消：连接不复用') : undefined);
     }
   }
 }
@@ -725,8 +728,11 @@ async function runCancelableOn(
         client.query(sql);
   const cancelServerSide = (): void => {
     // pg 的 Client.cancel 会重置在途连接本身（池化/会话下毒化该连接，后续查询挂死——契约
-    // cancellation 组 CI 超时暴露）→ 改走 SQL 级取消：pg_cancel_backend(pid) 经专用连接，
-    // 在途连接保持完好；57014 → E_CANCELED 由错误映射表承载
+    // cancellation 组 CI 超时暴露）→ 改走 SQL 级取消：pg_cancel_backend(pid) 经专用连接；
+    // 57014 → E_CANCELED 由错误映射表承载。取消后连接状态机与服务端存在竞态（57014 回包
+    // 晚于客户端结算 → busy 复用走弃用路径并泄漏 57014 rejection，CI run#11 实测）→ 标记
+    // poisoned，withClient 归还时以 release(err) 销毁、pg-pool 下次自动补建
+    (client as { poisoned?: boolean }).poisoned = true;
     const pid = (client as { processID?: number }).processID;
     if (pid) {
       opts.cancelBackend?.(pid);

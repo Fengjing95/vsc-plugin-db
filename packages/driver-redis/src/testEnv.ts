@@ -56,13 +56,20 @@ export async function ensureLocalRedis(opts: {
         ...(opts.requirepass ? ['--requirepass', opts.requirepass] : []),
       ];
   const child: ChildProcess = spawn(bin, args, { stdio: 'ignore' });
+  // 二进制缺失时 spawn 经 'error' 事件异步报错（ENOENT）——不挂监听器会成为 uncaught
+  // exception 毒化 vitest 进程（CI 无 ~/tools/redis*，契约 ssl.test TLS 探测实测暴露；
+  // P-32 的 ssh2 fixture 同族）。吞掉事件并置失败标记，调用方走「未就绪」跳过路径
+  let spawnFailed = false;
+  child.on('error', () => {
+    spawnFailed = true;
+  });
 
   // 等待端口就绪（源码编译版启动亚秒级；10s 兜底防挂）
   const deadline = Date.now() + 10_000;
   let ready = false;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`redis-server 启动失败（exit ${child.exitCode}）：${bin}`);
+    if (spawnFailed || child.exitCode !== null) {
+      throw new Error(`redis-server 不可用（二进制缺失或启动失败）：${bin}`);
     }
     if (await portOpen(opts.port)) {
       ready = true;
