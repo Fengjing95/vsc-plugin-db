@@ -25,18 +25,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      redis-auth:
-        # 同 ci.yml（P-52）：--requirepass 非 docker 旗标，bitnami 经 REDIS_PASSWORD env 设密
-        image: bitnami/redis:7.2
-        ports:
-          - 6390:6379
-        env:
-          REDIS_PASSWORD: m6cipass
-        options: >-
-          --health-cmd "redis-cli -a m6cipass ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       postgres:
         image: postgres:16
         ports:
@@ -104,6 +92,22 @@ jobs:
 
       - name: 构建（webview + extension）
         run: pnpm build
+
+      # 错误密码用例（E_AUTH）的认证实例：service options 只接受 docker create 旗标，
+      # --requirepass（redis-server 参数）会让 create exit 125（P-52）；bitnami 版本 tag 又因
+      # Broadcom 收紧目录已删（manifest unknown，P-52 双坑）→ 测试前一步自起，
+      # 与常规 service 同一个 redis:7 镜像（host 网络直听 6390）
+      - name: 起 Redis 认证实例（E_AUTH，:6390）
+        run: |
+          docker run -d --name redis-auth --network host redis:7 \
+            redis-server --port 6390 --requirepass m6cipass --save "" --appendonly no
+          for i in $(seq 1 30); do
+            if docker exec redis-auth redis-cli -a m6cipass -p 6390 ping 2>/dev/null | grep -q PONG; then
+              echo "redis-auth ready"
+              break
+            fi
+            sleep 1
+          done
 
       - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
         run: pnpm test

@@ -8,7 +8,8 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 + 6390 requirepass 供错误密码用例）；
+    # 评审 P2-3：契约测试 CI 矩阵——Redis 契约需真实实例（6379 常规 service + 6390 认证实例由
+    # 「起 Redis 认证实例」步骤自起，P-52 双坑：service options 不能带 --requirepass）；
     # M8-PG：PostgreSQL 契约（本地无实例，PG_HOST 门控 skip / CI 实跑，驱动规范 §11）；
     # M8-Mongo：MongoDB 契约（MONGO_URI 门控同 PG 口径；mongo:7 自带 mongosh 供 health 探测）
     services:
@@ -18,20 +19,6 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      # 错误密码用例（E_AUTH）：bitnami 镜像经 REDIS_PASSWORD 环境变量设密——GH Actions service
-      # 的 options 会原样传给 docker create，官方 redis:7 的 --requirepass 不是 docker 旗标
-      # （unknown flag → exit 125，容器创建即失败，P-52）；bitnami 监听 6379，映射到宿主 6390
-      redis-auth:
-        image: bitnami/redis:7.2
-        ports:
-          - 6390:6379
-        env:
-          REDIS_PASSWORD: m6cipass
-        options: >-
-          --health-cmd "redis-cli -a m6cipass ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -91,7 +78,23 @@ jobs:
       - name: 构建
         run: pnpm build
 
-      - name: 测试（含 Redis / PostgreSQL / MongoDB 契约）
+      # 错误密码用例（E_AUTH）的认证实例：service options 只接受 docker create 旗标，
+      # --requirepass（redis-server 参数）会让 create exit 125（P-52）；bitnami 版本 tag 又因
+      # Broadcom 收紧目录已删（manifest unknown，P-52 双坑）→ 测试前一步自起，
+      # 与常规 service 同一个 redis:7 镜像（host 网络直听 6390）
+      - name: 起 Redis 认证实例（E_AUTH，:6390）
+        run: |
+          docker run -d --name redis-auth --network host redis:7 \
+            redis-server --port 6390 --requirepass m6cipass --save "" --appendonly no
+          for i in $(seq 1 30); do
+            if docker exec redis-auth redis-cli -a m6cipass -p 6390 ping 2>/dev/null | grep -q PONG; then
+              echo "redis-auth ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
         run: pnpm test
         env:
           REDIS_HOST: 127.0.0.1
