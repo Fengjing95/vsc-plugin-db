@@ -56,6 +56,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
+      # M8-MSSQL：SQL Server 契约（MSSQL_HOST 门控同 PG/MONGO/MYSQL 口径）。service 只放 env
+      # （ACCEPT_EULA + SA 密码满足复杂度：四类中三类）；启动含内部初始化且可能重启循环（P-52
+      # 同款「service 不承担应用层就绪判定」），就绪探测交给下方「等待 SQL Server 就绪」步骤
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: C0ntract!2026
     steps:
       - uses: actions/checkout@v4
 
@@ -100,7 +110,28 @@ jobs:
             sleep 1
           done
 
-      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
+      # SQL Server 启动就绪探测（约 20~60s，偶发内部重启循环）：sqlcmd 轮询直到可登录。
+      # tools18/-C（信任自签证书）与旧 tools 路径双兼容；容器经镜像 ancestor 定位
+      - name: 等待 SQL Server 就绪（sqlcmd 探活）
+        run: |
+          CID=$(docker ps --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format '{{.ID}}' | head -1)
+          if [ -z "$CID" ]; then
+            echo "::error::未找到 mssql service 容器"
+            exit 1
+          fi
+          for i in $(seq 1 48); do
+            if docker exec "$CID" bash -c \
+              "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'C0ntract!2026' -Q 'SELECT 1' -b -o /dev/null 2>/dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'C0ntract!2026' -Q 'SELECT 1' -b -o /dev/null 2>/dev/null"; then
+              echo "mssql ready（第 ${i} 次探测，间隔 5s）"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::SQL Server 240s 内未就绪"
+          docker logs "$CID" 2>&1 | tail -50
+          exit 1
+
+      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL / SQL Server 契约）
         run: |
           set -o pipefail
           pnpm test 2>&1 | tee /tmp/vitest-output.txt
@@ -118,6 +149,11 @@ jobs:
           MYSQL_PORT: 3306
           MYSQL_USER: root
           MYSQL_PASSWORD: root
+          MSSQL_HOST: 127.0.0.1
+          MSSQL_PORT: 1433
+          MSSQL_USER: sa
+          MSSQL_PASSWORD: C0ntract!2026
+          MSSQL_DATABASE: cf_test
 
       # Actions 日志需登录才可见，而运行摘要（Summary 页）与注记 API 匿名可读——失败时把
       # vitest 输出尾部写入摘要，并按 ::error:: 注记分块输出（每块 25 行 <4KB 上限），
