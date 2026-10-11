@@ -32,36 +32,32 @@ export const site = {
 export type Engine = {
   key: string;
   name: string;
-  note?: string;
-  logo?: string; // /assets/logos/*.svg（构建期从 webview-ui 拷入）；Mock 用 emoji
-  emoji?: string;
+  logo?: string; // /assets/logos/*.svg（构建期从 webview-ui 拷入）
 };
 
-// 顺序与支持矩阵列序一致（extension README §支持矩阵；Mock 列口径取根 README 功能总览）
+// 顺序与支持矩阵列序一致（extension README §支持矩阵）
 export const engines: Engine[] = [
   { key: 'mysql', name: 'MySQL', logo: withBase('assets/logos/MySQL.svg') },
   { key: 'postgresql', name: 'PostgreSQL', logo: withBase('assets/logos/PostgreSql.svg') },
   { key: 'sqlite', name: 'SQLite', logo: withBase('assets/logos/sqlite.svg') },
   { key: 'mongodb', name: 'MongoDB', logo: withBase('assets/logos/mongoDB.svg') },
   { key: 'redis', name: 'Redis', logo: withBase('assets/logos/Redis.svg') },
-  { key: 'mock', name: 'Mock', note: '内置演示', emoji: '🧪' },
 ];
 
 export type CellValue = 'yes' | 'no' | string; // 'yes'=✓，'no'=—，其余为变体文案（如「文档编辑」「只读」）
 
-// 逐格口径 = packages/extension/README.md §支持矩阵（Mock 列 = 根 README §功能总览）
+// 逐格口径 = packages/extension/README.md §支持矩阵
 export const matrixRows: { label: string; cells: CellValue[] }[] = [
-  { label: '资源树浏览', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
-  { label: '表格编辑', cells: ['yes', 'yes', 'yes', '文档编辑', '只读', 'yes'] },
-  { label: 'SQL Console / 命令控制台', cells: ['yes', 'yes', 'yes', 'mongosh', 'yes', 'yes'] },
-  { label: '结构编辑（表 / 列）', cells: ['yes', 'yes', 'yes', 'no', 'no', 'yes'] },
-  { label: '库级 DDL', cells: ['yes', 'yes', 'no', 'yes', 'no', 'no'] },
-  { label: 'SSL / SSH 隧道', cells: ['yes', 'yes', 'no', 'yes', 'yes', 'no'] },
-  { label: '后台导出', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+  { label: '资源树浏览', cells: ['yes', 'yes', 'yes', 'yes', 'yes'] },
+  { label: '表格编辑', cells: ['yes', 'yes', 'yes', '文档编辑', '只读'] },
+  { label: 'SQL Console / 命令控制台', cells: ['yes', 'yes', 'yes', 'mongosh', 'yes'] },
+  { label: '结构编辑（表 / 列）', cells: ['yes', 'yes', 'yes', 'no', 'no'] },
+  { label: '库级 DDL', cells: ['yes', 'yes', 'no', 'yes', 'no'] },
+  { label: 'SSL / SSH 隧道', cells: ['yes', 'yes', 'no', 'yes', 'yes'] },
+  { label: '后台导出', cells: ['yes', 'yes', 'yes', 'yes', 'yes'] },
 ];
 
-export const matrixFootnote =
-  'SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；Mock 为内置演示源，零配置即可体验全部功能。';
+export const matrixFootnote = 'SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持。';
 
 export type Feature = { icon: string; title: string; desc: string };
 
@@ -137,7 +133,7 @@ export const comingSoon: ComingItem[] = [
   },
 ];
 
-// 安装三选一 + 三步体验，口径 = packages/extension/README.md §30 秒上手 / 根 README §安装
+// 三步体验（口径 = 根 README §快速上手 / extension README §30 秒上手）
 export const quickStart = {
   install: [
     { title: '扩展面板安装', desc: 'VSCode 扩展面板搜索 DB Kit，一键安装' },
@@ -147,18 +143,9 @@ export const quickStart = {
   steps: [
     { title: '新建连接', desc: '安装后点活动栏「数据库」图标 → ＋ 新建连接' },
     {
-      title: '选 Mock 零配置体验',
-      desc: '选 Mock 数据源可零配置立即体验全部功能（内置 5 万行大表与 20 列宽表）',
+      title: '浏览与编辑',
+      desc: '单击表名打开表格视图；双击单元格直改，提交前给出参数化 SQL 预览',
     },
-    { title: '浏览与写 SQL', desc: '单击表名打开表格视图；树中「新增查询」写 SQL，Ctrl+Enter 执行' },
+    { title: '写 SQL', desc: '树中「新增查询」写 SQL，Ctrl+Enter 执行' },
   ],
 };
-
-// 已知限制（诚实展示，防差评）；全文见仓库 CHANGELOG
-export const limits: string[] = [
-  'UI 文案仅中文',
-  '仅支持桌面版 VSCode（^1.85）',
-  'SQLite 限中小库（≤ 100MB）',
-  'MongoDB 结构类命令与 Redis 编辑不支持',
-  '无遥测——密码只存系统密钥链，不落盘、不入日志',
-];

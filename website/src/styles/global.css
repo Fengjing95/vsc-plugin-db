@@ -399,13 +399,6 @@ a {
   border-radius: 4px;
 }
 
-.hero__engine-note {
-  font-style: normal;
-  font-size: 0.72rem;
-  color: var(--text-faint);
-  margin-left: 2px;
-}
-
 .hero__cta {
   display: flex;
   justify-content: center;
@@ -510,10 +503,6 @@ a {
 .section {
   padding: 96px 0;
   scroll-margin-top: calc(var(--nav-h) + 16px);
-}
-
-.section--tight {
-  padding-top: 40px;
 }
 
 .section__head {
@@ -625,12 +614,6 @@ a {
 
 .matrix__engine img {
   border-radius: 4px;
-}
-
-.matrix__engine-note {
-  font-style: normal;
-  font-size: 0.68rem;
-  color: var(--text-faint);
 }
 
 .cell-yes {
@@ -980,60 +963,6 @@ a {
   .qs__grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* ---------- 已知限制 ---------- */
-.limits {
-  max-width: 780px;
-  margin: 0 auto;
-  padding: 26px 30px;
-}
-
-.limits h2 {
-  font-size: 1.12rem;
-  margin-bottom: 12px;
-}
-
-.limits ul {
-  list-style: none;
-}
-
-.limits li {
-  position: relative;
-  padding-left: 20px;
-  font-size: 0.89rem;
-  color: var(--text-muted);
-}
-
-.limits li + li {
-  margin-top: 7px;
-}
-
-.limits li::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 0.72em;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-
-.limits p {
-  margin-top: 14px;
-  font-size: 0.83rem;
-  color: var(--text-faint);
-}
-
-.limits a {
-  color: #6ea8ff;
-  margin: 0 4px;
-}
-
-.limits a:hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 
 /* ---------- Footer ---------- */

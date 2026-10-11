@@ -5,7 +5,6 @@ import { Features } from './components/Features';
 import { Screenshots } from './components/Screenshots';
 import { ComingSoon } from './components/ComingSoon';
 import { QuickStart } from './components/QuickStart';
-import { Limits } from './components/Limits';
 import { Footer } from './components/Footer';
 
 export default function App() {
@@ -22,7 +21,6 @@ export default function App() {
         <Screenshots />
         <ComingSoon />
         <QuickStart />
-        <Limits />
       </main>
       <Footer />
     </>

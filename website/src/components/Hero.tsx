@@ -24,13 +24,8 @@ export function Hero() {
           <ul className="hero__engines" aria-label="支持的数据源">
             {engines.map((e) => (
               <li key={e.key}>
-                {e.logo ? (
-                  <img src={e.logo} alt="" width={16} height={16} />
-                ) : (
-                  <span aria-hidden="true">{e.emoji}</span>
-                )}
+                <img src={e.logo} alt="" width={16} height={16} />
                 {e.name}
-                {e.note ? <em className="hero__engine-note">{e.note}</em> : null}
               </li>
             ))}
           </ul>

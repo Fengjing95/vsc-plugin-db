@@ -26,10 +26,9 @@ export function SupportMatrix() {
         <Reveal>
           <header className="section__head">
             <p className="section__kicker">支持矩阵</p>
-            <h2>六引擎，一套体验</h2>
+            <h2>五引擎，一套体验</h2>
             <p className="section__sub">
-              MySQL · PostgreSQL · SQLite · MongoDB · Redis 五类外部数据源 + 内置 Mock
-              演示源；逐格口径与扩展详情页的支持矩阵一致，不夸大。
+              MySQL · PostgreSQL · SQLite · MongoDB · Redis；逐格口径与扩展详情页的支持矩阵一致，不夸大。
             </p>
           </header>
         </Reveal>
@@ -44,9 +43,8 @@ export function SupportMatrix() {
                   {engines.map((e) => (
                     <th scope="col" key={e.key}>
                       <span className="matrix__engine">
-                        {e.logo ? <img src={e.logo} alt="" width={18} height={18} /> : <span aria-hidden="true">{e.emoji}</span>}
+                        <img src={e.logo} alt="" width={18} height={18} />
                         {e.name}
-                        {e.note ? <em className="matrix__engine-note">{e.note}</em> : null}
                       </span>
                     </th>
                   ))}
