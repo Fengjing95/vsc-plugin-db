@@ -78,6 +78,12 @@ jobs:
       - name: 构建
         run: pnpm build
 
+      # 官网并入门禁（typecheck/lint 经根脚本已覆盖）；P-55：--filter 空转防复发，构建后断言产物
+      - name: 构建官网
+        run: |
+          pnpm --filter db-kit-website build
+          test -f website/dist/index.html
+
       # 错误密码用例（E_AUTH）的认证实例：service options 只接受 docker create 旗标，
       # --requirepass（redis-server 参数）会让 create exit 125（P-52）；bitnami 版本 tag 又因
       # Broadcom 收紧目录已删（manifest unknown，P-52 双坑）→ 测试前一步自起，

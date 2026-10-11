@@ -2,6 +2,8 @@
 
 > [!TIP]
 > 已上架 VSCode Marketplace：扩展面板搜索 **DB Kit** 安装，或 [扩展详情页](https://marketplace.visualstudio.com/items?itemName=db-explorer-dev.db-kit) / `ext install db-explorer-dev.db-kit`
+>
+> 🌐 **产品官网**：[fengjing95.github.io/vsc-plugin-db](https://fengjing95.github.io/vsc-plugin-db/)（源码在 [website/](website/)，GitHub Pages 自动部署）
 
 在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖「看结构 → 查数据 → 改数据 → 写 SQL」的完整链路。支持 MySQL、PostgreSQL、SQLite、MongoDB、Redis 五类外部数据源 + 内置 Mock 演示源，单文件 VSIX 分发、零原生依赖。
 
