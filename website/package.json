@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DB Kit 产品官网（Vite + React 单页，GitHub Pages 部署）",
+  "description": "DB Kit 产品官网（Vite + React 单页，部署于腾讯云 EdgeOne）",
   "scripts": {
     "dev": "node scripts/copy-assets.mjs && vite",
     "build": "node scripts/copy-assets.mjs && vite build",

@@ -26,7 +26,6 @@ export const site = {
      */
     roadmapIssue: `${REPO}/issues`,
   },
-  ogImage: 'https://fengjing95.github.io/vsc-plugin-db/assets/images/overview-table.png',
 };
 
 export type Engine = {
