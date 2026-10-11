@@ -1,0 +1,19 @@
+{
+  "name": "@db-explorer/driver-mssql",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Microsoft SQL Server 驱动（mssql/tedious）：元数据自省、分页取数、SQL 执行、参数化筛选下推、DDL 生成（M8-MSSQL）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "mssql": "^11.0.0"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-conformance": "workspace:*",
+    "@types/mssql": "^12.3.0"
+  }
+}

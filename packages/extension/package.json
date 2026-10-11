@@ -521,6 +521,7 @@
     "@db-explorer/core": "workspace:*",
     "@db-explorer/driver-mock": "workspace:*",
     "@db-explorer/driver-mongo": "workspace:*",
+    "@db-explorer/driver-mssql": "workspace:*",
     "@db-explorer/driver-mysql": "workspace:*",
     "@db-explorer/driver-postgres": "workspace:*",
     "@db-explorer/driver-redis": "workspace:*",

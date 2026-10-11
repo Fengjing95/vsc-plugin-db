@@ -47,6 +47,27 @@ export const DB_LOGO_SVGS: Record<string, DbLogoSvg> = {
       }
     ]
   },
+  "sqlserver": {
+    "viewBox": "0 0 1024 1024",
+    "paths": [
+      {
+        "d": "M64 512 L512 64 L512 512 Z",
+        "fill": "#8FA3CC"
+      },
+      {
+        "d": "M512 64 L960 512 L512 512 Z",
+        "fill": "#5B7FC7"
+      },
+      {
+        "d": "M64 512 L512 512 L512 960 Z",
+        "fill": "#7B9BD9"
+      },
+      {
+        "d": "M512 512 L960 512 L512 960 Z",
+        "fill": "#3E62AD"
+      }
+    ]
+  },
   "mongodb": {
     "viewBox": "0 0 1024 1024",
     "paths": [

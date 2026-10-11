@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import { ChangeSetService, DriverRegistry, InProcessDriverHost, MetadataCache } from '@db-explorer/core';
 import { createMockDriver } from '@db-explorer/driver-mock';
 import { createMongoDriver } from '@db-explorer/driver-mongo';
+import { createMssqlDriver } from '@db-explorer/driver-mssql';
 import { createMysqlDriver } from '@db-explorer/driver-mysql';
 import { createPostgresDriver } from '@db-explorer/driver-postgres';
 import { createRedisDriver } from '@db-explorer/driver-redis';
@@ -49,6 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // M8-Mongo MongoDB 驱动：仅注册（可插拔验收），树/取数/命令控制台路径零核心改动（D-17，
   // 只读浏览 + mongosh 命令控制台；collection 字段目录经 hierarchy 含 column 声明展开）
   registry.register(createMongoDriver());
+  // M8-MSSQL SQL Server 驱动：仅注册（可插拔验收），树/取数/Console/DDL 路径零核心改动
+  // （ADR D-21：D-15 同构——树上「库」= schema，db 参数 = schema 名；mssql/tedious 纯 JS）
+  registry.register(createMssqlDriver());
 
   // M8 优化：LogOutputChannel（原生 info/warn/error/debug 分级 + 自动时间戳 + 面板级别过滤），
   // 各服务经 logger 门面打点（不直接持有 channel）；dbExplorer.showLog 聚焦面板

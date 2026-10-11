@@ -57,6 +57,8 @@ const DRIVER_LOGO_FILES: Record<string, string> = {
   mysql: 'mysql.svg',
   postgres: 'postgresql.svg',
   postgresql: 'postgresql.svg',
+  mssql: 'sqlserver.svg',
+  'sql server': 'sqlserver.svg',
   redis: 'redis.svg',
   sqlite: 'sqlite.svg',
   sqlite3: 'sqlite.svg',
