@@ -23,6 +23,7 @@
 - **C-9 下推与性能**：筛选/排序必须在驱动 SQL 层下推（参数化），禁止取全表内存过滤；默认不执行全表 `COUNT(*)`；单次传输上限 5000 行 / 5MB。
 - **C-10 密钥安全**：密码只存 SecretStorage（`dbExplorer.secrets.<connId>`），永不写入 settings/日志/错误/导出文件；SQL 强制参数化，禁止字符串拼接用户值。唯一例外：`FetchRowsRequest.whereSql/orderBySql` 为用户在筛选栏手写的 SQL 片段（自撰 SQL 而非数据值，驱动规范 §4），按设计原样拼接。
 - **C-14 方言补全词表（驱动规范 §3.2 @since v0.1.6）**：新增数据库类型（驱动）必须同步适配 SQL 语法——在驱动 `src/completion.ts` 提供方言全量三份词表（KEYWORDS/FUNCTIONS/COMPLETION_SNIPPETS）并经 `getCompletionSource` 注入；SQL 方言差异是本质性的（UPSERT/引号/关键字/函数集互不通用），**禁止跨驱动复用词表**；键值数据源（supportsSQL=false）为命令域全量词表（先例 driver-redis）。发布 Checklist 有对应验收项。
+- **C-15 官网同步（官网批次）**：驱动支持状态变更（新驱动接入、能力矩阵格子变化、Coming Soon 目标转正）必须同步 `website/src/content/site.ts` 的 `engines` / `matrixRows` / `comingSoon` 三处数据并跑通官网构建门禁（`pnpm --filter db-kit-website build`），随当次驱动改动一并提交；官网文案严禁超出支持矩阵口径（虚构防差评）；站点部署在腾讯云 EdgeOne（https://dbkit.easyremember.cn ，仓库内无发布 workflow），上线发布由人工执行。
 
 ### Webview
 - **C-11 CSP/nonce**：所有 `<script>` 必须带 nonce；HTML 构建统一走 `packages/extension/src/views/webviewHtmlInject.ts`，禁止绕过自拼 HTML。
