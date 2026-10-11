@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fengjing95.github.io/vsc-plugin-db/sitemap.xml

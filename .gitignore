@@ -13,3 +13,5 @@ packages/extension/media/sql-wasm.wasm
 # 发布物随包文档副本（esbuild 构建期从仓库根拷贝，权威源在根目录，防双源漂移）
 packages/extension/LICENSE
 packages/extension/CHANGELOG.md
+# 官网构建期素材拷贝产物（website/scripts/copy-assets.mjs 从 docs/images 等权威源生成，不入库防双源漂移）
+website/public/assets/
