@@ -286,6 +286,11 @@ export class TypedDateParam {
   ) {}
 }
 
+/** 二进制列的 NULL 绑定标记：mssql 对 null 参数自动推断为 NVarChar，而 nvarchar→varbinary
+ *  是 CONVERT-only（无隐式转换，T-SQL 转换表）——含 varbinary 列的 NULL 绑定（新增行留空/
+ *  清空单元格/契约全 NULL 行）必须经 bindParams 翻译为显式 VarBinary 类型（CI mssql 契约首跑抓到） */
+export class TypedNullParam {}
+
 /** §5 文本 → Date（UTC 组件，tedious 读侧 getUTC* 对称）；格式非法返回 null（调用方回落原样值） */
 export function parseUtcDate(text: string, kind: 'date' | 'time' | 'datetime'): Date | null {
   if (kind === 'date') {
@@ -319,22 +324,23 @@ function fracToMs(frac: string | undefined): number {
  * TypedDateParam/Buffer 透传。
  */
 export function toMssqlParam(value: unknown): unknown {
-  if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value) && !(value instanceof TypedDateParam) && !(value instanceof Date)) {
+  if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value) && !(value instanceof TypedDateParam) && !(value instanceof TypedNullParam) && !(value instanceof Date)) {
     return JSON.stringify(value);
   }
   return value;
 }
 
-/** §5 编辑回传 → 原生绑定值：datetime/date/time 文本 → TypedDateParam；binary base64 → Buffer；其余收口 */
+/** §5 编辑回传 → 原生绑定值：datetime/date/time 文本 → TypedDateParam；binary base64 → Buffer；
+ *  binary 列的 null → TypedNullParam（显式 VarBinary 绑定）；其余收口 */
 export function toNativeParam(
   column: string,
   value: unknown,
   typeByName: Map<string, NormalizedType>,
 ): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
   const type = typeByName.get(column);
+  if (value === null || value === undefined) {
+    return type === 'binary' ? new TypedNullParam() : value;
+  }
   if (type === 'binary' && typeof value === 'string') {
     return Buffer.from(value, 'base64');
   }

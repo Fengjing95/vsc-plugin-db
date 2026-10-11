@@ -14,6 +14,7 @@ import {
   quoteMssqlIdentifier,
   stripMssqlColumnDefault,
   toNativeParam,
+  TypedNullParam,
 } from './sql';
 
 /** 语句形状契约（P-9 同族）：筛选下推的参数化无法经 IConnection 观测，由构建层单测覆盖 */
@@ -231,6 +232,11 @@ describe('类型归一与值编码（驱动规范 §5.6）', () => {
     expect(ts).toMatchObject({ kind: 'datetime' });
     expect((ts as { value: Date }).value.getUTCMonth()).toBe(5);
     expect(toNativeParam('b', 'AAEC/w==', types)).toEqual(Buffer.from([0x00, 0x01, 0x02, 0xff]));
+    // binary 列的 null → TypedNullParam（显式 VarBinary 绑定）——mssql 对 null 自动推断
+    // NVarChar，nvarchar→varbinary 无隐式转换（CI mssql 契约首跑抓到）
+    expect(toNativeParam('b', null, types)).toBeInstanceOf(TypedNullParam);
+    expect(toNativeParam('plain', null, new Map())).toBeNull();
+    expect(toNativeParam('ts', null, types)).toBeNull(); // 非二进制列 null 不包装
     expect(toNativeParam('j', { k: 1 }, types)).toBe('{"k":1}');
     expect(toNativeParam('plain', 'x', new Map())).toBe('x');
     expect(toNativeParam('n', 42, new Map())).toBe(42);

@@ -57,6 +57,7 @@ import {
   quoteMssqlIdentifier,
   toNativeParam,
   TypedDateParam,
+  TypedNullParam,
 } from './sql';
 
 /**
@@ -765,12 +766,16 @@ function backfillInsertKey(
 }
 
 /** 连接层参数绑定：TypedDateParam → 显式 mssql 类型（DateTime2/Date/Time，字符串直传会受
- *  会话 DATEFORMAT 影响的非确定性隐式转换）；Buffer → VarBinary；其余 mssql 自动推断 */
+ *  会话 DATEFORMAT 影响的非确定性隐式转换）；TypedNullParam（binary 列 NULL）→ 显式
+ *  VarBinary——mssql 对 null 自动推断 NVarChar，nvarchar→varbinary 无隐式转换；Buffer →
+ *  VarBinary；其余 mssql 自动推断 */
 function bindParams(request: Request, params: unknown[] | undefined): void {
   for (let i = 0; i < (params?.length ?? 0); i++) {
     const value = params![i];
     const name = `p${i + 1}`;
-    if (value === null || value === undefined) {
+    if (value instanceof TypedNullParam) {
+      request.input(name, mssql.VarBinary(mssql.MAX), null);
+    } else if (value === null || value === undefined) {
       request.input(name, null);
     } else if (value instanceof TypedDateParam) {
       const type =

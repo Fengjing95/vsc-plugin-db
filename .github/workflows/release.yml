@@ -58,6 +58,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
+      # M8-MSSQL：与 ci.yml 同款——service 只放 env，就绪探测走下方 sqlcmd 轮询步骤
+      # （v0.2.0 教训：release 缺 mssql service → 契约整组 skip 假绿，发布带伤 VSIX）
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: C0ntract!2026
     steps:
       - uses: actions/checkout@v4
 
@@ -109,7 +118,27 @@ jobs:
             sleep 1
           done
 
-      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL 契约）
+      # SQL Server 启动就绪探测（同 ci.yml）：sqlcmd 轮询直到可登录
+      - name: 等待 SQL Server 就绪（sqlcmd 探活）
+        run: |
+          CID=$(docker ps --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format '{{.ID}}' | head -1)
+          if [ -z "$CID" ]; then
+            echo "::error::未找到 mssql service 容器"
+            exit 1
+          fi
+          for i in $(seq 1 48); do
+            if docker exec "$CID" bash -c \
+              "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'C0ntract!2026' -Q 'SELECT 1' -b -o /dev/null 2>/dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'C0ntract!2026' -Q 'SELECT 1' -b -o /dev/null 2>/dev/null"; then
+              echo "mssql ready（第 ${i} 次探测，间隔 5s）"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::SQL Server 240s 内未就绪"
+          docker logs "$CID" 2>&1 | tail -50
+          exit 1
+
+      - name: 测试（含 Redis / PostgreSQL / MongoDB / MySQL / SQL Server 契约）
         run: |
           set -o pipefail
           pnpm test 2>&1 | tee /tmp/vitest-output.txt
@@ -127,6 +156,11 @@ jobs:
           MYSQL_PORT: 3306
           MYSQL_USER: root
           MYSQL_PASSWORD: root
+          MSSQL_HOST: 127.0.0.1
+          MSSQL_PORT: 1433
+          MSSQL_USER: sa
+          MSSQL_PASSWORD: C0ntract!2026
+          MSSQL_DATABASE: cf_test
 
       # 同 ci.yml：失败输出转运行摘要 + ::error:: 注记分块（匿名可读，远程诊断用）+ artifact
       - name: 失败输出转运行摘要与注记
