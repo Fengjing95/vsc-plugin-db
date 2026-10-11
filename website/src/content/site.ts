@@ -8,7 +8,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 
 export const site = {
   name: 'DB Kit',
-  version: 'v0.2.0',
+  version: 'v0.2.1',
   tagline: '在 VSCode 里，搞定数据库的一切',
   subTagline: '浏览 · 查询 · 编辑 · 导出 —— 六类数据源统一入口，开箱即连、零遥测。',
   extId: 'db-explorer-dev.db-kit',
