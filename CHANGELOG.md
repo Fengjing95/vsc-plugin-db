@@ -2,11 +2,13 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
-## [Unreleased]
+## [0.2.0] - 2026-10-11
+
+新增 Microsoft SQL Server 驱动——支持矩阵扩展为六类外部数据源（M8-MSSQL / ADR D-21）。
 
 ### 特性
 
-- **SQL Server 驱动**（M8-MSSQL / ADR D-21，`mssql`/tedious 纯 JS 内核）：资源树浏览（树上「库」= schema，D-15 同构）、表格编辑（字段级乐观锁 + 单事务提交 + `OUTPUT INSERTED` 主键回填）、T-SQL Console（方言全量补全、危险拦截、格式化）、表结构编辑器（建/改表/列、MS_Description 注释）、库级 DDL（建/删 schema）、SSL 加密、取消（TDS ATTENTION）、交互式事务
+- **SQL Server 驱动**（`mssql`/tedious 纯 JS 内核，无原生依赖）：资源树浏览（树上「库」= schema，D-15 同构）、表格编辑（字段级乐观锁 + 单事务提交 + `OUTPUT INSERTED` 主键回填）、T-SQL Console（方言全量补全、危险拦截、格式化）、表结构编辑器（建/改表/列、MS_Description 注释）、库级 DDL（建/删 schema）、SSL 加密、语句取消（TDS ATTENTION）、交互式事务
 - **SQL Server 契约 CI**：CI 增 `mcr.microsoft.com/mssql/server:2022-latest` service，契约十组（连接/元数据/分页/筛选下推/变更集/取消/值编码/DDL/库级 DDL/交互式事务）CI 实跑（`MSSQL_HOST` 门控，同 mysql/pg 口径）
 
 ### 已知限制（SQL Server）
@@ -25,6 +27,7 @@
 - 详情页横幅配色（galleryBanner）与图标渐变对齐
 - 扩展图标更换为矢量渲染版（0.1.0 上架素材的形变修正）
 
+[0.2.0]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.1.1
 
 ## [0.1.0] - 2026-10-10
