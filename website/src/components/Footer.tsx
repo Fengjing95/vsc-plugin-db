@@ -27,7 +27,7 @@ export function Footer() {
         </nav>
       </div>
       <div className="container footer__meta">
-        <p>© {new Date().getFullYear()} DB Kit · 基于 Apache-2.0 开源 · 本站由 GitHub Pages 部署</p>
+        <p>© {new Date().getFullYear()} DB Kit · 基于 Apache-2.0 开源</p>
       </div>
     </footer>
   );
