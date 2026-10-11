@@ -4,7 +4,7 @@
 
 **在 VSCode 里搞定数据库的一切 —— 浏览 · 查询 · 编辑 · 导出**
 
-`MySQL` · `PostgreSQL` · `SQLite` · `MongoDB` · `Redis`
+`MySQL` · `PostgreSQL` · `SQL Server` · `SQLite` · `MongoDB` · `Redis`
 
 [![CI](https://github.com/Fengjing95/vsc-plugin-db/actions/workflows/ci.yml/badge.svg)](https://github.com/Fengjing95/vsc-plugin-db/actions/workflows/ci.yml)
 ![版本](https://img.shields.io/github/v/release/Fengjing95/vsc-plugin-db)
@@ -28,7 +28,7 @@
 按上下文补全库 / 表 / 列与方言关键字；`UPDATE`/`DELETE` 不带 WHERE 直接拦截，生产库分级二次确认；EXPLAIN 结果自动树形缩进；每条语句的耗时 / 错误 / 取消状态行内注记。
 
 **🧱 结构管理不写 DDL**
-表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 建 / 删 schema，MongoDB 建 / 删库。
+表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库。
 
 **📤 百万行导出不卡界面**
 CSV / JSON / XLSX 流式导出转入后台执行：通知中心看进度、随时取消、多任务并发，导完一键定位文件。
@@ -54,17 +54,17 @@ CSV / JSON / XLSX 流式导出转入后台执行：通知中心看进度、随�
 
 ## 🗺️ 支持矩阵
 
-| 能力 | MySQL | PostgreSQL | SQLite | MongoDB | Redis |
-|---|:-:|:-:|:-:|:-:|:-:|
-| 资源树浏览 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 表格编辑 | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
-| SQL Console / 命令控制台 | ✓ | ✓ | ✓ | mongosh | ✓ |
-| 结构编辑（表 / 列） | ✓ | ✓ | ✓ | — | — |
-| 库级 DDL | ✓ | ✓ | — | ✓ | — |
-| SSL / SSH 隧道 | ✓ | ✓ | — | ✓ | ✓ |
-| 后台导出 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 能力 | MySQL | PostgreSQL | SQL Server | SQLite | MongoDB | Redis |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| 资源树浏览 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 表格编辑 | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
+| SQL Console / 命令控制台 | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
+| 结构编辑（表 / 列） | ✓ | ✓ | ✓ | ✓ | — | — |
+| 库级 DDL | ✓ | ✓ | ✓ 建/删 schema | — | ✓ | — |
+| SSL / SSH 隧道 | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| 后台导出 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-> SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；完整口径见[仓库文档](https://github.com/Fengjing95/vsc-plugin-db/tree/main/docs)。
+> SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 `GO` 批与触发器表的 INSERT 回填（详见[驱动说明](https://github.com/Fengjing95/vsc-plugin-db/tree/main/packages/driver-mssql)）；完整口径见[仓库文档](https://github.com/Fengjing95/vsc-plugin-db/tree/main/docs)。
 
 ## 📦 安装
 
