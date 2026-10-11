@@ -93,7 +93,10 @@ d('mssql conformance（CI service 实跑）', () => {
         .input('age', i % 7 === 0 ? null : 20 + i)
         .input('balance', (i * 1.5).toFixed(2))
         .input('status', i % 2 === 0 ? 'active' : 'inactive')
-        .input('avatar', i % 6 === 0 ? null : Buffer.from([0x00, 0x01, 0xff, i % 256]))
+        // avatar 用三参显式 VarBinary 绑定：裸 null 会走 mssql 自动推断（NVarChar），
+        // nvarchar→varbinary 无隐式转换，beforeAll 直接炸（v0.2.1 release 门禁首跑抓到——
+        // 与驱动侧 TypedNullParam 同族，fixture 自身的裸 null 绑定同样必须显式类型）
+        .input('avatar', mssql.VarBinary(mssql.MAX), i % 6 === 0 ? null : Buffer.from([0x00, 0x01, 0xff, i % 256]))
         .query(
           `INSERT INTO [${DATABASE}].[dbo].[cf_users] (name, email, age, balance, status, avatar) VALUES (@name, @email, @age, @balance, @status, @avatar)`,
         );

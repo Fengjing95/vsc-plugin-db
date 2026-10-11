@@ -9,6 +9,7 @@ SQL Server 驱动缺陷修复（v0.2.0 发布后由 CI 契约实跑抓到，P-53
 ### 修复
 
 - **SQL Server：二进制列的 NULL 绑定报「Implicit conversion from data type nvarchar to varbinary(max) is not allowed」**——mssql 对 null 参数自动推断为 NVarChar 类型，而 nvarchar→varbinary 无隐式转换（T-SQL 转换表 CONVERT-only）。影响含 varbinary 列的表格新增行（该列留空）、清空二进制单元格、值编码契约的全 NULL 行写回。修复：binary 列的 NULL 经 `TypedNullParam` 显式 VarBinary 绑定
+- **契约 fixture 种子同步修复**：CI 两轮实跑显示同一错误实际首触发于契约自身的 beforeAll（`input('avatar', null)` 裸 null 绑定，11 测试全 skip + 套件级报错即 beforeAll 失败特征）——种子 avatar 改三参显式 `mssql.VarBinary` 绑定，驱动的 TypedNullParam 路径由此才能获得真实实例的契约覆盖
 - **发布流水线补 mssql 契约 service**：release.yml 此前缺 `mssql/server:2022-latest` service，v0.2.0 的发布门禁里 mssql 契约被整组 skip（假绿通过）——现与 ci.yml 同款（service + sqlcmd 就绪步骤 + env），发布 Must 口径不再有契约缺考
 
 ## [0.2.0] - 2026-10-11
