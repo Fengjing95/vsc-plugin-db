@@ -855,12 +855,14 @@ function mapOneRecordset(
   maxRows: number,
   executionMs: number,
 ): ResultSet {
-  // recordset.columns 以列名为键（重名列折叠——Console 结果展示可接受）；按 index 恢复列序
+  // recordset.columns 以列名为键（重名列折叠——Console 结果展示可接受）；按 index 恢复列序。
+  // TDS 的无别名表达式列（SELECT COUNT(*) / GETDATE()）列名为空串——占位兜底，
+  // 否则过滤后结果行变空（Console 跑无别名查询得到空结果，契约 interactive 组踩）
   const rawCols = Object.values(rs.columns ?? {});
   const cols = rawCols
-    .filter((c) => Boolean(c?.name))
+    .filter((c) => c !== undefined && c !== null)
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
-    .map((c) => ({ name: String(c.name), type: tediousTypeToNormalized(c.type?.name) }));
+    .map((c) => ({ name: c.name ? String(c.name) : '（无列名）', type: tediousTypeToNormalized(c.type?.name) }));
   const sliced = rs.slice(0, maxRows);
   return {
     columns: cols,

@@ -248,7 +248,9 @@ export function formatUtcDateTime(d: Date): string {
   return `${formatUtcDate(d)} ${formatUtcTime(d)}`;
 }
 
-/** 值编码契约（概要设计 §4.4）：Buffer → base64；Date 按列类型格式化；整数字符串安全转数值 */
+/** 值编码契约（概要设计 §4.4）：Buffer → base64；Date 按列类型格式化；decimal 的 number 形态
+ *  （tedious readNumeric 经 JS Number 返回）转字符串——§5 要求 decimal 为字符串形态；
+ *  整数字符串安全转数值 */
 export function encodeCell(v: unknown, type: NormalizedType): unknown {
   if (v === null || v === undefined) {
     return null;
@@ -261,6 +263,9 @@ export function encodeCell(v: unknown, type: NormalizedType): unknown {
     if (type === 'time') return formatUtcTime(v);
     if (type === 'datetime') return formatUtcDateTime(v);
     return v;
+  }
+  if (type === 'decimal' && typeof v === 'number') {
+    return String(v);
   }
   if (type === 'integer' && typeof v === 'string' && isSafeIntString(v)) {
     return Number(v);

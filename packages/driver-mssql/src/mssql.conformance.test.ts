@@ -220,7 +220,8 @@ d('mssql conformance（CI service 实跑）', () => {
   it('interactive-transaction 组（D-09，连接默认库 = fixture 库）', async () => {
     const summary = await runInteractiveTransactionChecks(makeConn, {
       insertSql: (k) => `INSERT INTO cf_txn (marker) VALUES ('${k}')`,
-      countSql: (k) => `SELECT COUNT(*) FROM cf_txn WHERE marker = '${k}'`,
+      // COUNT(*) 加别名：TDS 无别名表达式列列名为空串（驱动侧已兜底占位，模板显式命名更自描述）
+      countSql: (k) => `SELECT COUNT(*) AS cnt FROM cf_txn WHERE marker = '${k}'`,
       cleanupSql: (k) => `DELETE FROM cf_txn WHERE marker = '${k}'`,
     });
     logFailures(summary);

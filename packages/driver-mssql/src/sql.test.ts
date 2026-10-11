@@ -207,6 +207,7 @@ describe('类型归一与值编码（驱动规范 §5.6）', () => {
     expect(encodeCell('9007199254740993', 'integer')).toBe('9007199254740993'); // 超限保留字符串
     expect(encodeCell('42', 'integer')).toBe(42); // 安全范围转 number
     expect(encodeCell('9007199254740993', 'decimal')).toBe('9007199254740993'); // decimal 恒字符串
+    expect(encodeCell(12345.678901234, 'decimal')).toBe('12345.678901234'); // tedious Number 返回 → §5 字符串
     expect(encodeCell(null, 'string')).toBeNull();
     expect(encodeCell('x', 'string')).toBe('x');
     expect(formatUtcDate(new Date(Date.UTC(2024, 0, 2)))).toBe('2024-01-02');
