@@ -38,6 +38,7 @@ Microsoft SQL Server 驱动（基于 [mssql / tedious 内核](https://github.com
 - **SSMS 风格 `GO` 批分隔符不支持**：`GO` 是客户端伪指令而非 T-SQL 语句，Console 按 `;` 切分单语句执行——粘贴含 `GO` 的脚本会报语法错误，请手工去掉 `GO` 行
 - **带触发器的表不支持 INSERT 回填**：`OUTPUT INSERTED` 在启用触发器的目标表上被服务端拒绝（T-SQL 约束），该类表的表格新增行会失败；更新/删除不受影响
 - **IDENTITY 不可原地增删**：表结构编辑器对已有列加/删自增会提示需要重建表（引擎限制）；建表时 `IDENTITY(1,1)` 正常
+- **超大 decimal 精度受限**：tedious 对 DECIMAL/NUMERIC 经 JS Number 返回（`value / 10^scale`），有效位超过 2^53（约 15~16 位）的值在客户端层失真、无法恢复；常规精度（≤ 15 位有效）不受影响
 - 认证仅支持 **SQL Server 登录**（用户名/密码）；Windows 集成认证与 Microsoft Entra（AAD）认证不支持
 - `sql_variant` / `geography` / `geometry` / `hierarchyid` 按原样文本展示（`unknown`）
 

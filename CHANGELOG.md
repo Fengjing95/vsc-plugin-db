@@ -9,8 +9,11 @@ SQL Server 驱动缺陷修复（v0.2.0 发布后由 CI 契约实跑抓到，P-53
 ### 修复
 
 - **SQL Server：二进制列的 NULL 绑定报「Implicit conversion from data type nvarchar to varbinary(max) is not allowed」**——mssql 对 null 参数自动推断为 NVarChar 类型，而 nvarchar→varbinary 无隐式转换（T-SQL 转换表 CONVERT-only）。影响含 varbinary 列的表格新增行（该列留空）、清空二进制单元格、值编码契约的全 NULL 行写回。修复：binary 列的 NULL 经 `TypedNullParam` 显式 VarBinary 绑定
-- **契约 fixture 种子同步修复**：CI 两轮实跑显示同一错误实际首触发于契约自身的 beforeAll（`input('avatar', null)` 裸 null 绑定，11 测试全 skip + 套件级报错即 beforeAll 失败特征）——种子 avatar 改三参显式 `mssql.VarBinary` 绑定，驱动的 TypedNullParam 路径由此才能获得真实实例的契约覆盖
+- **SQL Server：uniqueidentifier 读回大写**——tedious 默认经 `bufferToUpperCaseGuid` 返回大写，与写入惯例不一致；连接选项 `lowerCaseGuids: true` 源头小写（往返保真）
+- **契约套件：混入 insert 跳过自增主键列**——SQL Server IDENTITY 禁止显式值（`Cannot insert explicit value for identity column`），变更集组「update 冲突/混合原子性」两项检查的全列 insert 构造对其必炸（MySQL/PG/mock 容忍显式自增值，故仅 mssql 暴露）；套件改为「插入缺省自增列」的通用口径（driver-conformance）
+- **契约 fixture（SQL Server）**：① 种子 `input('avatar', null)` 裸 null 绑定改三参显式 `mssql.VarBinary`（CI 实跑首触发点）；② fixture 库开 `READ_COMMITTED_SNAPSHOT`（Azure SQL DB 默认行为）——SQL Server 默认锁式 READ COMMITTED 下，交互式事务组的「未提交不可见」检查会因 X 锁阻塞互等死锁
 - **发布流水线补 mssql 契约 service**：release.yml 此前缺 `mssql/server:2022-latest` service，v0.2.0 的发布门禁里 mssql 契约被整组 skip（假绿通过）——现与 ci.yml 同款（service + sqlcmd 就绪步骤 + env），发布 Must 口径不再有契约缺考
+- **已知限制补充（SQL Server）**：tedious 对 DECIMAL/NUMERIC 经 JS Number 返回，有效位超过 2^53 的精度在客户端层失真、无法恢复（常规精度不受影响）——README「已知限制」声明
 
 ## [0.2.0] - 2026-10-11
 

@@ -154,6 +154,8 @@ function buildPoolConfig(cfg: ConnectionConfig, secret: string): mssql.config {
       instanceName: o.instanceName ? String(o.instanceName) : undefined,
       // tedious 默认 useUTC=true：TDS 时间值按 UTC 组件解析，读侧 getUTC* 还原墙上时间（§5 口径）
       useUTC: true,
+      // uniqueidentifier 读侧返回小写（tedious 默认大写）——与 §5 书写惯例一致，往返保真
+      lowerCaseGuids: true,
       enableArithAbort: true,
     },
     pool: {

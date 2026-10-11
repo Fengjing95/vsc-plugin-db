@@ -878,7 +878,9 @@ export async function runChangesetChecks(
       let thrown: unknown;
       try {
         await conn.applyChanges(db, obj, toChangeSet({
-          inserts: [{ tempId: 'cf-stale', values: Object.fromEntries(columns.map((c) => [c.name, sampleValueFor(c, 'stale')])) }],
+          // 混入 insert 跳过自增主键列：SQL Server IDENTITY 禁止显式值（IDENTITY_INSERT OFF
+          // 即拒），MySQL/PG/mock 容忍显式值但缺省亦合法——契约按「插入缺省自增列」的通用口径构造
+          inserts: [{ tempId: 'cf-stale', values: Object.fromEntries(columns.filter((c) => !(c.isPrimaryKey && c.autoIncrement)).map((c) => [c.name, sampleValueFor(c, 'stale')])) }],
           updates: [{ rowKey: pkMap, original: pkMap, changes: { [target.name]: { old: current, new: 'cf-stale-value' } } }],
         }));
       } catch (err) {
@@ -935,7 +937,7 @@ export async function runChangesetChecks(
       let thrown: unknown;
       try {
         await conn.applyChanges(db, obj, toChangeSet({
-          inserts: [{ tempId: 'cf-mix', values: Object.fromEntries(columns.map((c) => [c.name, sampleValueFor(c, 'mix')])) }],
+          inserts: [{ tempId: 'cf-mix', values: Object.fromEntries(columns.filter((c) => !(c.isPrimaryKey && c.autoIncrement)).map((c) => [c.name, sampleValueFor(c, 'mix')])) }],
           updates: [{ rowKey: keyA, original: keyA, changes: { [target.name]: { old: oldA, new: newA } } }],
           deletes: [{ rowKey: ghostKey, original: {} }],
         }));

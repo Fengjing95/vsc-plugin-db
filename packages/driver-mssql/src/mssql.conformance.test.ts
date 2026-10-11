@@ -68,6 +68,12 @@ d('mssql conformance（CI service 实跑）', () => {
       .request()
       .query(`IF DB_ID('${DATABASE}') IS NOT NULL EXEC('ALTER DATABASE [${DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${DATABASE}];')`);
     await admin.request().query(`CREATE DATABASE [${DATABASE}]`);
+    // fixture 库开启 RCSI（READ_COMMITTED_SNAPSHOT，Azure SQL DB 默认行为）：SQL Server 默认
+    // READ COMMITTED 为锁式读（PG/MySQL 为 MVCC），未提交 INSERT 的 X 锁会阻塞其他连接的
+    // COUNT——交互式事务契约组的「未提交不可见」检查会互等死锁。仅作用于测试自持的 fixture 库
+    await admin
+      .request()
+      .query(`ALTER DATABASE [${DATABASE}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE`);
     // fixture 表（cf_* 前缀；列型对齐 PG 契约的 cf_users）。全程三段名全限定——
     // mssql 连接池下 `USE` 只改当次抢到的物理连接（P-36 同族），不落会话
     await admin.request().query(`
@@ -249,7 +255,10 @@ const MSSQL_VE_CASES: SqlValueEncodingCase[] = [
   { column: 'c_empty', dataType: 'nvarchar(64)', write: '' },
   { column: 'c_int', dataType: 'int', write: 42 },
   { column: 'c_bigint', dataType: 'bigint', write: '9007199254740993' },
-  { column: 'c_dec', dataType: 'decimal(32,9)', write: '12345678901234567890.123456789' },
+  // decimal 用例取安全精度（14 位有效 < 2^53）：tedious 对 Decimal/Numeric 经 JS Number 返回
+  // （value / 10^scale），超过 Number 安全整数的精度在客户端层即失真、驱动无法恢复——
+  // 与 mysql 值编码组「如实裁剪」同口径；引擎限制在驱动 README 已知限制声明
+  { column: 'c_dec', dataType: 'decimal(32,9)', write: '12345.678901234' },
   { column: 'c_float', dataType: 'float', write: 1.5 },
   { column: 'c_bool', dataType: 'bit', write: true },
   { column: 'c_date', dataType: 'date', write: '2024-06-01' },
