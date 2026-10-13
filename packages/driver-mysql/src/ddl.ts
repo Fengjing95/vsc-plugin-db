@@ -1,4 +1,14 @@
-import { DriverError, type DatabaseMeta, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type DatabaseMeta,
+  type DatabaseSpec,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type TableSpec,
+} from '@db-explorer/core';
 
 /**
  * MySQL 表结构编辑语句生成（M8-B2，概要 §5.9 / 驱动规范 §3 @since v0.1.2）：
@@ -55,6 +65,46 @@ function columnDefSql(col: TableSpec['columns'][number]): string {
   return parts.join(' ');
 }
 
+/** 列名清单字面量（键/外键/索引共用，表设计器批次 B） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => `\`${assertIdentifier('列名', c)}\``).join(', ');
+}
+
+/** CREATE TABLE 内联键/外键/索引子句（表设计器批次 B，交互稿 §12.4~12.6）：
+ *  命名 fail-closed（未命名自动 uk_/fk_/idx_ 表名_序号），外键引用列数须与本地一致 */
+function appendCreateKeyClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? []), ...(spec.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`UNIQUE KEY \`${name}\` (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    cols.push(
+      `CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES \`${assertIdentifier('引用表名', fk.refTable)}\` (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+  for (const idx of spec.indexes ?? []) {
+    const name = assertIdentifier('索引名', idx.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    const using = idx.type ? ` USING ${assertIdentifier('索引类型', idx.type)}` : '';
+    cols.push(`${idx.unique ? 'UNIQUE INDEX' : 'INDEX'} \`${name}\` (${columnListLit(idx.columns)})${using}`);
+  }
+}
+
 export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStatement[] {
   assertIdentifier('库名', db);
   assertIdentifier('表名', spec.name);
@@ -72,6 +122,7 @@ export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStat
   if (pk.length > 0) {
     cols.push(`PRIMARY KEY (${pk.join(', ')})`);
   }
+  appendCreateKeyClauses(cols, spec);
   const tail = spec.comment ? ` COMMENT=${escapeComment(spec.comment)}` : '';
   return [{ sql: `CREATE TABLE \`${db}\`.\`${spec.name}\` (\n  ${cols.join(',\n  ')}\n)${tail}` }];
 }
@@ -132,6 +183,29 @@ export function buildAlterTableStatements(
     statements.push({ sql: `ALTER TABLE ${alterPrefix} ${clauses.join(', ')}`, destructive: true });
   }
 
+  // ── 键/外键/索引 diff（表设计器批次 B，§12.7 红线：DROP 只由「基线存在且 spec 移除」生成）──
+  // 拆两半段：**删除半段在列删除之前**（外键/索引可能依赖将删的列，MySQL 对在用外键的删列直接拒绝）；
+  // 添加半段在列变更之后（外键/索引可引用新加列）
+  const taken = new Set<string>();
+  for (const k of [...(current.uniqueKeys ?? []), ...(current.foreignKeys ?? []), ...(current.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  const alterBase = `ALTER TABLE ${alterPrefix}`;
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  for (const k of [...ukDiff.dropped, ...ukDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP KEY \`${assertIdentifier('唯一键名', k.name!)}\`` });
+  }
+  for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP INDEX \`${assertIdentifier('索引名', k.name!)}\`` });
+  }
+  for (const k of [...fkDiff.dropped, ...fkDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP FOREIGN KEY \`${assertIdentifier('外键名', k.name!)}\`` });
+  }
+
   // 删列（可能丢数据 → destructive；自增列若已并入上方主键变更单句则跳过）
   for (const cur of current.columns) {
     if (!tgtByName.has(cur.name) && !(pkChanged && curPk.length > 0 && cur.autoIncrement)) {
@@ -165,6 +239,29 @@ export function buildAlterTableStatements(
   }
 
   // 主键重建：已并入上方主键变更单句（此处不再重复生成）
+
+  // ── 键/外键/索引 diff 添加半段（列变更之后：外键/索引可引用新加列）
+  for (const k of [...ukDiff.added, ...ukDiff.changed]) {
+    const name = assertIdentifier('唯一键名', k.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    statements.push({ sql: `${alterBase} ADD UNIQUE KEY \`${name}\` (${columnListLit(k.columns)})` });
+  }
+  for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+    const name = assertIdentifier('索引名', k.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    const using = k.type ? ` USING ${assertIdentifier('索引类型', k.type)}` : '';
+    statements.push({ sql: `${alterBase} ADD ${k.unique ? 'UNIQUE ' : ''}INDEX \`${name}\` (${columnListLit(k.columns)})${using}` });
+  }
+  for (const k of [...fkDiff.added, ...fkDiff.changed]) {
+    if (k.refColumns.length !== k.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', k.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    statements.push({
+      sql: `${alterBase} ADD CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(k.columns)}) REFERENCES \`${assertIdentifier('引用表名', k.refTable)}\` (${columnListLit(k.refColumns)})${foreignKeyActionSuffix(k)}`,
+    });
+  }
 
   // 表注释
   if ((spec.comment ?? '') !== (current.comment ?? '') && spec.comment) {

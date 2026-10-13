@@ -23,6 +23,14 @@ window.__DBX_STUB__ = {
         { value: 'BOOLEAN' },
         { value: 'JSON' },
       ],
+      // 表设计器批次 B：Tab 能力（键/外键/索引全开）
+      features: {
+        uniqueKeys: true,
+        foreignKeys: true,
+        foreignKeyAlter: true,
+        indexes: true,
+        indexTypes: ['BTREE', 'HASH'],
+      },
       spec: {
         name: 'users',
         comment: '用户表',
@@ -31,8 +39,13 @@ window.__DBX_STUB__ = {
           { name: 'uname', dataType: 'varchar(64)', nullable: false, isPrimaryKey: false, defaultValue: 'anon', comment: '名称', ordinal: 2 },
           { name: 'amount', dataType: 'int', nullable: true, isPrimaryKey: false, ordinal: 3 },
         ],
+        uniqueKeys: [{ name: 'uk_users_uname', columns: ['uname'] }],
+        foreignKeys: [{ name: 'fk_users_dept', columns: ['amount'], refTable: 'department', refColumns: ['id'] }],
+        indexes: [{ name: 'idx_users_uname', columns: ['uname'], unique: false }],
       },
     }),
+    'ddl.refTables': () => ({ tables: ['department', 'orders', 'users'] }),
+    'ddl.refColumns': (params) => ({ columns: params.table === 'department' ? ['id', 'dept_name'] : ['id'] }),
     'ddl.preview': () => ({
       kind: 'alter',
       statements: [

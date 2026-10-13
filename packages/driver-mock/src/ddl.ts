@@ -1,4 +1,16 @@
-import { DriverError, type ColumnMeta, type DdlStatement, type NormalizedType, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type ColumnMeta,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type IndexMeta,
+  type KeyMeta,
+  type NormalizedType,
+  type TableSpec,
+} from '@db-explorer/core';
 
 /**
  * mock 驱动的表结构编辑（M8-B2，概要 §5.9 / 驱动规范 §3 @since v0.1.2）：
@@ -55,6 +67,14 @@ function columnDefSql(col: TableSpec['columns'][number]): string {
   return parts.join(' ');
 }
 
+/** 列名清单字面量（`\`a\`, \`b\``） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => `\`${assertIdentifier('列名', c)}\``).join(', ');
+}
+
 export function buildMockCreateTable(db: string, spec: TableSpec): DdlStatement[] {
   assertIdentifier('表名', spec.name);
   assertIdentifier('库名', db);
@@ -66,8 +86,40 @@ export function buildMockCreateTable(db: string, spec: TableSpec): DdlStatement[
   if (pk.length > 0) {
     cols.push(`PRIMARY KEY (${pk.join(', ')})`);
   }
+  appendKeySpecClauses(cols, spec);
   const tail = spec.comment ? ` COMMENT=${escapeText(spec.comment)}` : '';
   return [{ sql: `CREATE TABLE \`${db}\`.\`${spec.name}\` (\n  ${cols.join(',\n  ')}\n)${tail}` }];
+}
+
+/** CREATE TABLE 内联键/外键/索引子句（表设计器批次 B）：命名 fail-closed，外键引用列数须与本地一致 */
+function appendKeySpecClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? []), ...(spec.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`UNIQUE KEY \`${name}\` (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    assertIdentifier('引用表名', fk.refTable);
+    cols.push(
+      `CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES \`${fk.refTable}\` (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+  for (const idx of spec.indexes ?? []) {
+    const name = assertIdentifier('索引名', idx.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    cols.push(`${idx.unique ? 'UNIQUE INDEX' : 'INDEX'} \`${name}\` (${columnListLit(idx.columns)})`);
+  }
 }
 
 /** 列定义差异判定：类型/nullable/自增/默认值/注释任一变化即需 MODIFY（类型变化标 destructive） */
@@ -149,6 +201,48 @@ export function buildMockAlterTable(
     statements.push({
       sql: `ALTER TABLE ${alterPrefix} ADD PRIMARY KEY (${tgtPk.map((n) => `\`${n}\``).join(', ')})`,
     });
+  }
+
+  // 键/外键/索引 diff（表设计器批次 B，§12.7 红线）：按名对齐——同形状跳过、异形 DROP+ADD，
+  // DROP 只由「基线存在且 spec 移除」生成；基线未携带（字段缺省）时只增不删
+  const taken = new Set<string>();
+  for (const k of [...(current.uniqueKeys ?? []), ...(current.foreignKeys ?? []), ...(current.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  const alterBase = `ALTER TABLE ${alterPrefix}`;
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  for (const k of [...ukDiff.added, ...ukDiff.changed]) {
+    const name = assertIdentifier('唯一键名', k.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    statements.push({ sql: `${alterBase} ADD UNIQUE KEY \`${name}\` (${columnListLit(k.columns)})` });
+  }
+  for (const k of [...ukDiff.dropped, ...ukDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP KEY \`${assertIdentifier('唯一键名', k.name!)}\`` });
+  }
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+    const name = assertIdentifier('索引名', k.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    statements.push({ sql: `${alterBase} ADD ${k.unique ? 'UNIQUE ' : ''}INDEX \`${name}\` (${columnListLit(k.columns)})` });
+  }
+  for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP INDEX \`${assertIdentifier('索引名', k.name!)}\`` });
+  }
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  for (const k of [...fkDiff.added, ...fkDiff.changed]) {
+    if (k.refColumns.length !== k.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', k.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    statements.push({
+      sql: `${alterBase} ADD CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(k.columns)}) REFERENCES \`${assertIdentifier('引用表名', k.refTable)}\` (${columnListLit(k.refColumns)})${foreignKeyActionSuffix(k)}`,
+    });
+  }
+  for (const k of [...fkDiff.dropped, ...fkDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP FOREIGN KEY \`${assertIdentifier('外键名', k.name!)}\`` });
   }
 
   // 表注释
@@ -300,18 +394,27 @@ export function inferNormalizedType(dataType: string): NormalizedType {
   return 'unknown';
 }
 
-/** DDL 执行器对注册表的最小操作面（index.ts 注入；columns/primaryKey 为活对象可就地变更，
+/** DDL 执行器对注册表的最小操作面（index.ts 注入；columns/primaryKey/keys/indexes 为活对象可就地变更，
  *  行数据宽度经 appendColumnCells/spliceColumnCells 同步维护） */
 export interface MockDdlRegistry {
   databases(): readonly string[];
-  getTable(db: string, obj: string): { comment?: string; columns: ColumnMeta[]; primaryKey: string[] } | undefined;
-  createTable(db: string, obj: string, def: { comment?: string; columns: ColumnMeta[]; primaryKey: string[] }): void;
+  getTable(db: string, obj: string): MockTableShape | undefined;
+  createTable(db: string, obj: string, def: MockTableShape): void;
   dropTable(db: string, obj: string): void;
   renameTable(db: string, obj: string, newDb: string, newObj: string): void;
   /** ADD COLUMN 后：为所有已物化行补 null 单元（保持行宽 == 列数） */
   appendColumnCells(db: string, obj: string): void;
   /** DROP COLUMN 后：从所有已物化行裁掉该下标单元 */
   spliceColumnCells(db: string, obj: string, index: number): void;
+}
+
+/** 注册表表形状（表设计器批次 B 扩展 keys/indexes——listKeys/listIndexes 数据源） */
+export interface MockTableShape {
+  comment?: string;
+  columns: ColumnMeta[];
+  primaryKey: string[];
+  keys: KeyMeta[];
+  indexes: IndexMeta[];
 }
 
 function toColumnMeta(name: string, rest: ParsedColumnRest, ordinal: number): ColumnMeta {
@@ -326,6 +429,52 @@ function toColumnMeta(name: string, rest: ParsedColumnRest, ordinal: number): Co
     comment: rest.comment,
     ordinal,
   };
+}
+
+/** 解析外键约束子句（CREATE 内联与 ALTER ADD CONSTRAINT 同形）；
+ *  非外键子句返回 undefined */
+function parseForeignKeyClause(text: string): KeyMeta | undefined {
+  const m =
+    /^CONSTRAINT `([^`]+)` FOREIGN KEY \(([\s\S]+)\) REFERENCES `([^`]+)` \(([\s\S]+)\)(?: ON DELETE (RESTRICT|CASCADE|SET NULL|NO ACTION))?(?: ON UPDATE (RESTRICT|CASCADE|SET NULL|NO ACTION))?$/i.exec(
+      text.trim(),
+    );
+  if (!m) {
+    return undefined;
+  }
+  return {
+    name: m[1],
+    kind: 'FK',
+    columns: splitTopLevel(m[2]).map(unquoteIdent),
+    refTable: m[3],
+    refColumns: splitTopLevel(m[4]).map(unquoteIdent),
+  };
+}
+
+/** 键/外键引用目标存在性 fail-closed（对齐 MySQL：引用表/列必须存在） */
+function assertKeySpecTargets(registry: MockDdlRegistry, db: string, keys: KeyMeta[]): void {
+  for (const k of keys) {
+    if (k.kind !== 'FK') {
+      continue;
+    }
+    const ref = registry.getTable(db, k.refTable!);
+    if (!ref) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name}" 引用表 "${k.refTable}" 不存在`);
+    }
+    for (const c of k.refColumns ?? []) {
+      if (!ref.columns.some((x) => x.name === c)) {
+        throw new DriverError('E_VALIDATION', `外键 "${k.name}" 引用列 "${k.refTable}.${c}" 不存在`);
+      }
+    }
+  }
+}
+
+/** 本表键/索引列存在性 fail-closed */
+function assertColumnExist(def: { columns: ColumnMeta[] }, names: readonly string[]): void {
+  for (const n of names) {
+    if (!def.columns.some((c) => c.name === n)) {
+      throw new DriverError('E_VALIDATION', `列 "${n}" 不存在`);
+    }
+  }
 }
 
 /** 执行单条 mock DDL 语句（对注册表就地变更） */
@@ -347,6 +496,8 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
     const items = splitTopLevel(create[3]);
     const columns: ColumnMeta[] = [];
     const primaryKey: string[] = [];
+    const keys: KeyMeta[] = [];
+    const indexes: IndexMeta[] = [];
     let tableComment: string | undefined;
     if (create[4]) {
       tableComment = create[4].trim().slice("COMMENT='".length, -1).replace(/''/g, "'");
@@ -358,6 +509,23 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
         for (const part of splitTopLevel(pk[1])) {
           primaryKey.push(unquoteIdent(part));
         }
+        continue;
+      }
+      const uk = /^UNIQUE KEY `([^`]+)` \(([\s\S]+)\)$/i.exec(trimmed);
+      if (uk) {
+        const cols = splitTopLevel(uk[2]).map(unquoteIdent);
+        keys.push({ name: uk[1], kind: 'UNIQUE', columns: cols });
+        indexes.push({ name: uk[1], columns: cols, unique: true });
+        continue;
+      }
+      const fk = parseForeignKeyClause(trimmed);
+      if (fk) {
+        keys.push(fk);
+        continue;
+      }
+      const idx = /^(UNIQUE )?(?:INDEX|KEY) `([^`]+)` \(([\s\S]+)\)$/i.exec(trimmed);
+      if (idx) {
+        indexes.push({ name: idx[2], columns: splitTopLevel(idx[3]).map(unquoteIdent), unique: Boolean(idx[1]) });
         continue;
       }
       const colMatch = /^`([^`]+)`\s+([\s\S]+)$/.exec(trimmed);
@@ -374,7 +542,11 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
       c.isPrimaryKey = true;
       c.nullable = false;
     }
-    registry.createTable(db, create[2], { comment: tableComment, columns, primaryKey });
+    if (primaryKey.length > 0) {
+      keys.unshift({ name: 'PRIMARY', kind: 'PK', columns: [...primaryKey] });
+    }
+    assertKeySpecTargets(registry, db, keys);
+    registry.createTable(db, create[2], { comment: tableComment, columns, primaryKey, keys, indexes });
     return;
   }
 
@@ -441,6 +613,11 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
         c.ordinal = i + 1;
       });
       def.primaryKey = def.primaryKey.filter((n) => n !== dropCol[1]);
+      // 含该列的键/索引随删（对齐 MySQL）；外键本地列被删同样移除——原地收缩（理由同 DROP KEY）
+      const keepKeys = def.keys.filter((k) => !k.columns.includes(dropCol[1]));
+      def.keys.splice(0, def.keys.length, ...keepKeys);
+      const keepIndexes = def.indexes.filter((i) => !i.columns.includes(dropCol[1]));
+      def.indexes.splice(0, def.indexes.length, ...keepIndexes);
       registry.spliceColumnCells(db, obj, idx);
       return;
     }
@@ -452,6 +629,55 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
         throw new DriverError('E_NOT_FOUND', `列 "${modify[1]}" 不存在`);
       }
       Object.assign(col, toColumnMeta(col.name, parseColumnRest(modify[2]), col.ordinal));
+      return;
+    }
+
+    const addUk = /^ADD UNIQUE KEY `([^`]+)` \(([\s\S]+)\)$/i.exec(action);
+    if (addUk) {
+      const cols = splitTopLevel(addUk[2]).map(unquoteIdent);
+      assertColumnExist(def, cols);
+      def.keys.push({ name: addUk[1], kind: 'UNIQUE', columns: cols });
+      def.indexes.push({ name: addUk[1], columns: cols, unique: true });
+      return;
+    }
+
+    const addFkClause = /^ADD CONSTRAINT /i.test(action) ? parseForeignKeyClause(action.replace(/^ADD /i, '')) : undefined;
+    if (addFkClause) {
+      assertKeySpecTargets(registry, db, [addFkClause]);
+      assertColumnExist(def, addFkClause.columns);
+      def.keys.push(addFkClause);
+      return;
+    }
+
+    const addIdx = /^ADD (UNIQUE )?INDEX `([^`]+)` \(([\s\S]+)\)$/i.exec(action);
+    if (addIdx) {
+      const cols = splitTopLevel(addIdx[3]).map(unquoteIdent);
+      assertColumnExist(def, cols);
+      def.indexes.push({ name: addIdx[2], columns: cols, unique: Boolean(addIdx[1]) });
+      return;
+    }
+
+    const dropKey = /^DROP KEY `([^`]+)`$/i.exec(action);
+    if (dropKey) {
+      // 原地收缩——getTable 返回的是重建形状，重新赋值不会写回注册表
+      const keepKeys = def.keys.filter((k) => !(k.kind === 'UNIQUE' && k.name === dropKey[1]));
+      def.keys.splice(0, def.keys.length, ...keepKeys);
+      const keepIdx = def.indexes.filter((i) => i.name !== dropKey[1]);
+      def.indexes.splice(0, def.indexes.length, ...keepIdx);
+      return;
+    }
+
+    const dropFk = /^DROP FOREIGN KEY `([^`]+)`$/i.exec(action);
+    if (dropFk) {
+      const keepKeys = def.keys.filter((k) => !(k.kind === 'FK' && k.name === dropFk[1]));
+      def.keys.splice(0, def.keys.length, ...keepKeys);
+      return;
+    }
+
+    const dropIdx = /^DROP INDEX `([^`]+)`$/i.exec(action);
+    if (dropIdx) {
+      const keepIdx = def.indexes.filter((i) => i.name !== dropIdx[1]);
+      def.indexes.splice(0, def.indexes.length, ...keepIdx);
       return;
     }
 

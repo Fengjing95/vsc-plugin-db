@@ -1,8 +1,16 @@
-import type { ColumnSpecPayload, DdlStatementPayload, TableSpecPayload } from '@db-explorer/protocol';
+import type {
+  ColumnSpecPayload,
+  DdlStatementPayload,
+  ForeignKeySpecPayload,
+  IndexSpecPayload,
+  TableSpecPayload,
+  UniqueKeySpecPayload,
+} from '@db-explorer/protocol';
 
 /**
- * 表结构编辑器视图推导（M8-B2，交互稿 §12）：纯函数，与 store 分离便于单测。
- * 权威语句集始终由驱动 diff（概要 §5.9）；此处的变更统计仅供预览前参考。
+ * 表结构编辑器视图推导（M8-B2，交互稿 §12；键/外键/索引为表设计器批次 B §12.4~12.7）：
+ * 纯函数，与 store 分离便于单测。权威语句集始终由驱动 diff（概要 §5.9）；
+ * 此处的变更统计仅供预览前参考。
  */
 
 export interface ColumnRow {
@@ -12,6 +20,17 @@ export interface ColumnRow {
   /** 删除标记：红底展示可撤销（§12.2） */
   deleted?: boolean;
 }
+
+/** 键/外键/索引编辑行（本地稳定 key + 删除标记，与列行同构） */
+export interface KeyRow<T> {
+  rowId: string;
+  spec: T;
+  deleted?: boolean;
+}
+
+export type UkRow = KeyRow<UniqueKeySpecPayload>;
+export type FkRow = KeyRow<ForeignKeySpecPayload>;
+export type IdxRow = KeyRow<IndexSpecPayload>;
 
 export interface SpecDiffSummary {
   added: number;
@@ -130,4 +149,108 @@ export function tableSpecError(kind: 'create' | 'alter', tableName: string, rows
 /** 下一 ordinal：现有最大值 +1（删除行占用的 ordinal 不复用冲突） */
 export function nextOrdinal(rows: ColumnRow[]): number {
   return rows.reduce((max, r) => Math.max(max, r.col.ordinal), 0) + 1;
+}
+
+// ── 键 / 外键 / 索引（表设计器批次 B，§12.4~12.7）─────────────────────────
+
+/** 唯一键行校验：列 ≥1、名称行内唯一（名称允许空 = 驱动自动生成） */
+export function ukRowError(row: UkRow, allRows: UkRow[]): string | undefined {
+  if (row.deleted) {
+    return undefined;
+  }
+  if (row.spec.columns.length === 0) {
+    return '唯一键至少需要一列';
+  }
+  const name = (row.spec.name ?? '').trim();
+  if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
+    return `唯一键名 "${name}" 重复`;
+  }
+  return undefined;
+}
+
+/** 外键行校验：本表列 ≥1、引用表/引用列非空、引用列数与本地一致、名称行内唯一 */
+export function fkRowError(row: FkRow, allRows: FkRow[]): string | undefined {
+  if (row.deleted) {
+    return undefined;
+  }
+  if (row.spec.columns.length === 0) {
+    return '外键至少需要一列';
+  }
+  if (!row.spec.refTable.trim()) {
+    return '引用表不能为空';
+  }
+  if (row.spec.refColumns.length === 0) {
+    return '引用列不能为空';
+  }
+  if (row.spec.refColumns.length !== row.spec.columns.length) {
+    return '引用列数须与本地列数一致';
+  }
+  const name = (row.spec.name ?? '').trim();
+  if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
+    return `外键名 "${name}" 重复`;
+  }
+  return undefined;
+}
+
+/** 索引行校验：列 ≥1、名称行内唯一 */
+export function idxRowError(row: IdxRow, allRows: IdxRow[]): string | undefined {
+  if (row.deleted) {
+    return undefined;
+  }
+  if (row.spec.columns.length === 0) {
+    return '索引至少需要一列';
+  }
+  const name = (row.spec.name ?? '').trim();
+  if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
+    return `索引名 "${name}" 重复`;
+  }
+  return undefined;
+}
+
+/** 命名键条目 diff 计数（变更统计用；按名对齐——未命名视为新增；形状变化计为修改） */
+function keyDiffCounts<T extends { name?: string }>(baseline: readonly T[] | undefined, current: readonly T[]): { added: number; removed: number; modified: number } {
+  const baseByName = new Map((baseline ?? []).filter((x) => x.name).map((x) => [x.name!, x]));
+  let added = 0;
+  let modified = 0;
+  for (const x of current) {
+    if (!x.name || !baseByName.has(x.name)) {
+      added++;
+    } else if (JSON.stringify({ ...x, name: undefined }) !== JSON.stringify({ ...baseByName.get(x.name)!, name: undefined })) {
+      modified++;
+    }
+  }
+  const curNames = new Set(current.filter((x) => x.name).map((x) => x.name!));
+  const removed = (baseline ?? []).filter((x) => x.name && !curNames.has(x.name)).length;
+  return { added, removed, modified };
+}
+
+/** 变更统计扩展（§12.7）：列 + 唯一键/外键/索引合并计数；全 0 返回 undefined */
+export function diffSummaryTextExtended(
+  baseline: TableSpecPayload | null,
+  rows: ColumnRow[],
+  ukRows: UkRow[],
+  fkRows: FkRow[],
+  idxRows: IdxRow[],
+): string | undefined {
+  const parts: string[] = [];
+  const colSummary = baseline ? diffSpecSummary(baseline, rows) : undefined;
+  if (colSummary) {
+    const t = diffSummaryText(colSummary);
+    if (t) {
+      parts.push(t);
+    }
+  }
+  if (baseline) {
+    const groups: Array<[string, ReturnType<typeof keyDiffCounts>]> = [
+      ['唯一键', keyDiffCounts(baseline.uniqueKeys, ukRows.filter((r) => !r.deleted).map((r) => r.spec))],
+      ['外键', keyDiffCounts(baseline.foreignKeys, fkRows.filter((r) => !r.deleted).map((r) => r.spec))],
+      ['索引', keyDiffCounts(baseline.indexes, idxRows.filter((r) => !r.deleted).map((r) => r.spec))],
+    ];
+    for (const [label, c] of groups) {
+      if (c.added) parts.push(`新增 ${c.added} ${label}`);
+      if (c.removed) parts.push(`删除 ${c.removed} ${label}`);
+      if (c.modified) parts.push(`修改 ${c.modified} ${label}`);
+    }
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }

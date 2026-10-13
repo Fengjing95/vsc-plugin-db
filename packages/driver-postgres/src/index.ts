@@ -73,6 +73,14 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-15）——buildCreateDatabase/buildDropDatabase
+  // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（约束式 UNIQUE/FK；PG 索引方法族）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: true,
+    indexes: true,
+    indexTypes: ['btree', 'hash', 'gin', 'gist', 'brin'],
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',

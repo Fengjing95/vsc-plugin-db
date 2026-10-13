@@ -1,4 +1,13 @@
-import { DriverError, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type DatabaseSpec,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type TableSpec,
+} from '@db-explorer/core';
 import { quotePgIdentifier } from './sql';
 
 /**
@@ -75,6 +84,58 @@ function commentOnStatements(db: string, spec: TableSpec): DdlStatement[] {
   return statements;
 }
 
+/** 列名清单字面量（键/外键/索引共用，表设计器批次 B） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => quotePgIdentifier(assertIdentifier('列名', c))).join(', ');
+}
+
+/** 唯一键/外键的 CREATE TABLE 内联 CONSTRAINT 子句（PG 无内联 INDEX——索引走独立 CREATE INDEX）；
+ *  命名 fail-closed（未命名自动 uk_/fk_/idx_ 表名_序号），外键引用列数须与本地一致 */
+function appendCreateConstraintClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`CONSTRAINT ${quotePgIdentifier(name)} UNIQUE (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    cols.push(
+      `CONSTRAINT ${quotePgIdentifier(name)} FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES ${quotePgIdentifier(assertIdentifier('引用表名', fk.refTable))} (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+}
+
+/** 索引方法子句（PG CREATE INDEX 的 USING；缺省 = 服务端默认 btree） */
+function pgIndexTypeSuffix(type: string | undefined): string {
+  return type ? ` USING ${assertIdentifier('索引类型', type)}` : '';
+}
+
+/** 二级索引独立语句（CREATE [UNIQUE] INDEX；PG 建表无内联索引语法） */
+function createIndexStatements(db: string, spec: TableSpec): DdlStatement[] {
+  const taken = new Set((spec.uniqueKeys ?? []).map((k) => k.name).filter(Boolean) as string[]);
+  const qualified = `${quotePgIdentifier(db)}.${quotePgIdentifier(spec.name)}`;
+  return (spec.indexes ?? []).map((idx) => {
+    const name = assertIdentifier('索引名', idx.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    return {
+      sql: `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${quotePgIdentifier(name)} ON ${qualified} (${columnListLit(idx.columns)})${pgIndexTypeSuffix(idx.type)}`,
+    };
+  });
+}
+
 export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStatement[] {
   assertIdentifier('库名', db);
   assertIdentifier('表名', spec.name);
@@ -89,8 +150,9 @@ export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStat
   if (pk.length > 0) {
     cols.push(`PRIMARY KEY (${pk.join(', ')})`);
   }
+  appendCreateConstraintClauses(cols, spec);
   const create = `CREATE TABLE ${quotePgIdentifier(db)}.${quotePgIdentifier(spec.name)} (\n  ${cols.join(',\n  ')}\n)`;
-  return [{ sql: create }, ...commentOnStatements(db, spec)];
+  return [{ sql: create }, ...createIndexStatements(db, spec), ...commentOnStatements(db, spec)];
 }
 
 export function buildAlterTableStatements(
@@ -138,6 +200,27 @@ export function buildAlterTableStatements(
         destructive: true,
       });
     }
+  }
+
+  // ── 键/外键/索引 diff 删除半段（表设计器批次 B，§12.7 红线：DROP 只由「基线存在且 spec 移除」
+  // 生成）——必须在列删除之前：PG 对被外键/索引依赖的列直接拒绝 DROP COLUMN
+  const taken = new Set<string>();
+  for (const k of [...(current.uniqueKeys ?? []), ...(current.foreignKeys ?? []), ...(current.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  for (const k of [...fkDiff.dropped, ...fkDiff.changed]) {
+    statements.push({ sql: `ALTER TABLE ${alterPrefix} DROP CONSTRAINT ${quotePgIdentifier(assertIdentifier('外键名', k.name!))}` });
+  }
+  for (const k of [...ukDiff.dropped, ...ukDiff.changed]) {
+    statements.push({ sql: `ALTER TABLE ${alterPrefix} DROP CONSTRAINT ${quotePgIdentifier(assertIdentifier('唯一键名', k.name!))}` });
+  }
+  for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+    statements.push({ sql: `DROP INDEX ${quotePgIdentifier(db)}.${quotePgIdentifier(assertIdentifier('索引名', k.name!))}` });
   }
 
   // 删列（可能丢数据 → destructive；主键列依赖已在上文解除）
@@ -199,6 +282,30 @@ export function buildAlterTableStatements(
   if (pkChanged && tgtPk.length > 0) {
     statements.push({
       sql: `ALTER TABLE ${alterPrefix} ADD PRIMARY KEY (${tgtPk.map((n) => quotePgIdentifier(n)).join(', ')})`,
+    });
+  }
+
+  // ── 键/外键/索引 diff 添加半段（列变更之后：外键/索引可引用新加列）
+  for (const k of [...ukDiff.added, ...ukDiff.changed]) {
+    const name = assertIdentifier('唯一键名', k.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    statements.push({ sql: `ALTER TABLE ${alterPrefix} ADD CONSTRAINT ${quotePgIdentifier(name)} UNIQUE (${columnListLit(k.columns)})` });
+  }
+  for (const k of [...fkDiff.added, ...fkDiff.changed]) {
+    if (k.refColumns.length !== k.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', k.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    statements.push({
+      sql: `ALTER TABLE ${alterPrefix} ADD CONSTRAINT ${quotePgIdentifier(name)} FOREIGN KEY (${columnListLit(k.columns)}) REFERENCES ${quotePgIdentifier(assertIdentifier('引用表名', k.refTable))} (${columnListLit(k.refColumns)})${foreignKeyActionSuffix(k)}`,
+    });
+  }
+  for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+    const name = assertIdentifier('索引名', k.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    statements.push({
+      sql: `CREATE ${k.unique ? 'UNIQUE ' : ''}INDEX ${quotePgIdentifier(name)} ON ${alterPrefix} (${columnListLit(k.columns)})${pgIndexTypeSuffix(k.type)}`,
     });
   }
 

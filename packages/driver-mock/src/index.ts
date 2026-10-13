@@ -356,8 +356,10 @@ const mockDdlRegistry: MockDdlRegistry = {
     if (!def) {
       return undefined;
     }
-    // columns/primaryKey 必须是活对象引用（执行器就地改标记）
-    return { comment: def.comment, columns: def.columns, primaryKey: def.primaryKey };
+    // columns/primaryKey/keys/indexes 必须是活对象引用（执行器就地改标记/增删条目）
+    def.keys ??= [];
+    def.indexes ??= [];
+    return { comment: def.comment, columns: def.columns, primaryKey: def.primaryKey, keys: def.keys, indexes: def.indexes };
   },
   createTable: (db, obj, def) => {
     tableDefs[`${db}.${obj}`] = {
@@ -365,6 +367,8 @@ const mockDdlRegistry: MockDdlRegistry = {
       comment: def.comment,
       columns: def.columns,
       primaryKey: def.primaryKey,
+      keys: def.keys,
+      indexes: def.indexes,
       rows: () => [],
     };
     store.set(storeKey(db, obj), []);

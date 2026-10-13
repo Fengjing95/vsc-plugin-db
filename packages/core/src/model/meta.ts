@@ -94,6 +94,40 @@ export interface TableSpec {
   name: string;
   comment?: string;
   columns: ColumnSpec[];
+  /** @since 表设计器批次 B（交互稿 §12.4~12.6）：缺省 = 不涉及。基线回读（specFromTable）
+   *  填充库内现状；驱动 diff 红线——DROP 约束/索引只允许由「基线存在且 spec 移除」生成 */
+  uniqueKeys?: UniqueKeySpec[];
+  foreignKeys?: ForeignKeySpec[];
+  indexes?: IndexSpec[];
+}
+
+/** 唯一键（键 Tab）。name 缺省由驱动自动生成（uk_<table>_<n>，截断 63 字符内） */
+export interface UniqueKeySpec {
+  name?: string;
+  columns: string[];
+}
+
+/** 外键动作（标准四级；驱动经 capabilities.tableDesign.refActions 声明子集裁剪） */
+export type ForeignKeyAction = 'RESTRICT' | 'CASCADE' | 'SET NULL' | 'NO ACTION';
+
+/** 外键（外键 Tab）。name 缺省由驱动自动生成（fk_<table>_<n>）；
+ *  首版引用范围限当前库内（refTable 为裸表名，跨库引用后续按方言评估） */
+export interface ForeignKeySpec {
+  name?: string;
+  columns: string[];
+  refTable: string;
+  refColumns: string[];
+  onDelete?: ForeignKeyAction;
+  onUpdate?: ForeignKeyAction;
+}
+
+/** 二级索引（索引 Tab，独立 CREATE/DROP INDEX 语义；唯一约束归键 Tab）。
+ *  name 缺省自动生成（idx_<table>_<n>）；type 由方言裁剪（capabilities.tableDesign.indexTypes） */
+export interface IndexSpec {
+  name?: string;
+  columns: string[];
+  unique?: boolean;
+  type?: string;
 }
 
 /** DDL 语句（语句集内按序执行，失败即停并定位序号） */

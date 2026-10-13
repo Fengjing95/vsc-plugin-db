@@ -79,6 +79,14 @@ const capabilities: DriverCapabilities = {
   supportsCancel: true, // signal → request.cancel()（TDS ATTENTION），CI service 实跑取消组验证
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
+  // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（约束式 UNIQUE/FK；T-SQL 索引类型）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: true,
+    indexes: true,
+    indexTypes: ['CLUSTERED', 'NONCLUSTERED'],
+  },
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-21）——buildCreateDatabase/buildDropDatabase
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,

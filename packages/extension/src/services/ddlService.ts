@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   DriverError,
   specFromColumns,
+  specFromTable,
   type DdlStatement,
   type DriverHost,
   type IConnection,
@@ -12,9 +13,13 @@ import {
   DdlExecuteParamsSchema,
   DdlLoadParamsSchema,
   DdlPreviewParamsSchema,
+  DdlRefColumnsParamsSchema,
+  DdlRefTablesParamsSchema,
   type DdlExecuteResult,
   type DdlLoadResult,
   type DdlPreviewResult,
+  type DdlRefColumnsResult,
+  type DdlRefTablesResult,
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import { describeError, type Logger } from './logger';
@@ -53,12 +58,45 @@ export class DdlService {
     const p = DdlLoadParamsSchema.parse(raw);
     const conn = await this.requireDdlConnection(p.connId);
     const dataTypes = conn.listDataTypes?.();
+    const features = this.tableDesignFeatures(p.connId);
     if (!p.obj) {
-      return { kind: 'create', spec: null, dataTypes };
+      return { kind: 'create', spec: null, dataTypes, features };
     }
-    const metas = await conn.listColumns(p.db, p.obj);
     const comment = await this.tableCommentOf(conn, p.db, p.obj);
-    return { kind: 'alter', spec: specFromColumns(p.obj, metas, comment), dataTypes };
+    return { kind: 'alter', spec: await this.baselineOf(conn, p.db, p.obj, comment), dataTypes, features };
+  }
+
+  /** Tab 能力透传（交互稿 §12.2）：驱动 capabilities.tableDesign 原样下发；未声明 = 各 Tab 隐藏 */
+  private tableDesignFeatures(connId: string): DdlLoadResult['features'] {
+    return this.deps.connections.getDriver(connId)?.capabilities.tableDesign;
+  }
+
+  /** 外键引用表清单（仅 table；视图/集合不作为引用目标） */
+  async refTables(raw: unknown): Promise<DdlRefTablesResult> {
+    const p = DdlRefTablesParamsSchema.parse(raw);
+    const conn = await this.deps.connections.ensureConnected(p.connId);
+    const objs = await conn.listObjects(p.db);
+    return { tables: objs.filter((o) => o.kind === 'table').map((o) => o.name) };
+  }
+
+  /** 外键引用表列清单 */
+  async refColumns(raw: unknown): Promise<DdlRefColumnsResult> {
+    const p = DdlRefColumnsParamsSchema.parse(raw);
+    const conn = await this.deps.connections.ensureConnected(p.connId);
+    const cols = await conn.listColumns(p.db, p.table);
+    return { columns: cols.map((c) => c.name) };
+  }
+
+  /** 基线全量派生（§12.7 红线）：列之外把 listKeys/listIndexes 回读进 spec——
+   *  不回读则 alter 会把库内既有键/外键/索引当「用户删除」误删。未实现（三方驱动）时回落纯列基线，
+   *  驱动 diff 只增不删 */
+  private async baselineOf(conn: IConnection, db: string, obj: string, comment?: string): Promise<TableSpec> {
+    const metas = await conn.listColumns(db, obj);
+    if (typeof conn.listKeys !== 'function' || typeof conn.listIndexes !== 'function') {
+      return specFromColumns(obj, metas, comment);
+    }
+    const [keys, indexes] = await Promise.all([conn.listKeys(db, obj), conn.listIndexes(db, obj)]);
+    return specFromTable(obj, metas, comment, keys, indexes);
   }
 
   async preview(raw: unknown): Promise<DdlPreviewResult> {
@@ -135,13 +173,17 @@ export class DdlService {
       throw new DriverError('E_READONLY', '只读连接，写操作被拒绝');
     }
     const conn = await this.requireDdlConnection(connId);
-    const current = specFromColumns(obj, await conn.listColumns(db, obj));
+    const current = await this.baselineOf(conn, db, obj);
     if (!current.columns.some((c) => c.name === column)) {
       throw new DriverError('E_NOT_FOUND', `列 "${column}" 不存在（表结构可能已变更，请刷新后重试）`);
     }
     const target: TableSpec = {
       ...current,
       columns: current.columns.filter((c) => c.name !== column),
+      // 含该列的键/外键/索引一并移除——驱动 diff 生成显式 DROP（MySQL 语义同向：随列删除）
+      uniqueKeys: current.uniqueKeys?.filter((k) => !k.columns.includes(column)),
+      foreignKeys: current.foreignKeys?.filter((k) => !k.columns.includes(column)),
+      indexes: current.indexes?.filter((k) => !k.columns.includes(column)),
     };
     const statements = await conn.buildAlterTable!(db, obj, target, current);
     if (statements.length === 0) {
@@ -246,7 +288,8 @@ export class DdlService {
     return conn;
   }
 
-  /** 预览/执行同源：alter 的 current 每次实时重拉（不走缓存，防过期基线）；create 直接生成 */
+  /** 预览/执行同源：alter 的 current 每次实时重拉（不走缓存，防过期基线；含键/外键/索引回读，§12.7）；
+   *  create 直接生成 */
   private async buildStatements(
     conn: IConnection,
     p: { connId: string; db: string; obj?: string; spec: TableSpec },
@@ -254,7 +297,7 @@ export class DdlService {
     if (!p.obj) {
       return { kind: 'create', statements: await conn.buildCreateTable!(p.db, p.spec) };
     }
-    const current = specFromColumns(p.obj, await conn.listColumns(p.db, p.obj));
+    const current = await this.baselineOf(conn, p.db, p.obj);
     const statements = await conn.buildAlterTable!(p.db, p.obj, p.spec, current);
     return { kind: 'alter', statements };
   }

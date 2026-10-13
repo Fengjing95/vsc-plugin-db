@@ -67,6 +67,14 @@ const capabilities: DriverCapabilities = {
   supportsCancel: false, // 同步引擎不可中断（D-16；契约组按此跳过取消组）
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
+  // 表设计器批次 B（交互稿 §12.2 能力矩阵）：唯一键 alter 走表重建序列；外键 alter 无原地语法
+  // → foreignKeyAlter: false（UI alter 态外键 Tab 只读 + 提示，驱动 fail-closed E_UNSUPPORTED）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: false,
+    indexes: true,
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',

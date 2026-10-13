@@ -49,6 +49,22 @@ export interface DriverCapabilities {
   /** @since v0.1.11（M8-DBDDL / D-19）：库级 DDL——按需实现 buildCreateDatabase/buildAlterDatabase/
    *  buildDropDatabase + getDatabaseFormSchema（菜单按方法存在性裁剪，P-19 同族口径） */
   supportsDatabaseDdl?: boolean;
+  /** @since 表设计器批次 B（交互稿 §12.2）：表设计器各 Tab 能力。未声明 = 对应 Tab 隐藏，
+   *  编辑器回落纯列编辑（三方驱动无感降级）；supportsDdlEditor 未声明时整体无效 */
+  tableDesign?: {
+    /** 键 Tab 唯一键区（主键区恒随列编辑可用） */
+    uniqueKeys?: boolean;
+    /** 外键 Tab（create 内联语义） */
+    foreignKeys?: boolean;
+    /** 外键 alter 原地增删；false = alter 态外键只读 + 提示（SQLite 无原地 ALTER CONSTRAINT） */
+    foreignKeyAlter?: boolean;
+    /** 索引 Tab */
+    indexes?: boolean;
+    /** 索引类型下拉选项（BTREE/HASH 等；缺省 = 隐藏类型列） */
+    indexTypes?: string[];
+    /** 外键 ON DELETE/UPDATE 动作选项；缺省 = 标准四项（RESTRICT/CASCADE/SET NULL/NO ACTION） */
+    refActions?: string[];
+  };
   hierarchy: NodeLevel[];
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';

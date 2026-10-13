@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DriverError, type ColumnMeta } from '@db-explorer/core';
+import { DriverError } from '@db-explorer/core';
 import type { TableSpec } from '@db-explorer/core';
 import {
   buildMockAlterTable,
@@ -8,6 +8,7 @@ import {
   inferNormalizedType,
   isMockDdlStatement,
   type MockDdlRegistry,
+  type MockTableShape,
 } from './ddl';
 
 function baseSpec(overrides: Partial<TableSpec> = {}): TableSpec {
@@ -25,7 +26,7 @@ function baseSpec(overrides: Partial<TableSpec> = {}): TableSpec {
 
 /** 可断言的内存注册表桩：记录变更调用 + 活对象 */
 function fakeRegistry(): MockDdlRegistry & { created: string[]; dropped: string[]; renamed: string[] } {
-  const tables = new Map<string, { comment?: string; columns: ColumnMeta[]; primaryKey: string[] }>();
+  const tables = new Map<string, MockTableShape>();
   const rows = new Map<string, unknown[][]>();
   const created: string[] = [];
   const dropped: string[] = [];

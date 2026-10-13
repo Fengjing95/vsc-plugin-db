@@ -56,6 +56,14 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：buildCreateDatabase/buildAlterDatabase/buildDropDatabase
+  // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（InnoDB 外键；索引类型两族）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: true,
+    indexes: true,
+    indexTypes: ['BTREE', 'HASH'],
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',

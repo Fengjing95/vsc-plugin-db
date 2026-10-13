@@ -82,9 +82,10 @@ it('conformance: mock 驱动通过 ddl 组（M8-B2，表结构编辑）', async 
     console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
   }
   expect(summary.failed).toBe(0);
-  // C-3：组必须实跑（mock 声明 supportsDdlEditor）而非静默跳过；
-  // create 一致 / 加列改注释 / 删列 / 主键变更 / 无差异 / 非法标识符 / 清理
-  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
+  // C-3：组必须实跑（mock 声明 supportsDdlEditor + listKeys/listIndexes）而非静默跳过；
+  // create 一致 / 加列改注释 / 删列 / 主键变更 / 无差异 / 键外键索引建读一致 / 增删唯一键 /
+  // 增删索引 / 增删外键 / 防误删红线 / 两段清理 / 非法标识符
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(13);
 });
 
 /** mock 基准值编码用例（§5 编码形态写入→读回；dataType 为驱动方言原文） */

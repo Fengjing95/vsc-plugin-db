@@ -1,6 +1,7 @@
 import {
   DriverError,
   specFromColumns,
+  specFromTable,
   type ChangeSet,
   type ColumnMeta,
   type FilterCondition,
@@ -1532,6 +1533,151 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
       const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, baseline, baseline);
       assert(statements.length === 0, `无差异应返回空数组，实际 ${statements.length} 条`);
     });
+
+    // ── 键 / 外键 / 索引 roundtrip（表设计器批次 B，交互稿 §12.4~12.7）──
+    // P-19 同族：listKeys/listIndexes 未实现 → 整段 skip（键/外键/索引 Tab 未声明，编辑器回落纯列编辑）。
+    // 红线口径：DROP 约束/索引只允许由「基线存在且 spec 移除」生成；基线原样提交必须返回空数组。
+    if (typeof conn.listKeys !== 'function' || typeof conn.listIndexes !== 'function') {
+      await skip(results, 'ddl', '键/外键/索引 roundtrip 整段跳过', '驱动未实现 listKeys/listIndexes（tableDesign 能力未声明）');
+    } else {
+      const REF_FIXTURE_TABLE = 'cf_ddl_ref';
+      const dropRefFixture = async (): Promise<void> => {
+        try {
+          await conn.query({ sql: `DROP TABLE IF EXISTS ${quoteFor(conn, REF_FIXTURE_TABLE)}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        } catch {
+          // 引用表清理尽力而为（末尾还有整段清理兜底）
+        }
+      };
+      const baselineOf = async (): Promise<TableSpec> =>
+        specFromTable(
+          DDL_FIXTURE_TABLE,
+          await conn.listColumns(db, DDL_FIXTURE_TABLE),
+          undefined,
+          await conn.listKeys!(db, DDL_FIXTURE_TABLE),
+          await conn.listIndexes!(db, DDL_FIXTURE_TABLE),
+        );
+
+      await check(results, 'ddl', 'buildCreateTable 键/外键/索引：执行后回读一致', async () => {
+        await dropFixture();
+        await dropRefFixture();
+        const refSpec: TableSpec = {
+          name: REF_FIXTURE_TABLE,
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        };
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, refSpec));
+        const spec: TableSpec = {
+          name: DDL_FIXTURE_TABLE,
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'uid', dataType: 'varchar(64)', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'ref_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 3 },
+          ],
+          uniqueKeys: [{ name: 'cf_uk_uid', columns: ['uid'] }],
+          foreignKeys: [{ name: 'cf_fk_ref', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'], onDelete: 'CASCADE' }],
+          indexes: [{ name: 'cf_idx_pair', columns: ['uid', 'ref_id'] }],
+        };
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, spec));
+        const base = await baselineOf();
+        // 唯一键按列形状断言（SQLite 将 UNIQUE 落地为 sqlite_autoindex_*，显式名不保留，§12.2 已知差异）
+        const uk = base.uniqueKeys?.find((u) => u.columns.length === 1 && u.columns[0] === 'uid');
+        assert(uk !== undefined && uk.name, `应回读 1 个 (uid) 唯一键，实际 ${JSON.stringify(base.uniqueKeys)}`);
+        assert((base.foreignKeys?.length ?? 0) === 1, `应回读 1 个外键，实际 ${base.foreignKeys?.length ?? 0}：${JSON.stringify(base.foreignKeys)}`);
+        const fk = base.foreignKeys![0];
+        assert(Boolean(fk.name), '外键回读必须携带约束名（diff 对齐依赖；SQLite 允许驱动合成名）');
+        assert(
+          fk.columns.length === 1 && fk.columns[0] === 'ref_id' && fk.refTable === REF_FIXTURE_TABLE && fk.refColumns.length === 1 && fk.refColumns[0] === 'id',
+          `外键回读形状不符：${JSON.stringify(fk)}`,
+        );
+        assert((base.indexes?.length ?? 0) >= 1, `应回读至少 1 个二级索引，实际 ${base.indexes?.length ?? 0}：${JSON.stringify(base.indexes)}`);
+        assert(base.indexes!.some((i) => i.name === 'cf_idx_pair' && i.columns.length === 2), `索引回读应含 cf_idx_pair(uid,ref_id)：${JSON.stringify(base.indexes)}`);
+      });
+
+      await check(results, 'ddl', 'buildAlterTable 增删唯一键：执行后反映', async () => {
+        const base = await baselineOf();
+        const target: TableSpec = { ...base, uniqueKeys: [...(base.uniqueKeys ?? []), { name: 'cf_uk_extra', columns: ['ref_id'] }] };
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+        assert(statements.length > 0, '新增唯一键应生成非空语句集');
+        await execDdlStatements(conn, db, statements);
+        const after = await baselineOf();
+        // 按 (ref_id) 列形状定位新增的唯一键（SQLite 落地为 autoindex 名，显式名不保留）
+        const added = after.uniqueKeys?.find((u) => u.columns.length === 1 && u.columns[0] === 'ref_id');
+        assert(added !== undefined && added.name, `新增唯一键未回读：${JSON.stringify(after.uniqueKeys)}`);
+        const target2: TableSpec = { ...after, uniqueKeys: after.uniqueKeys!.filter((u) => !(u.columns.length === 1 && u.columns[0] === 'ref_id')) };
+        const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+        await execDdlStatements(conn, db, statements2);
+        const after2 = await baselineOf();
+        assert(!after2.uniqueKeys?.some((u) => u.columns.length === 1 && u.columns[0] === 'ref_id'), '删除唯一键未被反映');
+        assert((after2.uniqueKeys?.length ?? 0) === 1, `原有唯一键应保留，实际 ${JSON.stringify(after2.uniqueKeys)}`);
+      });
+
+      await check(results, 'ddl', 'buildAlterTable 增删索引：执行后反映', async () => {
+        const base = await baselineOf();
+        const target: TableSpec = { ...base, indexes: [...(base.indexes ?? []), { name: 'cf_idx_extra', columns: ['ref_id'] }] };
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+        assert(statements.length > 0, '新增索引应生成非空语句集');
+        await execDdlStatements(conn, db, statements);
+        const after = await baselineOf();
+        assert(after.indexes?.some((i) => i.name === 'cf_idx_extra'), `新增索引未回读：${JSON.stringify(after.indexes)}`);
+        const target2: TableSpec = { ...after, indexes: after.indexes!.filter((i) => i.name !== 'cf_idx_extra') };
+        const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+        await execDdlStatements(conn, db, statements2);
+        const after2 = await baselineOf();
+        assert(!after2.indexes?.some((i) => i.name === 'cf_idx_extra'), '删除索引未被反映');
+        assert(after2.indexes!.some((i) => i.name === 'cf_idx_pair'), '原有索引应保留');
+      });
+
+      // 外键 alter 能力探测（P-19：skip 必须写在 check 外层防双重计数）：foreignKeyAlter=false 的
+      // 驱动（SQLite）以 E_UNSUPPORTED 声明边界——仅接受该错误码，禁写「任何错误都跳过」
+      let fkAlterSupported = true;
+      {
+        const probeBase = await baselineOf();
+        try {
+          await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, {
+            ...probeBase,
+            foreignKeys: [...(probeBase.foreignKeys ?? []), { name: 'cf_fk_probe', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'] }],
+          }, probeBase);
+        } catch (err) {
+          assert(DriverError.is(err) && err.code === 'E_UNSUPPORTED', `外键 alter 探测失败且非 E_UNSUPPORTED：${String(err)}`);
+          fkAlterSupported = false;
+        }
+      }
+      if (!fkAlterSupported) {
+        await skip(results, 'ddl', 'buildAlterTable 增删外键：执行后反映', '驱动声明 foreignKeyAlter=false（E_UNSUPPORTED 能力边界，§12.2 SQLite）');
+      } else {
+        await check(results, 'ddl', 'buildAlterTable 增删外键：执行后反映', async () => {
+          const base = await baselineOf();
+          const target: TableSpec = {
+            ...base,
+            foreignKeys: [...(base.foreignKeys ?? []), { name: 'cf_fk_extra', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'] }],
+          };
+          const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+          assert(statements.length > 0, '新增外键应生成非空语句集');
+          await execDdlStatements(conn, db, statements);
+          const after = await baselineOf();
+          const added = after.foreignKeys?.find((f) => f.name === 'cf_fk_extra');
+          assert(added !== undefined, `新增外键未回读：${JSON.stringify(after.foreignKeys)}`);
+          assert(added.refTable === REF_FIXTURE_TABLE && added.refColumns.includes('id'), `新增外键形状不符：${JSON.stringify(added)}`);
+          const target2: TableSpec = { ...after, foreignKeys: after.foreignKeys!.filter((f) => f.name !== 'cf_fk_extra') };
+          const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+          await execDdlStatements(conn, db, statements2);
+          const after2 = await baselineOf();
+          assert(!after2.foreignKeys?.some((f) => f.name === 'cf_fk_extra'), '删除外键未被反映');
+          assert((after2.foreignKeys?.length ?? 0) === 1, `原有外键应保留，实际 ${JSON.stringify(after2.foreignKeys)}`);
+        });
+      }
+
+      await check(results, 'ddl', '基线原样提交不产生语句（防误删红线）', async () => {
+        const base = await baselineOf();
+        assert((base.foreignKeys?.length ?? 0) > 0 && (base.uniqueKeys?.length ?? 0) > 0, '前置失败：基线未含键/外键（回读断言失效）');
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, base, base);
+        assert(statements.length === 0, `基线原样提交应返回空数组，实际 ${statements.length} 条：${statements.map((s) => s.sql).join(' / ')}`);
+      });
+
+      await check(results, 'ddl', 'fixture 清理（键/外键/索引段，含引用表）', async () => {
+        await dropFixture();
+        await dropRefFixture();
+      });
+    }
 
     await check(results, 'ddl', '非法标识符 fail-closed（E_VALIDATION）', async () => {
       const bad = async (name: string): Promise<void> => {
