@@ -649,10 +649,20 @@ export const DdlLoadParamsSchema = z.object({
 });
 export type DdlLoadParams = z.infer<typeof DdlLoadParamsSchema>;
 
+/** @since 表设计器批次 A：列 Tab 类型建议项（方言词表，交互稿 §12.3）。template 为带形参
+ *  回填模板（如 varchar() / decimal(,)，回填后光标定位到第一个逗号或右括号前）；缺省 = value 原样回填 */
+export const DataTypeOptionSchema = z.object({
+  value: z.string().min(1).max(128),
+  template: z.string().min(1).max(128).optional(),
+});
+export type DataTypeOptionPayload = z.infer<typeof DataTypeOptionSchema>;
+
 export const DdlLoadResultSchema = z.object({
   kind: z.enum(['create', 'alter']),
   /** create 态为 null（编辑器给空白模板）；alter 态为库内当前结构 */
   spec: TableSpecSchema.nullable(),
+  /** @since 表设计器批次 A：类型建议词表（驱动方言各自维护，C-14）；缺省 = 类型框纯手输 */
+  dataTypes: z.array(DataTypeOptionSchema).max(200).optional(),
 });
 export type DdlLoadResult = z.infer<typeof DdlLoadResultSchema>;
 

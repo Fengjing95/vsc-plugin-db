@@ -5,6 +5,7 @@ import {
   type ChangeSet,
   type ColumnMeta,
   type CompletionSource,
+  type DataTypeOption,
   type ConnectionConfig,
   type DatabaseMeta,
   type DatabaseSpec,
@@ -47,6 +48,26 @@ import {
  * 本地无真实库时供 SQL Console 自测。
  */
 export const MOCK_DRIVER_ID = 'mock';
+
+/** 表结构编辑器类型建议词表（表设计器批次 A，交互稿 §12.3）：通用 SQL 词表（契约基准驱动，
+ *  无方言），按常用度排序；建议不是白名单——词表外类型照常手输。 */
+export const MOCK_DATA_TYPES: DataTypeOption[] = [
+  { value: 'INTEGER' },
+  { value: 'BIGINT' },
+  { value: 'VARCHAR', template: 'VARCHAR()' },
+  { value: 'TEXT' },
+  { value: 'DECIMAL', template: 'DECIMAL(,)' },
+  { value: 'BOOLEAN' },
+  { value: 'DATE' },
+  { value: 'DATETIME' },
+  { value: 'TIMESTAMP' },
+  { value: 'TIME' },
+  { value: 'FLOAT' },
+  { value: 'DOUBLE' },
+  { value: 'CHAR', template: 'CHAR()' },
+  { value: 'JSON' },
+  { value: 'BLOB' },
+];
 
 const capabilities: DriverCapabilities = {
   supportsSQL: true, // M5 起支持最小 SQL 子集（Console 本地自测）；Redis 类 supportsSQL=false 走命令白名单
@@ -974,6 +995,10 @@ export class MockConnection implements IConnection {
       store.set(key, rollback);
       throw err;
     }
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return MOCK_DATA_TYPES;
   }
 
   getCompletionSource(db?: string): Promise<CompletionSource> {

@@ -5,6 +5,8 @@
  * 纯数据，无依赖；词表只服务补全（DialectInfo 仅声明性元数据）。
  */
 
+import type { DataTypeOption } from '@db-explorer/core';
+
 export const KEYWORDS = [
   // DML
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
@@ -116,4 +118,25 @@ export const COMPLETION_SNIPPETS = [
     body: "SELECT strftime('%Y-%m-%d %H:%M:%S', ${1:column}) FROM ${2:table};",
     description: 'strftime 日期时间格式化',
   },
+];
+
+/**
+ * 表结构编辑器类型建议词表（表设计器批次 A，交互稿 §12.3）：存储类 5 类置顶，
+ * 其余为借助类型亲和性的常见写法。template 为带形参回填模板（回填后光标落形参位）；
+ * 建议不是白名单——SQLite 类型本就宽松，词表外照常手输。
+ */
+export const DATA_TYPES: DataTypeOption[] = [
+  { value: 'INTEGER' },
+  { value: 'TEXT' },
+  { value: 'REAL' },
+  { value: 'BLOB' },
+  { value: 'NUMERIC' },
+  { value: 'VARCHAR', template: 'VARCHAR()' },
+  { value: 'DECIMAL', template: 'DECIMAL(,)' },
+  { value: 'BOOLEAN' },
+  { value: 'DATE' },
+  { value: 'DATETIME' },
+  { value: 'DOUBLE' },
+  { value: 'FLOAT' },
+  { value: 'CHAR', template: 'CHAR()' },
 ];

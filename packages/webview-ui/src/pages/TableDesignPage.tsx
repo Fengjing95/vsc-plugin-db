@@ -1,8 +1,118 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { DataTypeOptionPayload } from '@db-explorer/protocol';
 import { Button } from '../components/ui/button';
 import { highlightSql } from '../lib/sqlHighlight';
-import { destructiveCount } from '../lib/tableDesign';
-import { columnErrorOf, useTableDesignStore } from '../store/tableDesignStore';
+import { destructiveCount, columnNameError, columnTypeError } from '../lib/tableDesign';
+import { caretPosFor, fillValueOf, filterDataTypeOptions, movedHighlight } from '../lib/typeSuggest';
+import { useTableDesignStore } from '../store/tableDesignStore';
+
+/** 错误位（§12.3）：每行固定预留一条错误行，无错误时空白——行高恒定，输入框不跳动 */
+function ErrorSlot({ text }: { text: string | undefined }) {
+  return <div className="h-[14px] text-[11px] leading-[14px] text-destructive">{text ?? ''}</div>;
+}
+
+/** 类型建议输入（§12.3 可输入+建议下拉）：保持自由输入，聚焦弹方言词表建议；
+ *  词表为空（驱动未提供）时无感降级为纯手输。建议不是白名单 */
+function TypeSuggestInput(props: {
+  index: number;
+  value: string;
+  wordList: DataTypeOptionPayload[];
+  disabled?: boolean;
+  invalid: boolean;
+  onChange(value: string): void;
+}) {
+  const { index, value, wordList, disabled, invalid, onChange } = props;
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const suggestions = (open && wordList.length > 0 ? filterDataTypeOptions(wordList, value) : []).slice(0, 8);
+
+  const accept = (item: DataTypeOptionPayload) => {
+    const fill = fillValueOf(item);
+    onChange(fill);
+    setOpen(false);
+    const el = inputRef.current;
+    const pos = caretPosFor(fill);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+    });
+  };
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        role="combobox"
+        aria-expanded={suggestions.length > 0}
+        aria-label={`类型 ${index + 1}`}
+        placeholder="varchar(64)"
+        className={`h-6 w-full rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-transparent'}`}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (wordList.length > 0) {
+            setOpen(true);
+          }
+        }}
+        onFocus={() => {
+          if (wordList.length > 0) {
+            setOpen(true);
+          }
+        }}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (!open || suggestions.length === 0) {
+            return;
+          }
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlight((h) => movedHighlight(h, 1, suggestions.length));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlight((h) => movedHighlight(h, -1, suggestions.length));
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            accept(suggestions[Math.min(highlight, suggestions.length - 1)]);
+          } else if (e.key === 'Tab') {
+            // 回填后焦点照常移动（不 preventDefault）
+            accept(suggestions[Math.min(highlight, suggestions.length - 1)]);
+          } else if (e.key === 'Escape') {
+            setOpen(false); // 仅关建议面板，不影响行内编辑
+          }
+        }}
+      />
+      {open && suggestions.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label={`类型建议 ${index + 1}`}
+          className="absolute top-full left-0 z-50 mt-0.5 max-h-52 min-w-full overflow-auto rounded-sm border border-border bg-panel py-0.5 shadow-lg"
+        >
+          {suggestions.map((t, i) => (
+            <li key={t.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === highlight}
+                className={`flex w-full items-center justify-between gap-3 px-2 py-0.5 text-left text-[12px] ${
+                  i === highlight ? 'bg-accent text-accent-foreground' : 'hover:not-data-[selected]:bg-accent/50'
+                }`}
+                // 阻止 mousedown 抢焦点——否则 blur 先关面板、click 落空
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => accept(t)}
+              >
+                <span>{t.value}</span>
+                {t.template && <span className="text-[11px] text-muted-foreground">{t.template.toLowerCase()}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * 表结构编辑器（M8-B2，交互稿 §12）：新建表与修改表结构共用。
@@ -18,6 +128,7 @@ export function TableDesignPage() {
   const tableName = useTableDesignStore((s) => s.tableName);
   const tableComment = useTableDesignStore((s) => s.tableComment);
   const rows = useTableDesignStore((s) => s.rows);
+  const dataTypes = useTableDesignStore((s) => s.dataTypes);
   const executing = useTableDesignStore((s) => s.executing);
   const preview = useTableDesignStore((s) => s.preview);
   const executeError = useTableDesignStore((s) => s.executeError);
@@ -122,15 +233,16 @@ export function TableDesignPage() {
             </thead>
             <tbody>
               {rows.map((r, i) => {
-                const err = columnErrorOf(r, rows);
+                const nameErr = columnNameError(r, rows);
+                const typeErr = columnTypeError(r);
                 return (
                   <tr
                     key={r.rowId}
                     data-row={r.rowId}
                     className={`border-t border-border ${r.deleted ? 'bg-destructive/10 opacity-60' : ''}`}
                   >
-                    <td className="px-2 py-1 text-muted-foreground">{i + 1}</td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 align-top text-muted-foreground">{i + 1}</td>
+                    <td className="px-2 py-1 align-top">
                       <input
                         ref={(el) => {
                           if (el) {
@@ -140,24 +252,25 @@ export function TableDesignPage() {
                           }
                         }}
                         aria-label={`列名 ${i + 1}`}
-                        className={`h-6 w-full rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-transparent'}`}
+                        className={`h-6 w-full rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-transparent'}`}
                         value={r.col.name}
                         disabled={executing || r.deleted}
                         onChange={(e) => editColumn(r.rowId, { name: e.target.value })}
                       />
-                      {err && <div className="text-[11px] text-destructive">{err}</div>}
+                      <ErrorSlot text={nameErr} />
                     </td>
-                    <td className="px-2 py-1">
-                      <input
-                        aria-label={`类型 ${i + 1}`}
-                        placeholder="varchar(64)"
-                        className="h-6 w-full rounded-sm border border-transparent bg-input px-1.5"
+                    <td className="px-2 py-1 align-top">
+                      <TypeSuggestInput
+                        index={i}
                         value={r.col.dataType}
+                        wordList={dataTypes}
                         disabled={executing || r.deleted}
-                        onChange={(e) => editColumn(r.rowId, { dataType: e.target.value })}
+                        invalid={Boolean(typeErr)}
+                        onChange={(dataType) => editColumn(r.rowId, { dataType })}
                       />
+                      <ErrorSlot text={typeErr} />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 align-top">
                       <select
                         aria-label={`NULL ${i + 1}`}
                         className="h-6 w-full rounded-sm border border-transparent bg-input px-1"
@@ -169,7 +282,7 @@ export function TableDesignPage() {
                         <option value="notnull">NOT NULL</option>
                       </select>
                     </td>
-                    <td className="px-2 py-1 text-center">
+                    <td className="px-2 py-1 pt-1.5 text-center align-top">
                       <input
                         type="checkbox"
                         aria-label={`主键 ${i + 1}`}
@@ -178,7 +291,7 @@ export function TableDesignPage() {
                         onChange={(e) => editColumn(r.rowId, { isPrimaryKey: e.target.checked })}
                       />
                     </td>
-                    <td className="px-2 py-1 text-center">
+                    <td className="px-2 py-1 pt-1.5 text-center align-top">
                       <input
                         type="checkbox"
                         aria-label={`自增 ${i + 1}`}
@@ -187,7 +300,7 @@ export function TableDesignPage() {
                         onChange={(e) => editColumn(r.rowId, { autoIncrement: e.target.checked })}
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 align-top">
                       <input
                         aria-label={`默认值 ${i + 1}`}
                         placeholder="无"
@@ -197,7 +310,7 @@ export function TableDesignPage() {
                         onChange={(e) => editColumn(r.rowId, { defaultValue: e.target.value })}
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 align-top">
                       <input
                         aria-label={`注释 ${i + 1}`}
                         className="h-6 w-full rounded-sm border border-transparent bg-input px-1.5"
@@ -206,7 +319,7 @@ export function TableDesignPage() {
                         onChange={(e) => editColumn(r.rowId, { comment: e.target.value })}
                       />
                     </td>
-                    <td className="px-2 py-1 text-center">
+                    <td className="px-2 py-1 pt-1.5 text-center align-top">
                       {r.deleted ? (
                         <button
                           type="button"

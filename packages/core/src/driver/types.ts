@@ -13,6 +13,7 @@ import type {
   ColumnMeta,
   DatabaseMeta,
   DatabaseSpec,
+  DataTypeOption,
   DdlStatement,
   IndexMeta,
   KeyMeta,
@@ -168,6 +169,9 @@ export interface IConnection extends Disposable {
   /** @since M8-B2：驱动自行 diff spec（目标）与 current（Host 实时派生的库内当前结构）；
    *  obj 为目标表现名（重命名时为旧名）；无结构差异返回空数组 */
   buildAlterTable?(db: string, obj: string, spec: TableSpec, current: TableSpec): Promise<DdlStatement[]>;
+  /** @since 表设计器批次 A（交互稿 §12.3）：列 Tab 类型建议词表——方言各自维护（C-14），
+   *  纯静态数据不需建连。未实现 = 编辑器类型框无感降级为纯手输 */
+  listDataTypes?(): DataTypeOption[];
   openSession?(): Promise<ISession>;
   getCompletionSource(db?: string): Promise<CompletionSource>;
   quoteIdentifier?(name: string): string;

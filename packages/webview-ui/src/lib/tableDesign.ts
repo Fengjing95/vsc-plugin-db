@@ -73,9 +73,9 @@ export function destructiveCount(statements: DdlStatementPayload[]): number {
   return statements.filter((s) => s.destructive).length;
 }
 
-/** 前端即时校验（§12.2：字符合法性由驱动 fail-closed 兜底，此处仅提示）：
- *  返回该行的错误文案；undefined = 无错 */
-export function columnRowError(row: ColumnRow, allRows: ColumnRow[]): string | undefined {
+/** 前端即时校验（§12.3：字符合法性由驱动 fail-closed 兜底，此处仅提示）：
+ *  错误按字段归属拆分——列名错误与类型错误分别渲染在各自输入框正下方（错误位预留，行高恒定） */
+export function columnNameError(row: ColumnRow, allRows: ColumnRow[]): string | undefined {
   if (row.deleted) {
     return undefined;
   }
@@ -87,10 +87,22 @@ export function columnRowError(row: ColumnRow, allRows: ColumnRow[]): string | u
   if (sameName.length > 0) {
     return `列名 "${name}" 重复`;
   }
+  return undefined;
+}
+
+export function columnTypeError(row: ColumnRow): string | undefined {
+  if (row.deleted) {
+    return undefined;
+  }
   if (!row.col.dataType.trim()) {
     return '类型不能为空';
   }
   return undefined;
+}
+
+/** 行级聚合（状态行汇总用）：列名错误优先于类型错误 */
+export function columnRowError(row: ColumnRow, allRows: ColumnRow[]): string | undefined {
+  return columnNameError(row, allRows) ?? columnTypeError(row);
 }
 
 /** 表级校验：返回错误文案（执行按钮禁用条件）；undefined = 可执行 */

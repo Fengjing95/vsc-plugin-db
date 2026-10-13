@@ -7,6 +7,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -27,7 +28,7 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 // 方言词表（C-14/规范 §3.2：SQLite 全量 keywords/functions/snippets，勿散落 index.ts）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import { buildChangeStatements } from './changes';
 import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
 import { toDriverError } from './errors';
@@ -532,6 +533,10 @@ export class SqliteConnection implements IConnection {
       rowKey[pk] = encodeCell(value, 'unknown');
     }
     return Object.keys(rowKey).length > 0 ? rowKey : undefined;
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

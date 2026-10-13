@@ -10,6 +10,19 @@ window.__DBX_STUB__ = {
   handlers: {
     'ddl.load': () => ({
       kind: 'alter',
+      // 表设计器批次 A：类型建议词表（验证列 Tab 建议下拉）
+      dataTypes: [
+        { value: 'INT' },
+        { value: 'BIGINT' },
+        { value: 'VARCHAR', template: 'VARCHAR()' },
+        { value: 'TEXT' },
+        { value: 'DECIMAL', template: 'DECIMAL(,)' },
+        { value: 'DATETIME' },
+        { value: 'TIMESTAMP' },
+        { value: 'DATE' },
+        { value: 'BOOLEAN' },
+        { value: 'JSON' },
+      ],
       spec: {
         name: 'users',
         comment: '用户表',

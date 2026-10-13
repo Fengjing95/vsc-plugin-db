@@ -52,12 +52,13 @@ export class DdlService {
   async load(raw: unknown): Promise<DdlLoadResult> {
     const p = DdlLoadParamsSchema.parse(raw);
     const conn = await this.requireDdlConnection(p.connId);
+    const dataTypes = conn.listDataTypes?.();
     if (!p.obj) {
-      return { kind: 'create', spec: null };
+      return { kind: 'create', spec: null, dataTypes };
     }
     const metas = await conn.listColumns(p.db, p.obj);
     const comment = await this.tableCommentOf(conn, p.db, p.obj);
-    return { kind: 'alter', spec: specFromColumns(p.obj, metas, comment) };
+    return { kind: 'alter', spec: specFromColumns(p.obj, metas, comment), dataTypes };
   }
 
   async preview(raw: unknown): Promise<DdlPreviewResult> {

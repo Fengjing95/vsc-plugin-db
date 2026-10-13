@@ -102,3 +102,13 @@ export interface DdlStatement {
   /** true = 含可能丢数据的操作（删列/改类型/删主键等）→ UI 确认分级与红条警示 */
   destructive?: boolean;
 }
+
+/** 类型建议项（表结构编辑器列 Tab，@since 表设计器批次 A，交互稿 §12.3）。
+ *  方言词表由各驱动独立维护（C-14 同源口径，禁止跨驱动复用）；建议不是白名单——
+ *  词表外类型照常手输，合法性由驱动 fail-closed 校验 */
+export interface DataTypeOption {
+  /** 基名（展示与无参回填），如 BIGINT */
+  value: string;
+  /** 带形参回填模板，如 varchar() / decimal(,)；缺省 = value 原样回填 */
+  template?: string;
+}

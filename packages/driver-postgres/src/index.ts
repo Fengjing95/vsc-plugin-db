@@ -1,7 +1,7 @@
 import pg from 'pg';
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
 // 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSONB/数组面）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -9,6 +9,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -504,6 +505,10 @@ export class PostgresConnection implements IConnection {
       rowKey[pk] = encodeCell(value, typeByName.get(pk) ?? 'unknown');
     }
     return Object.keys(rowKey).length > 0 ? rowKey : undefined;
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

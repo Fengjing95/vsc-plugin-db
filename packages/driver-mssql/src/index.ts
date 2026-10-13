@@ -10,7 +10,7 @@ declare module 'mssql' {
 }
 
 // 方言词表（C-14/驱动规范 §3.2：关键字/函数/补全片段，覆盖 T-SQL 2016~2022 常用面）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -18,6 +18,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -505,6 +506,10 @@ export class MssqlConnection implements IConnection {
     } catch (err) {
       throw DriverError.is(err) ? err : toDriverError(err);
     }
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

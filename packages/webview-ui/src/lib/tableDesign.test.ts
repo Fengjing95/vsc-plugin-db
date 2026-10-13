@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { TableSpecPayload } from '@db-explorer/protocol';
 import {
+  columnNameError,
   columnRowError,
+  columnTypeError,
   diffSpecSummary,
   diffSummaryText,
   destructiveCount,
@@ -58,7 +60,7 @@ describe('diffSpecSummary（M8-B2 变更统计）', () => {
   });
 });
 
-describe('校验（前端即时提示）', () => {
+describe('校验（前端即时提示，错误按字段归属拆分）', () => {
   it('列名空/重复/类型空', () => {
     const rows = [row('r1', 'id'), row('r2', 'id')];
     expect(columnRowError({ ...row('r3', ''), deleted: false }, rows)).toBe('列名不能为空');
@@ -66,6 +68,21 @@ describe('校验（前端即时提示）', () => {
     expect(columnRowError({ ...row('r4', 'ok', { dataType: '' }) }, rows)).toBe('类型不能为空');
     expect(columnRowError(row('r5', 'ok'), rows)).toBeUndefined();
     expect(columnRowError({ ...row('r2', 'id'), deleted: true }, rows)).toBeUndefined(); // 删除行不校验
+  });
+
+  it('字段级拆分：类型错误只归类型位，列名错误只归列名位（§12.3 错误位预留）', () => {
+    const rows = [row('r1', 'id'), row('r2', 'id')];
+    expect(columnNameError(rows[0], rows)).toBe('列名 "id" 重复');
+    expect(columnTypeError(rows[0])).toBeUndefined();
+    expect(columnNameError(row('r4', 'ok', { dataType: '' }), rows)).toBeUndefined();
+    expect(columnTypeError(row('r4', 'ok', { dataType: '' }))).toBe('类型不能为空');
+    // 类型错误不再挂到列名位（回归：v0.2.1 统一挂在列名下的旧行为）
+    const typeOnly = row('r5', 'ok', { dataType: '' });
+    expect(columnNameError(typeOnly, rows)).toBeUndefined();
+    expect(columnRowError(typeOnly, rows)).toBe('类型不能为空');
+    // 删除行两类都不校验
+    expect(columnNameError({ ...row('r6', 'x'), deleted: true }, rows)).toBeUndefined();
+    expect(columnTypeError({ ...row('r6', 'x', { dataType: '' }), deleted: true })).toBeUndefined();
   });
 
   it('tableSpecError：表名/列数/列级错误；无主键建表不阻塞', () => {

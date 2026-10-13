@@ -1,9 +1,8 @@
-import type { ColumnSpecPayload, DdlStatementPayload, TableSpecPayload } from '@db-explorer/protocol';
+import type { ColumnSpecPayload, DataTypeOptionPayload, DdlStatementPayload, TableSpecPayload } from '@db-explorer/protocol';
 import { DdlLoadResultSchema, DdlPreviewResultSchema, RpcMethods } from '@db-explorer/protocol';
 import { create } from 'zustand';
 import { request } from '../rpc/client';
 import {
-  columnRowError,
   diffSpecSummary,
   diffSummaryText,
   nextOrdinal,
@@ -43,6 +42,8 @@ interface TableDesignState {
   tableName: string;
   tableComment: string;
   rows: ColumnRow[];
+  /** 类型建议词表（ddl.load 下发，驱动方言各自维护；空数组 = 类型框纯手输） */
+  dataTypes: DataTypeOptionPayload[];
   /** alter 基线（ddl.load 预载；执行前 Host 会重拉最新） */
   baseline: TableSpecPayload | null;
 
@@ -86,6 +87,7 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
   tableName: '',
   tableComment: '',
   rows: [],
+  dataTypes: [],
   baseline: null,
 
   dirty: false,
@@ -128,10 +130,11 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
           tableName: spec.name,
           tableComment: spec.comment ?? '',
           rows,
+          dataTypes: parsed.data.dataTypes ?? [],
           focusRowId,
         });
       } else {
-        set({ phase: 'ready', rows: [emptyColumn(1)] });
+        set({ phase: 'ready', rows: [emptyColumn(1)], dataTypes: parsed.data.dataTypes ?? [] });
       }
     } catch (err) {
       set({ phase: 'error', errorMsg: err instanceof Error ? err.message : String(err) });
@@ -302,9 +305,4 @@ function buildSpec(tableName: string, tableComment: string, rows: ColumnRow[]): 
     spec.comment = tableComment.trim();
   }
   return spec;
-}
-
-/** 供页面渲染列级错误（订阅友好：独立函数避免在 action 内读 store） */
-export function columnErrorOf(row: ColumnRow, rows: ColumnRow[]): string | undefined {
-  return columnRowError(row, rows);
 }
