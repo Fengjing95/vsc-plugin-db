@@ -135,6 +135,102 @@ function TypeSuggestInput(props: {
   );
 }
 
+/** 引用表输入（§12.5 修订二稿：输入与选择统一为单控件——聚焦弹主题化表清单、键入过滤、
+ *  点击/Enter 回填，与类型建议输入同款交互；清单懒加载失败无感降级为纯手输） */
+function RefTableInput(props: {
+  index: number;
+  value: string;
+  tables: string[];
+  loading: boolean;
+  disabled?: boolean;
+  invalid: boolean;
+  onOpen(): void;
+  onChange(value: string): void;
+}) {
+  const { index, value, tables, loading, disabled, invalid, onOpen, onChange } = props;
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const kw = value.trim().toLowerCase();
+  const suggestions = (open ? tables.filter((t) => !kw || t.toLowerCase().includes(kw)) : []).slice(0, 8);
+
+  const accept = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        role="combobox"
+        aria-expanded={suggestions.length > 0}
+        aria-label={`外键 ${index + 1} 引用表`}
+        placeholder="选择或输入表名"
+        className={`h-6 w-36 rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-border'}`}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          onOpen();
+        }}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (!open || suggestions.length === 0) {
+            return;
+          }
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setHighlight((h) => movedHighlight(h, 1, suggestions.length));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setHighlight((h) => movedHighlight(h, -1, suggestions.length));
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            accept(suggestions[Math.min(highlight, suggestions.length - 1)]);
+          } else if (e.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+      />
+      {open && (
+        <ul
+          role="listbox"
+          aria-label={`外键 ${index + 1} 引用表清单`}
+          className="absolute top-full left-0 z-50 mt-0.5 min-w-full overflow-auto rounded-sm border border-border bg-panel py-0.5 shadow-lg"
+        >
+          {suggestions.length === 0 && (
+            <li className="px-2 py-1 text-[11px] text-muted-foreground">{loading ? '加载中…' : '（暂无表清单，可直接输入）'}</li>
+          )}
+          {suggestions.map((t, i) => (
+            <li key={t}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === highlight}
+                className={`flex w-full items-center gap-2 px-2 py-0.5 text-left text-[12px] ${
+                  i === highlight ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                }`}
+                // 阻止 mousedown 抢焦点——否则 blur 先关面板、click 落空
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => accept(t)}
+              >
+                <span>{t}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** 列选择（§12.4~12.6 键/外键/索引共用）：Popover + 清单；multiple=true 复选（键/索引），
  *  单选模式点击即选并关闭（外键列对应行，§12.5 修订）。选项懒加载失败留空可重开重试 */
 function ColumnMultiSelect(props: {
@@ -689,31 +785,17 @@ export function TableDesignPage() {
                       />
                       {nameErr && <span className="text-[11px] text-destructive">{nameErr}</span>}
                       <span className="ml-2 shrink-0 text-[12px] text-muted-foreground">引用表</span>
-                      <input
-                        aria-label={`外键 ${i + 1} 引用表`}
-                        placeholder="选择或输入表名"
-                        className={`h-6 w-36 rounded-sm border bg-input px-1.5 ${refTableErr ? 'border-destructive' : 'border-border'}`}
+                      {/* 引用表（§12.5 修订二稿：输入与选择统一为单控件，主题化清单聚焦即弹、可键入过滤/手输） */}
+                      <RefTableInput
+                        index={i}
                         value={r.spec.refTable}
-                        disabled={executing || fkReadOnly}
-                        onChange={(e) => {
-                          editFk(r.rowId, { refTable: e.target.value, refColumns: [] });
-                        }}
-                      />
-                      {/* 引用表选择（§12.5 修订：原生 datalist 弹层漂移且暗色下发白，改主题化 Popover；输入保持可手输） */}
-                      <ColumnMultiSelect
-                        label=""
-                        placeholder=""
-                        ariaLabel={`外键 ${i + 1} 引用表选择`}
-                        options={refTables}
-                        selected={[]}
-                        disabled={executing || fkReadOnly}
+                        tables={refTables}
                         loading={refTablesStatus === 'loading'}
+                        disabled={executing || fkReadOnly}
+                        invalid={Boolean(refTableErr)}
                         onOpen={() => void loadRefTables()}
-                        onChange={(tables) => {
-                          const table = tables[0];
-                          if (table) {
-                            editFk(r.rowId, { refTable: table, refColumns: [] });
-                          }
+                        onChange={(table) => {
+                          editFk(r.rowId, { refTable: table, refColumns: [] });
                         }}
                       />
                       {refTableErr && <span className="text-[11px] text-destructive">{refTableErr}</span>}
