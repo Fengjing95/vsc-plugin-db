@@ -8,6 +8,10 @@ import {
   diffSummaryText,
   diffSummaryTextExtended,
   destructiveCount,
+  fkNameError,
+  fkPairCount,
+  fkPairError,
+  fkRefTableError,
   fkRowError,
   idxRowError,
   nextOrdinal,
@@ -127,13 +131,36 @@ describe('键/外键/索引校验（表设计器批次 B，§12.4~12.6）', () =
     expect(ukRowError({ ...uk('r1', { columns: [] }), deleted: true }, [])).toBeUndefined();
   });
 
-  it('fkRowError：列空/引用表空/引用列空/列数不一致/重名', () => {
-    expect(fkRowError(fk('r1', { columns: [] }), [fk('r1')])).toBe('外键至少需要一列');
+  it('fkRowError：引用表空/列对应不完整/重名（§12.5 成对映射口径）', () => {
     expect(fkRowError(fk('r1', { refTable: '' }), [fk('r1')])).toBe('引用表不能为空');
-    expect(fkRowError(fk('r1', { refColumns: [] }), [fk('r1')])).toBe('引用列不能为空');
-    expect(fkRowError(fk('r1', { columns: ['a', 'b'] }), [fk('r1')])).toBe('引用列数须与本地列数一致');
+    expect(fkRowError(fk('r1', { columns: [], refColumns: [] }), [fk('r1')])).toBe('至少需要一组列对应（本表列 → 引用列）');
+    expect(fkRowError(fk('r1', { refColumns: [] }), [fk('r1')])).toBe('缺少引用列');
+    expect(fkRowError(fk('r1', { columns: [] }), [fk('r1')])).toBe('缺少本表列');
     expect(fkRowError(fk('r1', { name: 'fk_1' }), [fk('r2', { name: 'fk_1' })])).toBe('外键名 "fk_1" 重复');
     expect(fkRowError(fk('r1'), [fk('r2')])).toBeUndefined();
+  });
+
+  it('fkPairError/fkRefTableError/fkNameError 分字段校验（显示在各自控件旁）', () => {
+    // 对应组两侧全空：仅首组提示待填写，后续空组静默（可留作增行占位）
+    expect(fkPairError(fk('r1', { columns: [], refColumns: [] }), 0)).toBe('至少需要一组列对应（本表列 → 引用列）');
+    expect(fkPairError(fk('r1', { columns: [], refColumns: [] }), 1)).toBeUndefined();
+    expect(fkPairError(fk('r1', { refColumns: [] }), 0)).toBe('缺少引用列');
+    expect(fkPairError(fk('r1', { columns: [] }), 0)).toBe('缺少本表列');
+    expect(fkPairError(fk('r1'), 0)).toBeUndefined();
+    expect(fkRefTableError(fk('r1'))).toBeUndefined();
+    expect(fkRefTableError(fk('r1', { refTable: ' ' }))).toBe('引用表不能为空');
+    expect(fkNameError(fk('r1', { name: 'fk_x' }), [fk('r2', { name: 'fk_x' })])).toBe('外键名 "fk_x" 重复');
+    // 删除行三类都不校验
+    const deleted = { ...fk('r3', { refTable: '' }), deleted: true } as FkRow;
+    expect(fkPairError(deleted, 0)).toBeUndefined();
+    expect(fkRefTableError(deleted)).toBeUndefined();
+    expect(fkNameError(deleted, [fk('r4')])).toBeUndefined();
+  });
+
+  it('fkPairCount：列对应组数 = 两侧数组较长者，至少 1（新增空组可编辑）', () => {
+    expect(fkPairCount(fk('r1'))).toBe(1);
+    expect(fkPairCount(fk('r1', { columns: ['a', 'b'], refColumns: ['x'] }))).toBe(2);
+    expect(fkPairCount(fk('r1', { columns: [], refColumns: [] }))).toBe(1);
   });
 
   it('idxRowError：列空/重名', () => {

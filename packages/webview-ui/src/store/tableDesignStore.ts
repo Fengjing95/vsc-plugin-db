@@ -503,15 +503,30 @@ function buildSpec(
     spec.uniqueKeys = uks;
   }
   const fks = fkRows
-    .filter((r) => r.spec.columns.length > 0 && r.spec.refTable.trim())
-    .map((r) => ({
-      name: trimName(r.spec.name),
-      columns: r.spec.columns.map((c) => c.trim()),
-      refTable: r.spec.refTable.trim(),
-      refColumns: r.spec.refColumns.map((c) => c.trim()),
-      onDelete: r.spec.onDelete,
-      onUpdate: r.spec.onUpdate,
-    }));
+    .filter((r) => r.spec.refTable.trim())
+    .map((r) => {
+      // §12.5 修订：UI 侧列对应按行维护（columns[i] ↔ refColumns[i]），提交时剔除未完成的组
+      // （不完整的组会被校验拦截，此处防御性过滤保证 spec 平行数组严格成对）
+      const columns: string[] = [];
+      const refColumns: string[] = [];
+      for (let i = 0; i < Math.max(r.spec.columns.length, r.spec.refColumns.length); i++) {
+        const col = r.spec.columns[i]?.trim() ?? '';
+        const ref = r.spec.refColumns[i]?.trim() ?? '';
+        if (col && ref) {
+          columns.push(col);
+          refColumns.push(ref);
+        }
+      }
+      return {
+        name: trimName(r.spec.name),
+        columns,
+        refTable: r.spec.refTable.trim(),
+        refColumns,
+        onDelete: r.spec.onDelete,
+        onUpdate: r.spec.onUpdate,
+      };
+    })
+    .filter((r) => r.columns.length > 0);
   if (fks.length > 0) {
     spec.foreignKeys = fks;
   }

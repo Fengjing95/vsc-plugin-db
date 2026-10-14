@@ -3,13 +3,17 @@ import type { DataTypeOptionPayload, ForeignKeySpecPayload } from '@db-explorer/
 
 type FkAction = NonNullable<ForeignKeySpecPayload['onDelete']>;
 import { Button } from '../components/ui/button';
+import { IconInfo } from '../components/ui/icons';
 import { Popover } from '../components/ui/popover';
 import { highlightSql } from '../lib/sqlHighlight';
 import {
   columnNameError,
   columnTypeError,
   destructiveCount,
-  fkRowError,
+  fkNameError,
+  fkPairCount,
+  fkPairError,
+  fkRefTableError,
   idxRowError,
   ukRowError,
 } from '../lib/tableDesign';
@@ -64,7 +68,7 @@ function TypeSuggestInput(props: {
         aria-expanded={suggestions.length > 0}
         aria-label={`类型 ${index + 1}`}
         placeholder="varchar(64)"
-        className={`h-6 w-full rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-transparent'}`}
+        className={`h-6 w-full rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-border'}`}
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -131,21 +135,35 @@ function TypeSuggestInput(props: {
   );
 }
 
-/** 列多选（§12.4~12.6 键/外键/索引共用）：Popover + 复选清单；选项懒加载失败留空可重开重试 */
+/** 列选择（§12.4~12.6 键/外键/索引共用）：Popover + 清单；multiple=true 复选（键/索引），
+ *  单选模式点击即选并关闭（外键列对应行，§12.5 修订）。选项懒加载失败留空可重开重试 */
 function ColumnMultiSelect(props: {
   label: string;
   ariaLabel: string;
   options: string[];
   selected: string[];
+  multiple?: boolean;
   disabled?: boolean;
   loading?: boolean;
+  placeholder?: string;
   onOpen?(): void;
   onChange(columns: string[]): void;
 }) {
   const [open, setOpen] = useState(false);
+  const single = props.multiple !== true;
   const toggle = (name: string) => {
+    if (single) {
+      props.onChange([name]);
+      setOpen(false);
+      return;
+    }
     props.onChange(props.selected.includes(name) ? props.selected.filter((c) => c !== name) : [...props.selected, name]);
   };
+  const triggerLabel = single
+    ? props.selected[0]
+      ? props.selected[0]
+      : (props.placeholder ?? props.label)
+    : `${props.label}${props.selected.length > 0 ? `（${props.selected.length}）` : ''}`;
   return (
     <Popover
       open={open}
@@ -156,9 +174,14 @@ function ColumnMultiSelect(props: {
         }
       }}
       trigger={
-        <Button variant="secondary" size="sm" disabled={props.disabled} aria-label={props.ariaLabel}>
-          {props.label}
-          {props.selected.length > 0 ? `（${props.selected.length}）` : ''} ▾
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={props.disabled}
+          aria-label={props.ariaLabel}
+          className={single && props.selected[0] ? 'max-w-44' : ''}
+        >
+          <span className="max-w-40 truncate">{triggerLabel}</span> ▾
         </Button>
       }
     >
@@ -166,12 +189,26 @@ function ColumnMultiSelect(props: {
         {props.options.length === 0 && (
           <div className="px-2 py-1 text-[12px] text-muted-foreground">{props.loading ? '加载中…' : '（暂无可用列）'}</div>
         )}
-        {props.options.map((name) => (
-          <label key={name} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-[12px] hover:bg-accent">
-            <input type="checkbox" checked={props.selected.includes(name)} onChange={() => toggle(name)} />
-            <span>{name}</span>
-          </label>
-        ))}
+        {props.options.map((name) =>
+          single ? (
+            <button
+              key={name}
+              type="button"
+              role="option"
+              aria-selected={props.selected[0] === name}
+              className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-left text-[12px] hover:bg-accent"
+              onClick={() => toggle(name)}
+            >
+              <span className="w-3 text-center text-[11px] text-muted-foreground">{props.selected[0] === name ? '✓' : ''}</span>
+              <span className="min-w-0 truncate">{name}</span>
+            </button>
+          ) : (
+            <label key={name} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-[12px] hover:bg-accent">
+              <input type="checkbox" checked={props.selected.includes(name)} onChange={() => toggle(name)} />
+              <span className="min-w-0 truncate">{name}</span>
+            </label>
+          ),
+        )}
       </div>
     </Popover>
   );
@@ -193,6 +230,36 @@ function RowDeleteButton({ label, disabled, onClick }: { label: string; disabled
   );
 }
 
+/** 提示文案的 tips 形式（§12.7 修订：底部说明由长文案改为图标+tooltip，与连接表单 HintTip 同款）：
+ *  ⓘ 图标 hover 500ms 后显示气泡（原生 title 延迟不可控，自绘实现） */
+function HintTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const show = (): void => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(true), 500);
+  };
+  const hide = (): void => {
+    clearTimeout(timer.current);
+    setOpen(false);
+  };
+  return (
+    <span className="relative inline-flex" onMouseEnter={show} onMouseLeave={hide}>
+      <span aria-hidden className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground">
+        <IconInfo size={12} />
+      </span>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute bottom-full left-1/2 z-50 mb-1 w-max max-w-72 -translate-x-1/2 rounded-sm border border-border bg-[var(--vscode-editorHover-widget-background,#252526)] px-2 py-1 text-left text-[11px] font-normal leading-4 text-foreground shadow-lg"
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function TableDesignPage() {
   const phase = useTableDesignStore((s) => s.phase);
   const errorMsg = useTableDesignStore((s) => s.errorMsg);
@@ -211,6 +278,7 @@ export function TableDesignPage() {
   const idxRows = useTableDesignStore((s) => s.idxRows);
   // P-17：引用表/列缓存是独立切片，必须显式订阅（组件内 getState() 读不触发重渲染）
   const refTables = useTableDesignStore((s) => s.refTables);
+  const refTablesStatus = useTableDesignStore((s) => s.refTablesStatus);
   const refColumnsCache = useTableDesignStore((s) => s.refColumnsCache);
   const refColumnsLoading = useTableDesignStore((s) => s.refColumnsLoading);
   const executing = useTableDesignStore((s) => s.executing);
@@ -366,7 +434,7 @@ export function TableDesignPage() {
                   <th className="w-8 px-2 py-1.5 font-normal">#</th>
                   <th className="px-2 py-1.5 font-normal">列名</th>
                   <th className="px-2 py-1.5 font-normal">类型</th>
-                  <th className="w-24 px-2 py-1.5 font-normal">NULL</th>
+                  <th className="w-20 px-2 py-1.5 text-center font-normal">NOT NULL</th>
                   <th className="w-16 px-2 py-1.5 font-normal">主键</th>
                   <th className="w-16 px-2 py-1.5 font-normal">自增</th>
                   <th className="px-2 py-1.5 font-normal">默认值</th>
@@ -395,7 +463,7 @@ export function TableDesignPage() {
                             }
                           }}
                           aria-label={`列名 ${i + 1}`}
-                          className={`h-6 w-full rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-transparent'}`}
+                          className={`h-6 w-full rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-border'}`}
                           value={r.col.name}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { name: e.target.value })}
@@ -413,17 +481,15 @@ export function TableDesignPage() {
                         />
                         <ErrorSlot text={typeErr} />
                       </td>
-                      <td className="px-2 py-1 align-top">
-                        <select
-                          aria-label={`NULL ${i + 1}`}
-                          className="h-6 w-full rounded-sm border border-transparent bg-input px-1"
-                          value={r.col.nullable ? 'null' : 'notnull'}
+                      {/* §12.3 修订：NOT NULL 复选（选中 = NOT NULL，不选 = NULL）——勾选语义与主键/自增一致 */}
+                      <td className="px-2 py-1 pt-1.5 text-center align-top">
+                        <input
+                          type="checkbox"
+                          aria-label={`NOT NULL ${i + 1}`}
+                          checked={!r.col.nullable}
                           disabled={executing || r.deleted}
-                          onChange={(e) => editColumn(r.rowId, { nullable: e.target.value === 'null' })}
-                        >
-                          <option value="null">NULL</option>
-                          <option value="notnull">NOT NULL</option>
-                        </select>
+                          onChange={(e) => editColumn(r.rowId, { nullable: !e.target.checked })}
+                        />
                       </td>
                       <td className="px-2 py-1 pt-1.5 text-center align-top">
                         <input
@@ -447,7 +513,7 @@ export function TableDesignPage() {
                         <input
                           aria-label={`默认值 ${i + 1}`}
                           placeholder="无"
-                          className="h-6 w-full rounded-sm border border-transparent bg-input px-1.5"
+                          className="h-6 w-full rounded-sm border border-border bg-input px-1.5"
                           value={r.col.defaultValue ?? ''}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { defaultValue: e.target.value })}
@@ -456,7 +522,7 @@ export function TableDesignPage() {
                       <td className="px-2 py-1 align-top">
                         <input
                           aria-label={`注释 ${i + 1}`}
-                          className="h-6 w-full rounded-sm border border-transparent bg-input px-1.5"
+                          className="h-6 w-full rounded-sm border border-border bg-input px-1.5"
                           value={r.col.comment ?? ''}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { comment: e.target.value })}
@@ -549,7 +615,7 @@ export function TableDesignPage() {
                             <input
                               aria-label={`唯一键名 ${i + 1}`}
                               placeholder="uk_…（留空自动生成）"
-                              className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-transparent'}`}
+                              className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                               value={r.spec.name ?? ''}
                               disabled={executing}
                               onChange={(e) => editUk(r.rowId, { name: e.target.value })}
@@ -594,62 +660,147 @@ export function TableDesignPage() {
                 )}
               </div>
               {fkRows.map((r, i) => {
-                const err = fkRowError(r, fkRows);
+                const nameErr = fkNameError(r, fkRows);
+                const refTableErr = fkRefTableError(r);
                 const refColumnOptions = refColumnsCache[r.spec.refTable] ?? [];
                 const refLoading = Boolean(refColumnsLoading[r.spec.refTable]);
+                const pairCount = fkPairCount(r);
+                const setFkPairSide = (side: 'columns' | 'refColumns', index: number, value: string): void => {
+                  const arr = [...r.spec[side]];
+                  arr[index] = value;
+                  if (side === 'columns') {
+                    editFk(r.rowId, { columns: arr });
+                  } else {
+                    editFk(r.rowId, { refColumns: arr });
+                  }
+                };
                 return (
-                  <div key={r.rowId} className="flex flex-col gap-0.5 rounded-sm border border-border p-2">
+                  <div key={r.rowId} className="flex flex-col gap-2 rounded-sm border border-border p-2">
+                    {/* 第 1 行：名称 + 引用表（§12.5 修订）+ 组级移除（组右上角 ✕） */}
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="shrink-0 text-[12px] text-muted-foreground">名称</span>
                       <input
                         aria-label={`外键名 ${i + 1}`}
                         placeholder="fk_…（留空自动生成）"
-                        className={`h-6 w-40 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-transparent'}`}
+                        className={`h-6 w-40 rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing || fkReadOnly}
                         onChange={(e) => editFk(r.rowId, { name: e.target.value })}
                       />
-                      <ColumnMultiSelect
-                        label="本表列"
-                        ariaLabel={`外键 ${i + 1} 本表列选择`}
-                        options={activeColumns}
-                        selected={r.spec.columns}
+                      {nameErr && <span className="text-[11px] text-destructive">{nameErr}</span>}
+                      <span className="ml-2 shrink-0 text-[12px] text-muted-foreground">引用表</span>
+                      <input
+                        aria-label={`外键 ${i + 1} 引用表`}
+                        placeholder="选择或输入表名"
+                        className={`h-6 w-36 rounded-sm border bg-input px-1.5 ${refTableErr ? 'border-destructive' : 'border-border'}`}
+                        value={r.spec.refTable}
                         disabled={executing || fkReadOnly}
-                        onChange={(columns) => editFk(r.rowId, { columns })}
+                        onChange={(e) => {
+                          editFk(r.rowId, { refTable: e.target.value, refColumns: [] });
+                        }}
                       />
-                      <label className="flex items-center gap-1.5 text-[12px]">
-                        <span className="text-muted-foreground">引用表</span>
-                        <input
-                          aria-label={`外键 ${i + 1} 引用表`}
-                          list="dbx-ref-tables"
-                          placeholder="选择或输入表名"
-                          className={`h-6 w-36 rounded-sm border bg-input px-1.5 ${err && !r.spec.refTable.trim() ? 'border-destructive' : 'border-transparent'}`}
-                          value={r.spec.refTable}
-                          disabled={executing || fkReadOnly}
-                          onChange={(e) => {
-                            editFk(r.rowId, { refTable: e.target.value, refColumns: [] });
-                          }}
-                        />
-                      </label>
+                      {/* 引用表选择（§12.5 修订：原生 datalist 弹层漂移且暗色下发白，改主题化 Popover；输入保持可手输） */}
                       <ColumnMultiSelect
-                        label="引用列"
-                        ariaLabel={`外键 ${i + 1} 引用列选择`}
-                        options={refColumnOptions}
-                        selected={r.spec.refColumns}
-                        disabled={executing || fkReadOnly || !r.spec.refTable.trim()}
-                        loading={refLoading}
-                        onOpen={() => {
-                          if (r.spec.refTable.trim()) {
-                            void loadRefColumns(r.spec.refTable.trim());
+                        label=""
+                        placeholder=""
+                        ariaLabel={`外键 ${i + 1} 引用表选择`}
+                        options={refTables}
+                        selected={[]}
+                        disabled={executing || fkReadOnly}
+                        loading={refTablesStatus === 'loading'}
+                        onOpen={() => void loadRefTables()}
+                        onChange={(tables) => {
+                          const table = tables[0];
+                          if (table) {
+                            editFk(r.rowId, { refTable: table, refColumns: [] });
                           }
                         }}
-                        onChange={(refColumns) => editFk(r.rowId, { refColumns })}
                       />
+                      {refTableErr && <span className="text-[11px] text-destructive">{refTableErr}</span>}
+                      {!fkReadOnly && (
+                        <span className="ml-auto">
+                          <RowDeleteButton label={`删除外键 ${i + 1}`} disabled={executing} onClick={() => removeFk(r.rowId)} />
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 第 2 行：列对应可变数组（本表列 → 引用列一一对应，＋ 增行，§12.5 修订） */}
+                    <div className="flex flex-col gap-1 rounded-sm border border-border/60 bg-input/20 p-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">列对应（本表列 → 引用列）</span>
+                        {!fkReadOnly && (
+                          <button
+                            type="button"
+                            aria-label={`外键 ${i + 1} 添加列对应`}
+                            disabled={executing}
+                            className="ml-auto rounded-sm px-1.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                            onClick={() => {
+                              editFk(r.rowId, { columns: [...r.spec.columns, ''], refColumns: [...r.spec.refColumns, ''] });
+                            }}
+                          >
+                            ＋ 添加对应
+                          </button>
+                        )}
+                      </div>
+                      {Array.from({ length: pairCount }, (_, pi) => pi).map((pi) => {
+                        const pairErr = fkPairError(r, pi);
+                        return (
+                          <div key={pi} className="flex flex-wrap items-center gap-2">
+                            <ColumnMultiSelect
+                              label="本表列"
+                              ariaLabel={`外键 ${i + 1} 第 ${pi + 1} 组本表列`}
+                              options={activeColumns}
+                              selected={r.spec.columns[pi] ? [r.spec.columns[pi]] : []}
+                              disabled={executing || fkReadOnly}
+                              onChange={(cols) => setFkPairSide('columns', pi, cols[0] ?? '')}
+                            />
+                            <span aria-hidden className="text-[11px] text-muted-foreground">
+                              →
+                            </span>
+                            <ColumnMultiSelect
+                              label="引用列"
+                              ariaLabel={`外键 ${i + 1} 第 ${pi + 1} 组引用列`}
+                              options={refColumnOptions}
+                              selected={r.spec.refColumns[pi] ? [r.spec.refColumns[pi]] : []}
+                              disabled={executing || fkReadOnly || !r.spec.refTable.trim()}
+                              loading={refLoading}
+                              onOpen={() => {
+                                if (r.spec.refTable.trim()) {
+                                  void loadRefColumns(r.spec.refTable.trim());
+                                }
+                              }}
+                              onChange={(cols) => setFkPairSide('refColumns', pi, cols[0] ?? '')}
+                            />
+                            {!fkReadOnly && pairCount > 1 && (
+                              <button
+                                type="button"
+                                aria-label={`外键 ${i + 1} 删除第 ${pi + 1} 组列对应`}
+                                title="删除该组对应"
+                                disabled={executing}
+                                className="rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-50"
+                                onClick={() => {
+                                  editFk(r.rowId, {
+                                    columns: r.spec.columns.filter((_, idx) => idx !== pi),
+                                    refColumns: r.spec.refColumns.filter((_, idx) => idx !== pi),
+                                  });
+                                }}
+                              >
+                                ✕
+                              </button>
+                            )}
+                            {pairErr && <span className="text-[11px] text-destructive">{pairErr}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 第 3 行：动作选项 */}
+                    <div className="flex items-center gap-3">
                       <label className="flex items-center gap-1.5 text-[12px]">
                         <span className="text-muted-foreground">ON DELETE</span>
                         <select
                           aria-label={`外键 ${i + 1} ON DELETE`}
-                          className="h-6 rounded-sm border border-transparent bg-input px-1"
+                          className="h-6 rounded-sm border border-border bg-input px-1"
                           value={r.spec.onDelete ?? ''}
                           disabled={executing || fkReadOnly}
                           onChange={(e) => editFk(r.rowId, { onDelete: (e.target.value || undefined) as FkAction })}
@@ -666,7 +817,7 @@ export function TableDesignPage() {
                         <span className="text-muted-foreground">ON UPDATE</span>
                         <select
                           aria-label={`外键 ${i + 1} ON UPDATE`}
-                          className="h-6 rounded-sm border border-transparent bg-input px-1"
+                          className="h-6 rounded-sm border border-border bg-input px-1"
                           value={r.spec.onUpdate ?? ''}
                           disabled={executing || fkReadOnly}
                           onChange={(e) => editFk(r.rowId, { onUpdate: (e.target.value || undefined) as FkAction })}
@@ -679,18 +830,11 @@ export function TableDesignPage() {
                           ))}
                         </select>
                       </label>
-                      {!fkReadOnly && <RowDeleteButton label={`删除外键 ${i + 1}`} disabled={executing} onClick={() => removeFk(r.rowId)} />}
                     </div>
-                    <ErrorSlot text={err} />
                   </div>
                 );
               })}
               {fkRows.length === 0 && <span className="text-[12px] text-muted-foreground">暂无外键</span>}
-              <datalist id="dbx-ref-tables">
-                {refTables.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
             </div>
           )}
 
@@ -712,7 +856,7 @@ export function TableDesignPage() {
                       <input
                         aria-label={`索引名 ${i + 1}`}
                         placeholder="idx_…（留空自动生成）"
-                        className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-transparent'}`}
+                        className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing}
                         onChange={(e) => editIdx(r.rowId, { name: e.target.value })}
@@ -740,7 +884,7 @@ export function TableDesignPage() {
                           <span className="text-muted-foreground">类型</span>
                           <select
                             aria-label={`索引 ${i + 1} 类型`}
-                            className="h-6 rounded-sm border border-transparent bg-input px-1"
+                            className="h-6 rounded-sm border border-border bg-input px-1"
                             value={r.spec.type ?? ''}
                             disabled={executing}
                             onChange={(e) => editIdx(r.rowId, { type: e.target.value || undefined })}
@@ -773,11 +917,14 @@ export function TableDesignPage() {
           <span className="text-[12px] text-muted-foreground">{diffText()}</span>
           {validationError() && <span className="text-[12px] text-destructive">{validationError()}</span>}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[12px] text-muted-foreground">
-              {executeError
-                ? `第 ${executeError.index} 条语句失败（${executeError.code}），已执行部分不回滚`
-                : 'ⓘ 语句由驱动按方言生成，执行前可预览'}
-            </span>
+            {executeError ? (
+              <span className="text-[12px] text-destructive">
+                第 {executeError.index} 条语句失败（{executeError.code}），已执行部分不回滚
+              </span>
+            ) : (
+              // §12.1 修订：底部说明由长文案改为图标 + tooltip（HoverTip），节省状态行空间
+              <HintTip text="语句由驱动按方言生成，执行前可预览；逐条执行、失败即停并定位序号（DDL 隐式提交不回滚）" />
+            )}
             <Button variant="secondary" size="sm" disabled={executing || !canExecute()} onClick={() => void showPreview()}>
               SQL 预览
             </Button>

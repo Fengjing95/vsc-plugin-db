@@ -168,26 +168,71 @@ export function ukRowError(row: UkRow, allRows: UkRow[]): string | undefined {
   return undefined;
 }
 
-/** 外键行校验：本表列 ≥1、引用表/引用列非空、引用列数与本地一致、名称行内唯一 */
-export function fkRowError(row: FkRow, allRows: FkRow[]): string | undefined {
+/** 外键列对应组数（§12.5 修订：UI 按行维护「本表列 ↔ 引用列」一一对应，spec 侧仍为平行数组） */
+export function fkPairCount(row: FkRow): number {
+  return Math.max(row.spec.columns.length, row.spec.refColumns.length, 1);
+}
+
+/** 外键引用表校验（显示在引用表输入框下方） */
+export function fkRefTableError(row: FkRow): string | undefined {
   if (row.deleted) {
     return undefined;
-  }
-  if (row.spec.columns.length === 0) {
-    return '外键至少需要一列';
   }
   if (!row.spec.refTable.trim()) {
     return '引用表不能为空';
   }
-  if (row.spec.refColumns.length === 0) {
-    return '引用列不能为空';
+  return undefined;
+}
+
+/** 外键第 index 组列对应校验（显示在该对应行下方）：两侧都未选视为待填写（首页提示），缺一侧即错 */
+export function fkPairError(row: FkRow, index: number): string | undefined {
+  if (row.deleted) {
+    return undefined;
   }
-  if (row.spec.refColumns.length !== row.spec.columns.length) {
-    return '引用列数须与本地列数一致';
+  const col = row.spec.columns[index]?.trim() ?? '';
+  const ref = row.spec.refColumns[index]?.trim() ?? '';
+  if (!col && !ref) {
+    return index === 0 ? '至少需要一组列对应（本表列 → 引用列）' : undefined;
+  }
+  if (!col) {
+    return '缺少本表列';
+  }
+  if (!ref) {
+    return '缺少引用列';
+  }
+  return undefined;
+}
+
+/** 外键名称校验（显示在名称输入框下方）：行内唯一 */
+export function fkNameError(row: FkRow, allRows: FkRow[]): string | undefined {
+  if (row.deleted) {
+    return undefined;
   }
   const name = (row.spec.name ?? '').trim();
   if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
     return `外键名 "${name}" 重复`;
+  }
+  return undefined;
+}
+
+/** 外键行校验（组级汇总，状态行/徽标用）：名称重复 → 引用表 → 首个不完整对应组 */
+export function fkRowError(row: FkRow, allRows: FkRow[]): string | undefined {
+  if (row.deleted) {
+    return undefined;
+  }
+  const nameErr = fkNameError(row, allRows);
+  if (nameErr) {
+    return nameErr;
+  }
+  const refErr = fkRefTableError(row);
+  if (refErr) {
+    return refErr;
+  }
+  for (let i = 0; i < fkPairCount(row); i++) {
+    const pairErr = fkPairError(row, i);
+    if (pairErr) {
+      return pairErr;
+    }
   }
   return undefined;
 }
