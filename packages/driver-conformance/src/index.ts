@@ -1594,19 +1594,23 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
 
       await check(results, 'ddl', 'buildAlterTable 增删唯一键：执行后反映', async () => {
         const base = await baselineOf();
-        const target: TableSpec = { ...base, uniqueKeys: [...(base.uniqueKeys ?? []), { name: 'cf_uk_extra', columns: ['ref_id'] }] };
+        // 复合 (uid, ref_id) 而非单列 (ref_id)：MySQL 会把同列 UNIQUE 选作外键的支撑索引，
+        // 删除时报 needed in a foreign key constraint（CI 实跑抓到）——复合列首列非外键列，
+        // 不具备 FK 支撑资格，引擎始终保留自建的 cf_fk_ref 索引，增删两条路径都可行
+        const target: TableSpec = { ...base, uniqueKeys: [...(base.uniqueKeys ?? []), { name: 'cf_uk_extra', columns: ['uid', 'ref_id'] }] };
         const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
         assert(statements.length > 0, '新增唯一键应生成非空语句集');
         await execDdlStatements(conn, db, statements);
         const after = await baselineOf();
-        // 按 (ref_id) 列形状定位新增的唯一键（SQLite 落地为 autoindex 名，显式名不保留）
-        const added = after.uniqueKeys?.find((u) => u.columns.length === 1 && u.columns[0] === 'ref_id');
+        // 按 (uid, ref_id) 列形状定位新增的唯一键（SQLite 落地为 autoindex 名，显式名不保留）
+        const isExtraUk = (u: { columns: string[] }): boolean => u.columns.length === 2 && u.columns[0] === 'uid' && u.columns[1] === 'ref_id';
+        const added = after.uniqueKeys?.find(isExtraUk);
         assert(added !== undefined && added.name, `新增唯一键未回读：${JSON.stringify(after.uniqueKeys)}`);
-        const target2: TableSpec = { ...after, uniqueKeys: after.uniqueKeys!.filter((u) => !(u.columns.length === 1 && u.columns[0] === 'ref_id')) };
+        const target2: TableSpec = { ...after, uniqueKeys: after.uniqueKeys!.filter((u) => !isExtraUk(u)) };
         const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
         await execDdlStatements(conn, db, statements2);
         const after2 = await baselineOf();
-        assert(!after2.uniqueKeys?.some((u) => u.columns.length === 1 && u.columns[0] === 'ref_id'), '删除唯一键未被反映');
+        assert(!after2.uniqueKeys?.some(isExtraUk), '删除唯一键未被反映');
         assert((after2.uniqueKeys?.length ?? 0) === 1, `原有唯一键应保留，实际 ${JSON.stringify(after2.uniqueKeys)}`);
       });
 

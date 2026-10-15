@@ -161,7 +161,8 @@ d('mysql conformance（CI service 实跑）', () => {
     const summary = await runDdlChecks(makeConn);
     logFailures(summary);
     expect(summary.failed).toBe(0);
-    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
+    // 原 7 项 + 键/外键/索引段 6 项（外键 alter 各方言均支持，无 skip）
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(13);
   });
 
   it('database-ddl 组（M8-DBDDL / D-19：建库周期 + alter 无差异 + 标识符 fail-closed 全实跑）', async () => {
