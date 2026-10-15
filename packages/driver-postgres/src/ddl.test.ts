@@ -55,11 +55,12 @@ describe('buildCreateTableStatements（M8-PG）', () => {
     expect(() => escapeDdlLiteral('a\nb')).toThrow(DriverError);
   });
 
-  it('非法标识符 fail-closed（E_VALIDATION）：表名/列名引号分号注入', () => {
-    expect(() => buildCreateTableStatements('public', baseSpec({ name: 'x; DROP TABLE t' }))).toThrow(DriverError);
-    expect(() =>
-      buildCreateTableStatements('public', baseSpec({ columns: [{ name: 'a"b', dataType: 'int', nullable: true, isPrimaryKey: false, ordinal: 1 }] })),
-    ).toThrow(DriverError);
+  it('标识符校验（危险字符黑名单）：双引号/控制字符拒绝；连字符等真实合法名放行', () => {
+    expect(() => buildCreateTableStatements('public', baseSpec({ name: 'x"y' }))).toThrow(DriverError);
+    expect(() => buildCreateTableStatements('public', baseSpec({ name: 'x\ny' }))).toThrow(DriverError);
+    // 分号/连字符由双引号双写转义安全承载（回归：test-api 类真实库名曾被白名单误拒）
+    const stmts = buildCreateTableStatements('test-api', baseSpec({ name: 'cf-ddl_t;--x' }));
+    expect(stmts[0].sql).toContain('"test-api"."cf-ddl_t;--x"');
   });
 });
 
@@ -197,8 +198,10 @@ describe('库级 DDL（M8-DBDDL / D-19：PG「库」= schema）', () => {
     expect(stmts).toEqual([{ sql: 'DROP SCHEMA "appdata" CASCADE', destructive: true }]);
   });
 
-  it('非法 schema 名 fail-closed（E_VALIDATION）', () => {
-    expect(() => buildCreateSchemaStatements({ name: 'a; DROP SCHEMA x' })).toThrowError(DriverError);
+  it('schema 名校验（危险字符黑名单，E_VALIDATION）', () => {
+    expect(() => buildCreateSchemaStatements({ name: 'a\nb' })).toThrowError(DriverError);
     expect(() => buildDropSchemaStatements('a"b')).toThrowError(DriverError);
+    // 连字符 schema 名合法（回归：test-api 类真实名曾被白名单误拒）
+    expect(buildCreateSchemaStatements({ name: 'app-data' })[0].sql).toBe('CREATE SCHEMA "app-data"');
   });
 });

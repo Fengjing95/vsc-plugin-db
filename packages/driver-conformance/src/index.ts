@@ -1695,8 +1695,28 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
         }
         assert(false, `非法标识符 "${name}" 未被拒绝`);
       };
-      await bad('cf_ddl_x; DROP TABLE t');
-      await bad('cf`_ddl');
+      // 黑名单口径（批次 B 修订）：只拒绝方言引号字符与控制字符——分号/引号注入形态已由
+      // 引号双写转义从源头封死（正向覆盖见下），控制字符任何引用方式都无法安全承载
+      await bad('cf_ddl_x\u0000 DROP TABLE t');
+      await bad('cf\nddl');
+      // 连字符等真实合法名放行（回归：test-api 类库名下的建表曾被白名单误拒）——
+      // 生成 + 执行 + 元数据回读全链路验证引用转义正确性
+      const specialName = 'cf-ddl-special';
+      try {
+        const statements = await conn.buildCreateTable!(db, {
+          name: specialName,
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        });
+        await execDdlStatements(conn, db, statements);
+        const objs = await conn.listObjects(db);
+        assert(objs.some((o) => o.name === specialName), `连字符表名应成功创建并回读，实际 ${JSON.stringify(objs.map((o) => o.name))}`);
+      } finally {
+        try {
+          await conn.query({ sql: `DROP TABLE ${quoteFor(conn, specialName)}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        } catch {
+          // 清理尽力而为
+        }
+      }
     });
 
     await check(results, 'ddl', 'fixture 清理', async () => {
@@ -1749,10 +1769,11 @@ export async function runDatabaseDdlChecks(
           assert(false, '非法标识符未被拒绝');
         };
         if (hasCreate) {
-          await bad(() => driver.buildCreateDatabase!({ name: 'cf_db; DROP DATABASE x' }));
+          // 黑名单口径（批次 B 修订）：只拒绝控制字符——分号/反引号注入形态已由引号双写转义封死
+          await bad(() => driver.buildCreateDatabase!({ name: 'cf_db\u0000x' }));
         }
         if (hasDrop) {
-          await bad(() => driver.buildDropDatabase!('cf`_db'));
+          await bad(() => driver.buildDropDatabase!('cf\ndb'));
         }
       });
     } else {

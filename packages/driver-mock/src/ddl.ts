@@ -21,12 +21,14 @@ import {
  * 纯函数 + 显式注册表句柄注入，有单测。
  */
 
-/** 标识符字符合法性（fail-closed，不依赖转义兜底）：引号/分号/注释符等直接拒绝 */
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单，与 driver-mysql 同口径）：拒绝反引号（防逃逸，执行器
+ *  解析依赖该前提）与控制字符；连字符/点/空格/中文等真实合法名交由反引号引用承载 */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F`]/;
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
 }

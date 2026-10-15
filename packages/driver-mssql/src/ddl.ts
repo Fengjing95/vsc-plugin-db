@@ -23,11 +23,15 @@ import { quoteMssqlIdentifier } from './sql';
  * 纯函数，有单测。
  */
 
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单）：只拒绝方言引号字符（右方括号，防逃逸）与控制字符；
+ *  连字符/点/空格/中文等真实合法名交由 quoteMssqlIdentifier 双写转义承载——DDL 不可参数化的
+ *  fail-closed 口径不变（注入面即引号逃逸，已从源头封死） */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F\]]/;
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
 }

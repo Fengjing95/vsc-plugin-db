@@ -20,13 +20,28 @@ import {
  * 纯函数，有单测。
  */
 
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单）：只拒绝方言引号字符（反引号，防逃逸）与控制字符
+ *  （无法安全承载）；连字符/点/空格/中文等真实合法名交由 quoteMysqlIdentifier 双写转义承载——
+ *  DDL 不可参数化的 fail-closed 口径不变（注入面即引号逃逸，已从源头封死） */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F`]/;
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
+}
+
+/** 关键字面量校验（字符集/排序规则）：语句中原样拼接、不可引用——保持严格白名单
+ *  （标识符黑名单口径不适用于此类非引用插值） */
+const KEYWORD_RE = /^[A-Za-z0-9_$]+$/;
+
+function assertKeyword(kind: string, value: string): string {
+  if (!KEYWORD_RE.test(value) || value.length > 64) {
+    throw new DriverError('E_VALIDATION', `${kind} "${value}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  }
+  return value;
 }
 
 /** 字面量转义：数值与 CURRENT_TIMESTAMP 原样；其余字符串字面量单引号包裹（'' 翻倍，默认 sql_mode 下合法）；控制字符拒绝 */
@@ -277,10 +292,10 @@ export function buildCreateDatabaseStatements(spec: DatabaseSpec): DdlStatement[
   assertIdentifier('库名', spec.name);
   const parts = [`CREATE DATABASE \`${spec.name}\``];
   if (spec.charset) {
-    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+    parts.push(`CHARACTER SET ${assertKeyword('字符集', spec.charset)}`);
   }
   if (spec.collation) {
-    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+    parts.push(`COLLATE ${assertKeyword('排序规则', spec.collation)}`);
   }
   return [{ sql: parts.join(' ') }];
 }
@@ -296,10 +311,10 @@ export function buildAlterDatabaseStatements(
   }
   const parts: string[] = [];
   if (spec.charset && spec.charset !== current.charset) {
-    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+    parts.push(`CHARACTER SET ${assertKeyword('字符集', spec.charset)}`);
   }
   if (spec.collation && spec.collation !== current.collation) {
-    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+    parts.push(`COLLATE ${assertKeyword('排序规则', spec.collation)}`);
   }
   if (parts.length === 0) {
     return []; // 无差异（契约组口径）

@@ -79,11 +79,12 @@ describe('buildMockCreateTable（M8-B2）', () => {
     expect(stmt.sql.endsWith(") COMMENT='测试表'")).toBe(true);
   });
 
-  it('非法标识符 fail-closed：表名/列名引号分号拒绝', () => {
-    expect(() => buildMockCreateTable('demo', baseSpec({ name: 'a;b' }))).toThrow(DriverError);
-    expect(() =>
-      buildMockCreateTable('demo', baseSpec({ columns: [{ name: 'x y', dataType: 'int', nullable: true, isPrimaryKey: false, ordinal: 1 }] })),
-    ).toThrow(DriverError);
+  it('标识符校验（危险字符黑名单）：反引号/控制字符拒绝；连字符放行', () => {
+    expect(() => buildMockCreateTable('demo', baseSpec({ name: 'a`b' }))).toThrow(DriverError);
+    expect(() => buildMockCreateTable('demo', baseSpec({ name: 'a\nb' }))).toThrow(DriverError);
+    // 连字符合法（回归：test-api 类真实名曾被白名单误拒）；执行器经反引号引用解析
+    const stmts = buildMockCreateTable('demo', baseSpec({ name: 'cf-ddl' }));
+    expect(stmts[0].sql).toContain('`demo`.`cf-ddl`');
   });
 
   it('默认值控制字符拒绝（fail-closed）', () => {
