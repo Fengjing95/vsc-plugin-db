@@ -294,8 +294,10 @@ export class PostgresConnection implements IConnection {
   async listIndexes(db: string, obj: string): Promise<IndexMeta[]> {
     this.assertLive();
     try {
+      // 列集：pg_get_indexdef 第二参是 1 起的列号——generate_series(1, indnatts) 直接传 k
+      // （曾传 k+1 整体偏移一位：单列索引回 [""]、双列回 [第二列, ""]，树上索引列集恒错——CI 契约实跑抓到）
       const rows = await this.queryRows(
-        'SELECT i.relname AS name, ix.indisunique AS uniq, ix.indisprimary AS ispk, am.amname AS itype, ARRAY (SELECT pg_catalog.pg_get_indexdef(ix.indexrelid, k + 1, true) FROM pg_catalog.generate_series(1, ix.indnatts) AS k) AS cols FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid JOIN pg_catalog.pg_am am ON am.oid = i.relam WHERE n.nspname = $1 AND c.relname = $2 ORDER BY i.relname',
+        'SELECT i.relname AS name, ix.indisunique AS uniq, ix.indisprimary AS ispk, am.amname AS itype, ARRAY (SELECT pg_catalog.pg_get_indexdef(ix.indexrelid, k, true) FROM pg_catalog.generate_series(1, ix.indnatts) AS k) AS cols FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid JOIN pg_catalog.pg_am am ON am.oid = i.relam WHERE n.nspname = $1 AND c.relname = $2 ORDER BY i.relname',
         [db, obj],
       );
       return rows.map((r) => ({

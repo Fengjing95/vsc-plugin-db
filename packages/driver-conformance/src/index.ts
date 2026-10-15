@@ -1616,17 +1616,21 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
 
       await check(results, 'ddl', 'buildAlterTable 增删索引：执行后反映', async () => {
         const base = await baselineOf();
-        const target: TableSpec = { ...base, indexes: [...(base.indexes ?? []), { name: 'cf_idx_extra', columns: ['ref_id'] }] };
+        // 复合 (id, uid) 而非单列 (ref_id)：InnoDB 会用同前缀（首列 = 外键列）的新索引替换自建的
+        // 外键支撑索引，删除时报 needed in a foreign key constraint（CI 实跑第二轮，与唯一键同族）——
+        // 复合首列非外键列则不具备支撑资格；也不得与既有 cf_idx_pair(uid, ref_id) 列集相同（按列形状定位会误删）
+        const target: TableSpec = { ...base, indexes: [...(base.indexes ?? []), { name: 'cf_idx_extra', columns: ['id', 'uid'] }] };
         const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
         assert(statements.length > 0, '新增索引应生成非空语句集');
         await execDdlStatements(conn, db, statements);
         const after = await baselineOf();
-        assert(after.indexes?.some((i) => i.name === 'cf_idx_extra'), `新增索引未回读：${JSON.stringify(after.indexes)}`);
-        const target2: TableSpec = { ...after, indexes: after.indexes!.filter((i) => i.name !== 'cf_idx_extra') };
+        const isExtraIdx = (i: { columns: string[] }): boolean => i.columns.length === 2 && i.columns[0] === 'id' && i.columns[1] === 'uid';
+        assert(after.indexes?.some(isExtraIdx), `新增索引未回读：${JSON.stringify(after.indexes)}`);
+        const target2: TableSpec = { ...after, indexes: after.indexes!.filter((i) => !isExtraIdx(i)) };
         const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
         await execDdlStatements(conn, db, statements2);
         const after2 = await baselineOf();
-        assert(!after2.indexes?.some((i) => i.name === 'cf_idx_extra'), '删除索引未被反映');
+        assert(!after2.indexes?.some(isExtraIdx), '删除索引未被反映');
         assert(after2.indexes!.some((i) => i.name === 'cf_idx_pair'), '原有索引应保留');
       });
 
