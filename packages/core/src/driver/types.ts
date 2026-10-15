@@ -65,6 +65,9 @@ export interface DriverCapabilities {
     /** 外键 ON DELETE/UPDATE 动作选项；缺省 = 标准四项（RESTRICT/CASCADE/SET NULL/NO ACTION） */
     refActions?: string[];
   };
+  /** @since M8-ER（概要 §5.11 / D-22）：ER 图查看——声明 = listKeys 的 FK 元数据完整可用
+   *  （关系收集零新增驱动方法，只消费 listObjects/listColumns/listKeys 自省）；未声明树无入口 */
+  supportsErDiagram?: boolean;
   hierarchy: NodeLevel[];
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';

@@ -79,6 +79,7 @@ const capabilities: DriverCapabilities = {
   supportsDdl: false,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable + query() 执行 DDL（内存）
   supportsDatabaseDdl: true, // M8-DBDDL：buildCreateDatabase/buildAlterDatabase/buildDropDatabase（内存库列表）
+  supportsErDiagram: true, // M8-ER：listKeys FK 元数据完整（关系收集契约基准，概要 §5.11 / D-22）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
   editable: true,
   pagination: 'offset',

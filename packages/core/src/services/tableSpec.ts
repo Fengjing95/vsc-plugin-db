@@ -1,4 +1,4 @@
-import type { ColumnMeta, ColumnSpec, IndexMeta, KeyMeta, TableSpec } from '../model/meta';
+import type { ColumnMeta, ColumnSpec, ForeignKeySpec, IndexMeta, KeyMeta, TableSpec } from '../model/meta';
 
 /**
  * 表结构编辑器的基线派生（概要 §5.9）：库内当前结构（listColumns 结果）→ TableSpec。
@@ -25,10 +25,34 @@ export function specFromColumns(obj: string, metas: ColumnMeta[], tableComment?:
 }
 
 /**
+ * FK 按约束名合并（@since M8-ER 上移为共享纯函数）：MySQL 的 FK 在 listKeys 里按列逐行返回
+ * （同名多行），复合外键需按约束名合并且列序随 ORDINAL_POSITION 对齐——表设计器基线派生
+ * （specFromTable）与 ER 关系收集（erModel）同源复用。
+ */
+export function mergeForeignKeyRows(keys: KeyMeta[]): ForeignKeySpec[] {
+  const fkByName = new Map<string, { columns: string[]; refTable: string; refColumns: string[] }>();
+  for (const k of keys) {
+    if (k.kind !== 'FK' || !k.name || !k.refTable) {
+      continue;
+    }
+    const merged = fkByName.get(k.name) ?? { columns: [], refTable: k.refTable, refColumns: [] };
+    merged.columns.push(...k.columns);
+    merged.refColumns.push(...(k.refColumns ?? []));
+    fkByName.set(k.name, merged);
+  }
+  return [...fkByName.entries()].map(([name, fk]) => ({
+    name,
+    columns: fk.columns,
+    refTable: fk.refTable,
+    refColumns: fk.refColumns,
+  }));
+}
+
+/**
  * 基线全量派生（表设计器批次 B，交互稿 §12.7 红线）：列之外把 listKeys/listIndexes 回读进
  * spec——不回读则 alter 会把库内既有键/外键/索引当「用户删除」误删。keys/indexes 缺省
  * （驱动未实现）时相关字段缺省，驱动 diff 只增不删（安全方向）。
- * 两个口径：① MySQL 的 FK 在 listKeys 里按列逐行返回（同名多行）——按约束名合并；
+ * 两个口径：① FK 按约束名合并（mergeForeignKeyRows，MySQL 同名多行）；
  * ② MySQL 同名唯一键会同时出现在 listIndexes——按 UNIQUE 键名去重，索引 Tab 不双入口管理。
  */
 export function specFromTable(
@@ -43,22 +67,7 @@ export function specFromTable(
     spec.uniqueKeys = keys
       .filter((k) => k.kind === 'UNIQUE' && k.name)
       .map((k) => ({ name: k.name!, columns: [...k.columns] }));
-    const fkByName = new Map<string, { columns: string[]; refTable: string; refColumns: string[] }>();
-    for (const k of keys) {
-      if (k.kind !== 'FK' || !k.name || !k.refTable) {
-        continue;
-      }
-      const merged = fkByName.get(k.name) ?? { columns: [], refTable: k.refTable, refColumns: [] };
-      merged.columns.push(...k.columns);
-      merged.refColumns.push(...(k.refColumns ?? []));
-      fkByName.set(k.name, merged);
-    }
-    spec.foreignKeys = [...fkByName.entries()].map(([name, fk]) => ({
-      name,
-      columns: fk.columns,
-      refTable: fk.refTable,
-      refColumns: fk.refColumns,
-    }));
+    spec.foreignKeys = mergeForeignKeyRows(keys);
     const ukNames = new Set(spec.uniqueKeys.map((u) => u.name));
     if (indexes) {
       spec.indexes = indexes

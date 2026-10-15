@@ -9,6 +9,7 @@ import {
   runInteractiveTransactionChecks,
   runMetadataChecks,
   runPaginationChecks,
+  runRelationGraphChecks,
   runSqlValueEncodingChecks,
   type SqlValueEncodingCase,
 } from './index';
@@ -86,6 +87,16 @@ it('conformance: mock 驱动通过 ddl 组（M8-B2，表结构编辑）', async 
   // create 一致 / 加列改注释 / 删列 / 主键变更 / 无差异 / 键外键索引建读一致 / 增删唯一键 /
   // 增删索引 / 增删外键 / 防误删红线 / 两段清理 / 非法标识符
   expect(summary.results.filter((r) => !r.skipped)).toHaveLength(13);
+});
+
+it('conformance: mock 驱动通过 relation-graph 组（M8-ER，D-22）', async () => {
+  const summary = await runRelationGraphChecks(mockConnection);
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  // C-3：组必须实跑（mock 声明 supportsErDiagram + listKeys）——fixture / 表集列形状 / FK 边 / selection / 清理
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
 });
 
 /** mock 基准值编码用例（§5 编码形态写入→读回；dataType 为驱动方言原文） */

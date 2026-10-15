@@ -73,6 +73,7 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-15）——buildCreateDatabase/buildDropDatabase
+  supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
   // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（约束式 UNIQUE/FK；PG 索引方法族）
   tableDesign: {
     uniqueKeys: true,

@@ -452,10 +452,24 @@ function parseForeignKeyClause(text: string): KeyMeta | undefined {
   };
 }
 
-/** 键/外键引用目标存在性 fail-closed（对齐 MySQL：引用表/列必须存在） */
-function assertKeySpecTargets(registry: MockDdlRegistry, db: string, keys: KeyMeta[]): void {
+/** 键/外键引用目标存在性 fail-closed（对齐 MySQL：引用表/列必须存在）。
+ *  self 供建表路径传入在建表（真实引擎允许 CREATE 时自引用——引用列对本表在建列校验） */
+function assertKeySpecTargets(
+  registry: MockDdlRegistry,
+  db: string,
+  keys: KeyMeta[],
+  self?: { name: string; columns: ColumnMeta[] },
+): void {
   for (const k of keys) {
     if (k.kind !== 'FK') {
+      continue;
+    }
+    if (self && k.refTable === self.name) {
+      for (const c of k.refColumns ?? []) {
+        if (!self.columns.some((x) => x.name === c)) {
+          throw new DriverError('E_VALIDATION', `外键 "${k.name}" 引用列 "${k.refTable}.${c}" 不存在`);
+        }
+      }
       continue;
     }
     const ref = registry.getTable(db, k.refTable!);
@@ -547,7 +561,7 @@ export function executeMockDdlSql(registry: MockDdlRegistry, sql: string): void 
     if (primaryKey.length > 0) {
       keys.unshift({ name: 'PRIMARY', kind: 'PK', columns: [...primaryKey] });
     }
-    assertKeySpecTargets(registry, db, keys);
+    assertKeySpecTargets(registry, db, keys, { name: create[2], columns });
     registry.createTable(db, create[2], { comment: tableComment, columns, primaryKey, keys, indexes });
     return;
   }

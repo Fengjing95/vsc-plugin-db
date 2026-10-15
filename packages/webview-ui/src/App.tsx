@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { ConnectionFormPage } from './pages/ConnectionFormPage';
 import { DatabaseDesignPage } from './pages/DatabaseDesignPage';
 import { ConsolePage } from './pages/ConsolePage';
+import { ErDiagramPage } from './pages/ErDiagramPage';
 import { TableDesignPage } from './pages/TableDesignPage';
 import { TablePage } from './pages/TablePage';
 
@@ -27,6 +28,9 @@ export default function App() {
   } else if (boot.page === 'databaseDesign') {
     // 库级 DDL 弹窗（M8-DBDDL / D-19）：新建/编辑库共用，kind 决定预填与提交形态
     page = <DatabaseDesignPage />;
+  } else if (boot.page === 'erDiagram') {
+    // ER 图（M8-ER / D-22）：scope 由打开引导决定（all / selection JSON）
+    page = <ErDiagramPage />;
   } else if (boot.params.db && boot.params.obj && boot.params.connId) {
     const rowEstimate = boot.params.rowEstimate !== '' ? Number(boot.params.rowEstimate) : undefined;
     page = (

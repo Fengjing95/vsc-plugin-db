@@ -88,6 +88,7 @@ const capabilities: DriverCapabilities = {
     indexTypes: ['CLUSTERED', 'NONCLUSTERED'],
   },
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-21）——buildCreateDatabase/buildDropDatabase
+  supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',

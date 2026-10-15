@@ -268,6 +268,12 @@
         "command": "dbExplorer.showLog",
         "title": "打开日志",
         "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.showErDiagram",
+        "title": "查看 ER 图",
+        "category": "数据库",
+        "icon": "$(graph-scatter)"
       }
     ],
     "menus": {
@@ -359,7 +365,7 @@
         },
         {
           "command": "dbExplorer.refreshNode",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl(-alter)?)?$/",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl(-alter)?)?( er)?$/",
           "group": "navigation@1"
         },
         {
@@ -384,7 +390,7 @@
         },
         {
           "command": "dbExplorer.alterDatabase",
-          "when": "viewItem =~ /^database( ddl)?( dbddl)? dbddl-alter$/",
+          "when": "viewItem =~ /^database( ddl)?( dbddl)? dbddl-alter( er)?$/",
           "group": "2_object@4"
         },
         {
@@ -394,8 +400,13 @@
         },
         {
           "command": "dbExplorer.createTable",
-          "when": "viewItem =~ /^database ddl( dbddl(-alter)?)?$/ || viewItem =~ /^folder-table ddl$/",
+          "when": "viewItem =~ /^database ddl( dbddl(-alter)?)?( er)?$/ || viewItem =~ /^folder-table ddl$/",
           "group": "2_object@5"
+        },
+        {
+          "command": "dbExplorer.showErDiagram",
+          "when": "viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)? er$/",
+          "group": "2_object@6"
         },
         {
           "command": "dbExplorer.generateCode",

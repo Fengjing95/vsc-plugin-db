@@ -1,9 +1,11 @@
 import {
   DriverError,
+  collectRelationGraph,
   specFromColumns,
   specFromTable,
   type ChangeSet,
   type ColumnMeta,
+  type ErEdgeSummary,
   type FilterCondition,
   type FilterOp,
   type IConnection,
@@ -2074,6 +2076,192 @@ export async function runSqlValueEncodingChecks(
     await check(results, 'sql-value-encoding', 'fixture 清理', async () => {
       await dropFixture();
     });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+// ───────────────────────── M8-ER：关系收集（ER 图，概要 §5.11 / D-22）─────────────────────────
+
+/** ER 契约 fixture 表名（专用前缀 cf_er_；开始/结束双段清理，建表序满足 FK 引用先于被引用） */
+const ER_FIXTURE_TABLES = [
+  'cf_er_parent',
+  'cf_er_order',
+  'cf_er_line',
+  'cf_er_child',
+  'cf_er_self',
+  'cf_er_loose',
+] as const;
+
+/**
+ * relation-graph 组（@since M8-ER / D-22）：关系收集层契约（给定库 → 表/列/FK 关系模型）。
+ * 探针 = listKeys 方法存在性（P-19 同族：未实现 → 整组跳过，supportsErDiagram 未声明；
+ * 已实现则必须全过）。fixture 覆盖四类形状：单列 FK / 复合 FK（列序是 roundtrip 正确性
+ * 前提，PG ORDINALITY 口径）/ 自引用 FK / 无 FK 表。边方向口径：source = FK 子表（多端）、
+ * target = 被引用父表（一端）；端点不全的边不绘制、计入 hiddenEdges。
+ */
+export async function runRelationGraphChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    if (typeof conn.listKeys !== 'function') {
+      await skip(results, 'relation-graph', '整组跳过', '驱动未实现 listKeys（supportsErDiagram 未声明）');
+      return summarize(results);
+    }
+    const dbs = await conn.listDatabases();
+    assert(dbs.length > 0, 'listDatabases 返回空数组');
+    const db = dbs[0].name;
+
+    // FK 安全顺序：引用方先删（line→order、child→parent、self 自引用）
+    const dropAll = async (): Promise<void> => {
+      const order = ['cf_er_line', 'cf_er_child', 'cf_er_self', 'cf_er_parent', 'cf_er_order', 'cf_er_loose'];
+      for (const t of order) {
+        try {
+          await conn.query({
+            sql: `DROP TABLE IF EXISTS ${quoteFor(conn, t)}`,
+            db,
+            maxRows: 1,
+            timeoutMs: SAMPLE_TIMEOUT_MS,
+          });
+        } catch {
+          // IF EXISTS 不支持或权限受限时忽略（清理尽力而为）
+        }
+      }
+    };
+
+    const buildFixtures = async (): Promise<void> => {
+      assert(
+        typeof conn.buildCreateTable === 'function',
+        '前置失败：buildCreateTable 未实现（ER fixture 依赖表结构编辑契约造数）',
+      );
+      await dropAll();
+      const specs: TableSpec[] = [
+        {
+          name: 'cf_er_parent',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'uname', dataType: 'varchar(64)', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+        },
+        {
+          name: 'cf_er_order',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
+          ],
+          uniqueKeys: [{ name: 'cf_er_uk_order', columns: ['yr', 'num'] }],
+        },
+        {
+          name: 'cf_er_line',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'order_yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'order_num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
+          ],
+          foreignKeys: [
+            { name: 'cf_er_fk_line', columns: ['order_yr', 'order_num'], refTable: 'cf_er_order', refColumns: ['yr', 'num'] },
+          ],
+        },
+        {
+          name: 'cf_er_child',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'parent_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+          foreignKeys: [{ name: 'cf_er_fk_child', columns: ['parent_id'], refTable: 'cf_er_parent', refColumns: ['id'] }],
+        },
+        {
+          name: 'cf_er_self',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'manager_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+          foreignKeys: [{ name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'] }],
+        },
+        {
+          name: 'cf_er_loose',
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        },
+      ];
+      for (const spec of specs) {
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, spec));
+      }
+    };
+
+    await check(results, 'relation-graph', 'fixture 建表（单列/复合/自引用 FK + 无关系表）', buildFixtures);
+
+    await check(results, 'relation-graph', '关系收集：表集过滤与列形状（PK 标记、ordinal 序）', async () => {
+      const graph = await collectRelationGraph(conn, db, { kind: 'all' });
+      const names = graph.tables.map((t) => t.name);
+      for (const t of ER_FIXTURE_TABLES) {
+        assert(names.includes(t), `表集缺 ${t}：${JSON.stringify(names)}`);
+      }
+      const child = graph.tables.find((t) => t.name === 'cf_er_child');
+      assert(child !== undefined, 'cf_er_child 缺失');
+      assert(
+        child!.columns.length === 2,
+        `cf_er_child 应 2 列，实际 ${JSON.stringify(child!.columns)}`,
+      );
+      assert(
+        child!.columns[0].name === 'id' && child!.columns[0].isPrimaryKey,
+        `首列应为 PK id：${JSON.stringify(child!.columns[0])}`,
+      );
+      assert(
+        child!.columns[1].name === 'parent_id' && !child!.columns[1].isPrimaryKey,
+        `次列应为非 PK parent_id：${JSON.stringify(child!.columns[1])}`,
+      );
+    });
+
+    await check(results, 'relation-graph', 'FK 边：单列 / 复合（列序对齐）/ 自引用', async () => {
+      const graph = await collectRelationGraph(conn, db, { kind: 'all' });
+      const findEdge = (source: string, target: string): ErEdgeSummary | undefined =>
+        graph.edges.find((e) => e.sourceTable === source && e.targetTable === target);
+      const single = findEdge('cf_er_child', 'cf_er_parent');
+      assert(single !== undefined, '缺 cf_er_child → cf_er_parent 单列 FK 边');
+      assert(
+        single!.sourceColumns.length === 1 &&
+          single!.sourceColumns[0] === 'parent_id' &&
+          single!.targetColumns.length === 1 &&
+          single!.targetColumns[0] === 'id',
+        `单列 FK 边形状不符：${JSON.stringify(single)}`,
+      );
+      const composite = findEdge('cf_er_line', 'cf_er_order');
+      assert(composite !== undefined, '缺 cf_er_line → cf_er_order 复合 FK 边');
+      assert(
+        composite!.sourceColumns.join(',') === 'order_yr,order_num' &&
+          composite!.targetColumns.join(',') === 'yr,num',
+        `复合 FK 边列序必须按约束声明对齐（PG ORDINALITY 口径）：${JSON.stringify(composite)}`,
+      );
+      const selfEdge = findEdge('cf_er_self', 'cf_er_self');
+      assert(selfEdge !== undefined, '自引用 FK 边缺失（ER 必须保留）');
+      assert(
+        !graph.edges.some((e) => e.sourceTable === 'cf_er_loose'),
+        '无 FK 表不应产生出边',
+      );
+    });
+
+    await check(results, 'relation-graph', 'selection 裁剪：边随端点裁剪 + hiddenEdges 计数', async () => {
+      const only = await collectRelationGraph(conn, db, { kind: 'selection', tables: ['cf_er_child'] });
+      assert(
+        only.tables.map((t) => t.name).join(',') === 'cf_er_child',
+        `selection 应只含 cf_er_child，实际 ${JSON.stringify(only.tables.map((t) => t.name))}`,
+      );
+      assert(only.edges.length === 0, '端点不全的 FK 边不绘制');
+      assert(only.hiddenEdges === 1, `hiddenEdges 应为 1，实际 ${only.hiddenEdges}`);
+      const pair = await collectRelationGraph(conn, db, {
+        kind: 'selection',
+        tables: ['cf_er_child', 'cf_er_parent'],
+      });
+      assert(
+        pair.edges.length === 1 && pair.edges[0].targetTable === 'cf_er_parent',
+        `两端点齐备时 FK 边应保留：${JSON.stringify(pair.edges)}`,
+      );
+      assert(pair.hiddenEdges === 0, `两端点齐备时 hiddenEdges 应为 0，实际 ${pair.hiddenEdges}`);
+    });
+
+    await check(results, 'relation-graph', 'fixture 清理', dropAll);
   } finally {
     await conn.dispose();
   }

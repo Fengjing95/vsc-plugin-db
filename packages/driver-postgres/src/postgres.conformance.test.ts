@@ -10,6 +10,7 @@ import {
   runInteractiveTransactionChecks,
   runMetadataChecks,
   runPaginationChecks,
+  runRelationGraphChecks,
   runSqlValueEncodingChecks,
   type SqlValueEncodingCase,
 } from '@db-explorer/driver-conformance';
@@ -186,6 +187,14 @@ d('postgres conformance（CI service 实跑）', () => {
     expect(summary.failed).toBe(0);
     // 原 7 项 + 键/外键/索引段 6 项（外键 alter 各方言均支持，无 skip）
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(13);
+  });
+
+  it('relation-graph 组（M8-ER / D-22：单列/复合/自引用 FK + selection 裁剪）', async () => {
+    const summary = await runRelationGraphChecks(makeConn);
+    logFailures(summary);
+    expect(summary.failed).toBe(0);
+    // C-3：组必须实跑（supportsErDiagram 已声明）——fixture / 表集列形状 / FK 边 / selection / 清理
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
   });
 
   it('database-ddl 组（M8-DBDDL / D-19：schema 建删周期 + 标识符 fail-closed；无 ALTER 跳过）', async () => {
