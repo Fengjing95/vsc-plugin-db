@@ -1,7 +1,7 @@
 {
   "name": "vscode-db-explorer",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "数据库浏览器 VSCode 插件 — 统一的、可插拔的数据库访问入口",
   "packageManager": "pnpm@9.12.2",
   "engines": {

@@ -2,6 +2,23 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.3.0] - 2026-10-16
+
+表结构编辑器 Tab 化 + ER 图查看 + 官网在线演示。
+
+### 特性
+
+- **表结构编辑器 Tab 化**：列 / 键 / 外键 / 索引四个 Tab 可视化编辑（M8 表设计器批次 A/B）——TableSpec 扩展 uniqueKeys / foreignKeys / indexes，基线回读防误删（键/索引的 DROP 语句先于删列生成，P-57）、五驱动 DDL 生成器 + `capabilities.tableDesign` 能力裁剪；列 Tab 类型建议下拉（五驱动方言词表）与字段级错误归属提示；外键引用表 / 引用列统一为主题化清单控件（聚焦弹出、键入过滤、Enter 回填）
+- **ER 图查看（D-22）**：树上库节点打开库级关系图——关系收集只消费 listObjects / listColumns / listKeys 自省，core 简化 Sugiyama 分层布局（最长路径分层 + 重心排序 + DFS 打环，纯函数）；支持复合外键与自引用（分类树 / 汇报线），节点双击直接打开表格视图；表 300 上限超出走选表引导
+- **官网在线 Playground**：官网首页 Hero 内嵌可交互演示——浏览器内运行插件真实界面 + 内置 Mock 驱动（无需安装、不连任何数据库），表格编辑（乐观锁 / SQL 预览提交）、SQL Console（真实执行 + 危险语句横幅）、ER 图、表结构设计四类面板可玩
+- **mock 驱动新增 shop 电商示例库**：8 表 9 关系（自引用 ×2 / 多对多 junction / 复合外键），ER 能力的演示数据
+
+### 修复
+
+- **PostgreSQL：树上索引列集恒错（存量 bug）**——`listKeys` 的 `ARRAY(SELECT attname …)` 产出 `name[]` 无 builtin 解析器（回原始字符串直接崩）、`pg_get_indexdef` 列号 off-by-one（单列索引回空串）；改 `::text[]` + `WITH ORDINALITY` 保列序、传正确列号（P-59，CI 契约实跑抓到）
+- **标识符校验误拒真实合法名**——白名单改危险字符黑名单：连字符 / 点 / 空格 / 中文等放行（`test-api` 类库名此前报「含非法字符」，而库里真实存在），方言引号字符 + 控制字符仍 fail-closed；MySQL charset / collate 关键字插值保持严格白名单（P-58）
+- **契约套件（mysql / pg / mssql CI 实跑修正）**：增删唯一键 / 索引场景改复合列，避开 InnoDB 把同列新索引选作外键支撑索引导致的 DROP 失败（P-59）；新增契约组后各组断言计数同步（7→13）
+
 ## [0.2.1] - 2026-10-11
 
 SQL Server 驱动缺陷修复（v0.2.0 发布后由 CI 契约实跑抓到，P-53 同族）。
@@ -42,6 +59,7 @@ SQL Server 驱动缺陷修复（v0.2.0 发布后由 CI 契约实跑抓到，P-53
 - 详情页横幅配色（galleryBanner）与图标渐变对齐
 - 扩展图标更换为矢量渲染版（0.1.0 上架素材的形变修正）
 
+[0.3.0]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Fengjing95/vsc-plugin-db/releases/tag/v0.1.1
 
