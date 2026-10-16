@@ -252,10 +252,191 @@ const tableDefs: Record<string, TableDef> = {
         ];
       }),
   },
+
+  // ── shop 库：ER 关系演示（D-22 展示数据）。8 表 9 FK，覆盖自引用（分类树/汇报线）、
+  // 多对多 junction（订单明细）、复合外键（发货单 → 明细复合主键）三类关系形态 ──
+  'shop.customers': {
+    kind: 'table',
+    comment: '顾客',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2, { nullable: false }),
+      col('phone', 'varchar(32)', 'string', 3),
+      col('city', 'varchar(32)', 'string', 4),
+      col('created_at', 'datetime', 'datetime', 5),
+    ],
+    rows: () =>
+      Array.from({ length: 24 }, (_, i) => {
+        const id = i + 1;
+        return [id, `顾客${id}`, `138${String(10000000 + id * 137).slice(0, 8)}`, ['上海', '北京', '广州', '深圳'][i % 4], '2024-01-05 10:00:00'];
+      }),
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      { name: 'uk_phone', kind: 'UNIQUE', columns: ['phone'] },
+    ],
+    indexes: [{ name: 'uk_phone', columns: ['phone'], unique: true, type: 'BTREE' }],
+  },
+  'shop.categories': {
+    kind: 'table',
+    comment: '商品分类（自引用父子树）',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2, { nullable: false }),
+      col('parent_id', 'bigint', 'integer', 3),
+    ],
+    rows: () =>
+      Array.from({ length: 10 }, (_, i) => {
+        const id = i + 1;
+        return [id, ['数码', '家电', '服饰', '食品', '手机', '笔记本', '相机', '冰箱', '男装', '零食'][i], id <= 4 ? null : ((i % 4) + 1)];
+      }),
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      { name: 'fk_parent', kind: 'FK', columns: ['parent_id'], refTable: 'categories', refColumns: ['id'] },
+    ],
+  },
+  'shop.suppliers': {
+    kind: 'table',
+    comment: '供应商',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2, { nullable: false }),
+      col('city', 'varchar(32)', 'string', 3),
+    ],
+    rows: () =>
+      Array.from({ length: 6 }, (_, i) => [i + 1, `供应商${i + 1}`, ['上海', '深圳', '杭州', '成都'][i % 4]]),
+    keys: [{ name: 'PRIMARY', kind: 'PK', columns: ['id'] }],
+  },
+  'shop.products': {
+    kind: 'table',
+    comment: '商品',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2, { nullable: false }),
+      col('price', 'decimal(10,2)', 'decimal', 3, { nullable: false }),
+      col('stock', 'int', 'integer', 4),
+      col('category_id', 'bigint', 'integer', 5, { nullable: false }),
+      col('supplier_id', 'bigint', 'integer', 6, { nullable: false }),
+    ],
+    rows: () =>
+      Array.from({ length: 30 }, (_, i) => {
+        const id = i + 1;
+        return [id, `商品${id}`, `${(id * 7.5).toFixed(2)}`, (id * 13) % 500, ((i * 3) % 10) + 1, (i % 6) + 1];
+      }),
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      { name: 'fk_category', kind: 'FK', columns: ['category_id'], refTable: 'categories', refColumns: ['id'] },
+      { name: 'fk_supplier', kind: 'FK', columns: ['supplier_id'], refTable: 'suppliers', refColumns: ['id'] },
+    ],
+  },
+  'shop.employees': {
+    kind: 'table',
+    comment: '店员（自引用汇报线）',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('name', 'varchar(64)', 'string', 2, { nullable: false }),
+      col('title', 'varchar(32)', 'string', 3),
+      col('manager_id', 'bigint', 'integer', 4),
+    ],
+    rows: () =>
+      Array.from({ length: 8 }, (_, i) => {
+        const id = i + 1;
+        return [id, `店员${id}`, id <= 2 ? '店长' : '店员', id <= 2 ? null : ((i % 2) + 1)];
+      }),
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      { name: 'fk_manager', kind: 'FK', columns: ['manager_id'], refTable: 'employees', refColumns: ['id'] },
+    ],
+  },
+  'shop.orders': {
+    kind: 'table',
+    comment: '订单',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('customer_id', 'bigint', 'integer', 2, { nullable: false }),
+      col('employee_id', 'bigint', 'integer', 3, { nullable: false }),
+      col('status', 'varchar(16)', 'string', 4),
+      col('total', 'decimal(10,2)', 'decimal', 5),
+      col('created_at', 'datetime', 'datetime', 6),
+    ],
+    rows: () =>
+      Array.from({ length: 40 }, (_, i) => {
+        const id = i + 1;
+        return [id, ((i * 5) % 24) + 1, (i % 8) + 1, ['created', 'paid', 'shipped'][i % 3], `${(id * 23.4).toFixed(2)}`, '2024-03-15 14:00:00'];
+      }),
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      { name: 'fk_customer', kind: 'FK', columns: ['customer_id'], refTable: 'customers', refColumns: ['id'] },
+      { name: 'fk_employee', kind: 'FK', columns: ['employee_id'], refTable: 'employees', refColumns: ['id'] },
+    ],
+  },
+  'shop.order_items': {
+    kind: 'table',
+    comment: '订单明细（复合主键，订单×商品 junction）',
+    primaryKey: ['order_id', 'line_no'],
+    columns: [
+      col('order_id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true }),
+      col('line_no', 'int', 'integer', 2, { nullable: false, isPrimaryKey: true }),
+      col('product_id', 'bigint', 'integer', 3, { nullable: false }),
+      col('quantity', 'int', 'integer', 4),
+      col('unit_price', 'decimal(10,2)', 'decimal', 5),
+    ],
+    rows: () => {
+      const rows: unknown[][] = [];
+      for (let order = 1; order <= 40; order++) {
+        const lines = (order % 2) + 1;
+        for (let line = 1; line <= lines; line++) {
+          rows.push([order, line, ((order * 3 + line * 7 - 1) % 30) + 1, ((order + line) % 3) + 1, `${(line * 12.5).toFixed(2)}`]);
+        }
+      }
+      return rows;
+    },
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['order_id', 'line_no'] },
+      { name: 'fk_item_order', kind: 'FK', columns: ['order_id'], refTable: 'orders', refColumns: ['id'] },
+      { name: 'fk_item_product', kind: 'FK', columns: ['product_id'], refTable: 'products', refColumns: ['id'] },
+    ],
+  },
+  'shop.shipments': {
+    kind: 'table',
+    comment: '发货单（复合外键 → 明细）',
+    primaryKey: ['id'],
+    columns: [
+      col('id', 'bigint', 'integer', 1, { nullable: false, isPrimaryKey: true, autoIncrement: true }),
+      col('order_id', 'bigint', 'integer', 2, { nullable: false }),
+      col('line_no', 'int', 'integer', 3, { nullable: false }),
+      col('shipped_at', 'datetime', 'datetime', 4),
+    ],
+    rows: () => {
+      const rows: unknown[][] = [];
+      let id = 0;
+      for (let order = 1; order <= 40; order += 2) {
+        id += 1;
+        rows.push([id, order, 1, '2024-03-20 09:00:00']);
+      }
+      return rows;
+    },
+    keys: [
+      { name: 'PRIMARY', kind: 'PK', columns: ['id'] },
+      {
+        name: 'fk_ship_item',
+        kind: 'FK',
+        columns: ['order_id', 'line_no'],
+        refTable: 'order_items',
+        refColumns: ['order_id', 'line_no'],
+      },
+    ],
+  },
 };
 
 const databases: DatabaseMeta[] = [
   { name: 'demo', charset: 'utf8mb4', comment: '演示业务库' },
+  { name: 'shop', charset: 'utf8mb4', comment: '电商示例库（ER 关系演示：自引用 / 多对多 / 复合外键）' },
   { name: 'analytics', charset: 'utf8mb4', comment: '分析库' },
   { name: 'big', charset: 'utf8mb4', comment: '规模演示库（100 表 × 5 万行，M3 性能验收）' },
 ];
