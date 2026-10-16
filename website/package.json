@@ -5,12 +5,15 @@
   "type": "module",
   "description": "DB Kit 产品官网（Vite + React 单页，部署于腾讯云 EdgeOne）",
   "scripts": {
-    "dev": "node scripts/copy-assets.mjs && vite",
-    "build": "node scripts/copy-assets.mjs && vite build",
+    "dev": "node scripts/build-playground.mjs && node scripts/copy-assets.mjs && vite",
+    "build": "node scripts/build-playground.mjs && node scripts/copy-assets.mjs && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "@db-explorer/driver-mock": "workspace:*",
+    "@db-explorer/protocol": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -273,6 +273,15 @@ importers:
 
   website:
     dependencies:
+      '@db-explorer/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@db-explorer/driver-mock':
+        specifier: workspace:*
+        version: link:../packages/driver-mock
+      '@db-explorer/protocol':
+        specifier: workspace:*
+        version: link:../packages/protocol
       react:
         specifier: ^18.3.1
         version: 18.3.1

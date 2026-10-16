@@ -414,6 +414,35 @@ a {
   margin-top: 64px;
 }
 
+/* Hero 内嵌 Playground（替代静态截图） */
+.hero__live {
+  margin: 0;
+}
+
+.hero__live-fallback {
+  height: clamp(560px, 72vh, 780px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.hero__live-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.hero__live-hint {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
+
 .hero__shot-caption {
   padding: 13px 18px;
   border-top: 1px solid var(--line);
@@ -1025,6 +1054,230 @@ a {
   transform: none;
 }
 
+/* ---------- 特效组件（fx/，效果对齐 React Bits） ---------- */
+.hero {
+  position: relative;
+}
+
+.hero .container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Aurora：漂移渐变光斑（无 SVG 滤镜——动画子层 × 父层滤镜会逐帧重光栅化，见 Aurora.tsx 注释） */
+.fx-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fx-aurora__layer {
+  position: absolute;
+  inset: -28%;
+}
+
+.fx-aurora__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  will-change: transform;
+}
+
+.fx-aurora__blob--a {
+  left: 14%;
+  top: 6%;
+  width: 52vw;
+  height: 42vh;
+  background: radial-gradient(closest-side, rgba(43, 127, 255, 0.34), transparent 72%);
+  animation: fx-drift-a 17s ease-in-out infinite alternate;
+}
+
+.fx-aurora__blob--b {
+  right: 4%;
+  top: 22%;
+  width: 44vw;
+  height: 36vh;
+  background: radial-gradient(closest-side, rgba(56, 189, 248, 0.2), transparent 72%);
+  animation: fx-drift-b 21s ease-in-out infinite alternate;
+}
+
+.fx-aurora__blob--c {
+  left: 32%;
+  top: 44%;
+  width: 46vw;
+  height: 32vh;
+  background: radial-gradient(closest-side, rgba(21, 84, 192, 0.3), transparent 72%);
+  animation: fx-drift-c 24s ease-in-out infinite alternate;
+}
+
+@keyframes fx-drift-a {
+  to {
+    transform: translate(9vw, 6vh) scale(1.12);
+  }
+}
+
+@keyframes fx-drift-b {
+  to {
+    transform: translate(-7vw, -5vh) scale(1.08) rotate(8deg);
+  }
+}
+
+@keyframes fx-drift-c {
+  to {
+    transform: translate(5vw, -7vh) scale(0.92);
+  }
+}
+
+.fx-aurora__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 36%, var(--bg) 96%);
+}
+
+/* 离屏暂停：滚出视口即停止光斑动画（合成器层不再更新） */
+.fx-aurora.is-paused .fx-aurora__blob {
+  animation-play-state: paused;
+}
+
+/* Split Text：字符错峰上浮（unit 段整体入场） */
+.fx-split__char {
+  display: inline-block;
+  white-space: pre;
+  animation: fx-char-in 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.fx-split__unit {
+  display: inline-block;
+  animation: fx-char-in 0.66s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes fx-char-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.55em);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Shiny Text：流光扫过 */
+.fx-shiny {
+  background: linear-gradient(
+    120deg,
+    rgba(154, 167, 189, 0.75) 38%,
+    #eaf2ff 49%,
+    #7cb3ff 51%,
+    rgba(154, 167, 189, 0.75) 62%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: fx-shiny 3.4s linear infinite;
+}
+
+@keyframes fx-shiny {
+  to {
+    background-position: -240% 0;
+  }
+}
+
+/* Spotlight Card：内层光晕 + 边框描光跟随鼠标 */
+.fx-spot {
+  position: relative;
+}
+
+.fx-spot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(460px circle at var(--sx, 50%) var(--sy, 50%), rgba(43, 127, 255, 0.12), transparent 46%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.fx-spot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(340px circle at var(--sx, 50%) var(--sy, 50%), rgba(124, 179, 255, 0.65), transparent 44%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.fx-spot:hover::before,
+.fx-spot:hover::after {
+  opacity: 1;
+}
+
+/* Hero 统计行 + Playground 入口 */
+.hero__stats {
+  display: flex;
+  justify-content: center;
+  gap: clamp(28px, 6vw, 72px);
+  margin-top: 34px;
+}
+
+.hero__stats dd {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero__stats dt {
+  margin-top: 2px;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+}
+
+.hero__playground {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 26px;
+  padding: 7px 16px;
+  border: 1px solid rgba(43, 127, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(43, 127, 255, 0.08);
+  font-size: 0.88rem;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.hero__playground:hover {
+  border-color: rgba(43, 127, 255, 0.7);
+  background: rgba(43, 127, 255, 0.14);
+}
+
+.hero__playground .arrow {
+  color: #7cb3ff;
+  transition: transform 0.2s;
+}
+
+.hero__playground:hover .arrow {
+  transform: translateX(3px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -1045,5 +1298,16 @@ a {
   .coming__card,
   .feature {
     transition: none;
+  }
+
+  .fx-aurora__blob,
+  .fx-aurora__layer,
+  .fx-shiny {
+    animation: none;
+  }
+
+  .fx-split__char,
+  .fx-split__unit {
+    animation: none;
   }
 }

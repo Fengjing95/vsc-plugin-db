@@ -20,6 +20,8 @@ export const site = {
     issues: `${REPO}/issues`,
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs`,
+    /** 在线 Playground：内嵌在首页 Hero 图位（#playground 锚点），浏览器内跑真实 webview 界面 + mock 驱动 */
+    playground: '#playground',
     /**
      * TODO(上线前)：建好「路线图征集」单一 roadmap issue 后，把此链接替换为该 issue 地址。
      * 当前用 Issues 列表占位（用户已选定单一 roadmap 策略，三卡共用）。

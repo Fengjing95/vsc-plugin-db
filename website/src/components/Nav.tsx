@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { site, withBase } from '../content/site';
 
 const NAV_LINKS = [
+  { href: '#playground', label: '✨ 在线体验' },
   { href: '#matrix', label: '支持矩阵' },
   { href: '#features', label: '功能亮点' },
   { href: '#screenshots', label: '界面' },
