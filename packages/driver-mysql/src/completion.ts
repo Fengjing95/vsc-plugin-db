@@ -4,6 +4,8 @@
  * DialectInfo.keywords 无消费方（仅声明性元数据），词表只服务补全。
  */
 
+import type { DataTypeOption } from '@db-explorer/core';
+
 export const KEYWORDS = [
   // DML
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
@@ -112,4 +114,41 @@ export const COMPLETION_SNIPPETS = [
     body: 'SHOW CREATE TABLE ${1:table};',
     description: '查看建表语句',
   },
+];
+
+/**
+ * 表结构编辑器类型建议词表（表设计器批次 A，交互稿 §12.3）：MySQL 常用面，按常用度排序。
+ * template 为带形参回填模板（回填后光标落形参位）；建议不是白名单——词表外类型照常手输，
+ * 合法性由驱动 fail-closed 校验兜底。
+ */
+export const DATA_TYPES: DataTypeOption[] = [
+  { value: 'INT' },
+  { value: 'BIGINT' },
+  { value: 'VARCHAR', template: 'VARCHAR()' },
+  { value: 'TEXT' },
+  { value: 'DECIMAL', template: 'DECIMAL(,)' },
+  { value: 'DATETIME' },
+  { value: 'TIMESTAMP' },
+  { value: 'DATE' },
+  { value: 'TINYINT' },
+  { value: 'SMALLINT' },
+  { value: 'MEDIUMINT' },
+  { value: 'BOOLEAN' },
+  { value: 'FLOAT' },
+  { value: 'DOUBLE' },
+  { value: 'CHAR', template: 'CHAR()' },
+  { value: 'TINYTEXT' },
+  { value: 'MEDIUMTEXT' },
+  { value: 'LONGTEXT' },
+  { value: 'JSON' },
+  { value: 'TIME' },
+  { value: 'YEAR' },
+  { value: 'BLOB' },
+  { value: 'TINYBLOB' },
+  { value: 'MEDIUMBLOB' },
+  { value: 'LONGBLOB' },
+  { value: 'BINARY', template: 'BINARY()' },
+  { value: 'VARBINARY', template: 'VARBINARY()' },
+  { value: 'ENUM', template: "ENUM('')" },
+  { value: 'BIT', template: 'BIT()' },
 ];

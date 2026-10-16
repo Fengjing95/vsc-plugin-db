@@ -1,6 +1,6 @@
 import { createPool, type Pool, type PoolConnection } from 'mysql2/promise';
 // 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSON 面）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -8,6 +8,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -55,6 +56,15 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：buildCreateDatabase/buildAlterDatabase/buildDropDatabase
+  supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（InnoDB 外键；索引类型两族）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: true,
+    indexes: true,
+    indexTypes: ['BTREE', 'HASH'],
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -409,6 +419,10 @@ export class MysqlConnection implements IConnection {
       rowKey[missing] = Number(lid);
     }
     return rowKey;
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

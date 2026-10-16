@@ -1,8 +1,11 @@
 import {
   DriverError,
+  collectRelationGraph,
   specFromColumns,
+  specFromTable,
   type ChangeSet,
   type ColumnMeta,
+  type ErEdgeSummary,
   type FilterCondition,
   type FilterOp,
   type IConnection,
@@ -1533,6 +1536,159 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
       assert(statements.length === 0, `无差异应返回空数组，实际 ${statements.length} 条`);
     });
 
+    // ── 键 / 外键 / 索引 roundtrip（表设计器批次 B，交互稿 §12.4~12.7）──
+    // P-19 同族：listKeys/listIndexes 未实现 → 整段 skip（键/外键/索引 Tab 未声明，编辑器回落纯列编辑）。
+    // 红线口径：DROP 约束/索引只允许由「基线存在且 spec 移除」生成；基线原样提交必须返回空数组。
+    if (typeof conn.listKeys !== 'function' || typeof conn.listIndexes !== 'function') {
+      await skip(results, 'ddl', '键/外键/索引 roundtrip 整段跳过', '驱动未实现 listKeys/listIndexes（tableDesign 能力未声明）');
+    } else {
+      const REF_FIXTURE_TABLE = 'cf_ddl_ref';
+      const dropRefFixture = async (): Promise<void> => {
+        try {
+          await conn.query({ sql: `DROP TABLE IF EXISTS ${quoteFor(conn, REF_FIXTURE_TABLE)}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        } catch {
+          // 引用表清理尽力而为（末尾还有整段清理兜底）
+        }
+      };
+      const baselineOf = async (): Promise<TableSpec> =>
+        specFromTable(
+          DDL_FIXTURE_TABLE,
+          await conn.listColumns(db, DDL_FIXTURE_TABLE),
+          undefined,
+          await conn.listKeys!(db, DDL_FIXTURE_TABLE),
+          await conn.listIndexes!(db, DDL_FIXTURE_TABLE),
+        );
+
+      await check(results, 'ddl', 'buildCreateTable 键/外键/索引：执行后回读一致', async () => {
+        await dropFixture();
+        await dropRefFixture();
+        const refSpec: TableSpec = {
+          name: REF_FIXTURE_TABLE,
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        };
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, refSpec));
+        const spec: TableSpec = {
+          name: DDL_FIXTURE_TABLE,
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'uid', dataType: 'varchar(64)', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'ref_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 3 },
+          ],
+          uniqueKeys: [{ name: 'cf_uk_uid', columns: ['uid'] }],
+          foreignKeys: [{ name: 'cf_fk_ref', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'], onDelete: 'CASCADE' }],
+          indexes: [{ name: 'cf_idx_pair', columns: ['uid', 'ref_id'] }],
+        };
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, spec));
+        const base = await baselineOf();
+        // 唯一键按列形状断言（SQLite 将 UNIQUE 落地为 sqlite_autoindex_*，显式名不保留，§12.2 已知差异）
+        const uk = base.uniqueKeys?.find((u) => u.columns.length === 1 && u.columns[0] === 'uid');
+        assert(uk !== undefined && uk.name, `应回读 1 个 (uid) 唯一键，实际 ${JSON.stringify(base.uniqueKeys)}`);
+        assert((base.foreignKeys?.length ?? 0) === 1, `应回读 1 个外键，实际 ${base.foreignKeys?.length ?? 0}：${JSON.stringify(base.foreignKeys)}`);
+        const fk = base.foreignKeys![0];
+        assert(Boolean(fk.name), '外键回读必须携带约束名（diff 对齐依赖；SQLite 允许驱动合成名）');
+        assert(
+          fk.columns.length === 1 && fk.columns[0] === 'ref_id' && fk.refTable === REF_FIXTURE_TABLE && fk.refColumns.length === 1 && fk.refColumns[0] === 'id',
+          `外键回读形状不符：${JSON.stringify(fk)}`,
+        );
+        assert((base.indexes?.length ?? 0) >= 1, `应回读至少 1 个二级索引，实际 ${base.indexes?.length ?? 0}：${JSON.stringify(base.indexes)}`);
+        assert(base.indexes!.some((i) => i.name === 'cf_idx_pair' && i.columns.length === 2), `索引回读应含 cf_idx_pair(uid,ref_id)：${JSON.stringify(base.indexes)}`);
+      });
+
+      await check(results, 'ddl', 'buildAlterTable 增删唯一键：执行后反映', async () => {
+        const base = await baselineOf();
+        // 复合 (uid, ref_id) 而非单列 (ref_id)：MySQL 会把同列 UNIQUE 选作外键的支撑索引，
+        // 删除时报 needed in a foreign key constraint（CI 实跑抓到）——复合列首列非外键列，
+        // 不具备 FK 支撑资格，引擎始终保留自建的 cf_fk_ref 索引，增删两条路径都可行
+        const target: TableSpec = { ...base, uniqueKeys: [...(base.uniqueKeys ?? []), { name: 'cf_uk_extra', columns: ['uid', 'ref_id'] }] };
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+        assert(statements.length > 0, '新增唯一键应生成非空语句集');
+        await execDdlStatements(conn, db, statements);
+        const after = await baselineOf();
+        // 按 (uid, ref_id) 列形状定位新增的唯一键（SQLite 落地为 autoindex 名，显式名不保留）
+        const isExtraUk = (u: { columns: string[] }): boolean => u.columns.length === 2 && u.columns[0] === 'uid' && u.columns[1] === 'ref_id';
+        const added = after.uniqueKeys?.find(isExtraUk);
+        assert(added !== undefined && added.name, `新增唯一键未回读：${JSON.stringify(after.uniqueKeys)}`);
+        const target2: TableSpec = { ...after, uniqueKeys: after.uniqueKeys!.filter((u) => !isExtraUk(u)) };
+        const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+        await execDdlStatements(conn, db, statements2);
+        const after2 = await baselineOf();
+        assert(!after2.uniqueKeys?.some(isExtraUk), '删除唯一键未被反映');
+        assert((after2.uniqueKeys?.length ?? 0) === 1, `原有唯一键应保留，实际 ${JSON.stringify(after2.uniqueKeys)}`);
+      });
+
+      await check(results, 'ddl', 'buildAlterTable 增删索引：执行后反映', async () => {
+        const base = await baselineOf();
+        // 复合 (id, uid) 而非单列 (ref_id)：InnoDB 会用同前缀（首列 = 外键列）的新索引替换自建的
+        // 外键支撑索引，删除时报 needed in a foreign key constraint（CI 实跑第二轮，与唯一键同族）——
+        // 复合首列非外键列则不具备支撑资格；也不得与既有 cf_idx_pair(uid, ref_id) 列集相同（按列形状定位会误删）
+        const target: TableSpec = { ...base, indexes: [...(base.indexes ?? []), { name: 'cf_idx_extra', columns: ['id', 'uid'] }] };
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+        assert(statements.length > 0, '新增索引应生成非空语句集');
+        await execDdlStatements(conn, db, statements);
+        const after = await baselineOf();
+        const isExtraIdx = (i: { columns: string[] }): boolean => i.columns.length === 2 && i.columns[0] === 'id' && i.columns[1] === 'uid';
+        assert(after.indexes?.some(isExtraIdx), `新增索引未回读：${JSON.stringify(after.indexes)}`);
+        const target2: TableSpec = { ...after, indexes: after.indexes!.filter((i) => !isExtraIdx(i)) };
+        const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+        await execDdlStatements(conn, db, statements2);
+        const after2 = await baselineOf();
+        assert(!after2.indexes?.some(isExtraIdx), '删除索引未被反映');
+        assert(after2.indexes!.some((i) => i.name === 'cf_idx_pair'), '原有索引应保留');
+      });
+
+      // 外键 alter 能力探测（P-19：skip 必须写在 check 外层防双重计数）：foreignKeyAlter=false 的
+      // 驱动（SQLite）以 E_UNSUPPORTED 声明边界——仅接受该错误码，禁写「任何错误都跳过」
+      let fkAlterSupported = true;
+      {
+        const probeBase = await baselineOf();
+        try {
+          await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, {
+            ...probeBase,
+            foreignKeys: [...(probeBase.foreignKeys ?? []), { name: 'cf_fk_probe', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'] }],
+          }, probeBase);
+        } catch (err) {
+          assert(DriverError.is(err) && err.code === 'E_UNSUPPORTED', `外键 alter 探测失败且非 E_UNSUPPORTED：${String(err)}`);
+          fkAlterSupported = false;
+        }
+      }
+      if (!fkAlterSupported) {
+        await skip(results, 'ddl', 'buildAlterTable 增删外键：执行后反映', '驱动声明 foreignKeyAlter=false（E_UNSUPPORTED 能力边界，§12.2 SQLite）');
+      } else {
+        await check(results, 'ddl', 'buildAlterTable 增删外键：执行后反映', async () => {
+          const base = await baselineOf();
+          const target: TableSpec = {
+            ...base,
+            foreignKeys: [...(base.foreignKeys ?? []), { name: 'cf_fk_extra', columns: ['ref_id'], refTable: REF_FIXTURE_TABLE, refColumns: ['id'] }],
+          };
+          const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target, base);
+          assert(statements.length > 0, '新增外键应生成非空语句集');
+          await execDdlStatements(conn, db, statements);
+          const after = await baselineOf();
+          const added = after.foreignKeys?.find((f) => f.name === 'cf_fk_extra');
+          assert(added !== undefined, `新增外键未回读：${JSON.stringify(after.foreignKeys)}`);
+          assert(added.refTable === REF_FIXTURE_TABLE && added.refColumns.includes('id'), `新增外键形状不符：${JSON.stringify(added)}`);
+          const target2: TableSpec = { ...after, foreignKeys: after.foreignKeys!.filter((f) => f.name !== 'cf_fk_extra') };
+          const statements2 = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, target2, after);
+          await execDdlStatements(conn, db, statements2);
+          const after2 = await baselineOf();
+          assert(!after2.foreignKeys?.some((f) => f.name === 'cf_fk_extra'), '删除外键未被反映');
+          assert((after2.foreignKeys?.length ?? 0) === 1, `原有外键应保留，实际 ${JSON.stringify(after2.foreignKeys)}`);
+        });
+      }
+
+      await check(results, 'ddl', '基线原样提交不产生语句（防误删红线）', async () => {
+        const base = await baselineOf();
+        assert((base.foreignKeys?.length ?? 0) > 0 && (base.uniqueKeys?.length ?? 0) > 0, '前置失败：基线未含键/外键（回读断言失效）');
+        const statements = await conn.buildAlterTable!(db, DDL_FIXTURE_TABLE, base, base);
+        assert(statements.length === 0, `基线原样提交应返回空数组，实际 ${statements.length} 条：${statements.map((s) => s.sql).join(' / ')}`);
+      });
+
+      await check(results, 'ddl', 'fixture 清理（键/外键/索引段，含引用表）', async () => {
+        await dropFixture();
+        await dropRefFixture();
+      });
+    }
+
     await check(results, 'ddl', '非法标识符 fail-closed（E_VALIDATION）', async () => {
       const bad = async (name: string): Promise<void> => {
         try {
@@ -1549,8 +1705,28 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
         }
         assert(false, `非法标识符 "${name}" 未被拒绝`);
       };
-      await bad('cf_ddl_x; DROP TABLE t');
-      await bad('cf`_ddl');
+      // 黑名单口径（批次 B 修订）：只拒绝方言引号字符与控制字符——分号/引号注入形态已由
+      // 引号双写转义从源头封死（正向覆盖见下），控制字符任何引用方式都无法安全承载
+      await bad('cf_ddl_x\u0000 DROP TABLE t');
+      await bad('cf\nddl');
+      // 连字符等真实合法名放行（回归：test-api 类库名下的建表曾被白名单误拒）——
+      // 生成 + 执行 + 元数据回读全链路验证引用转义正确性
+      const specialName = 'cf-ddl-special';
+      try {
+        const statements = await conn.buildCreateTable!(db, {
+          name: specialName,
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        });
+        await execDdlStatements(conn, db, statements);
+        const objs = await conn.listObjects(db);
+        assert(objs.some((o) => o.name === specialName), `连字符表名应成功创建并回读，实际 ${JSON.stringify(objs.map((o) => o.name))}`);
+      } finally {
+        try {
+          await conn.query({ sql: `DROP TABLE ${quoteFor(conn, specialName)}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+        } catch {
+          // 清理尽力而为
+        }
+      }
     });
 
     await check(results, 'ddl', 'fixture 清理', async () => {
@@ -1603,10 +1779,11 @@ export async function runDatabaseDdlChecks(
           assert(false, '非法标识符未被拒绝');
         };
         if (hasCreate) {
-          await bad(() => driver.buildCreateDatabase!({ name: 'cf_db; DROP DATABASE x' }));
+          // 黑名单口径（批次 B 修订）：只拒绝控制字符——分号/反引号注入形态已由引号双写转义封死
+          await bad(() => driver.buildCreateDatabase!({ name: 'cf_db\u0000x' }));
         }
         if (hasDrop) {
-          await bad(() => driver.buildDropDatabase!('cf`_db'));
+          await bad(() => driver.buildDropDatabase!('cf\ndb'));
         }
       });
     } else {
@@ -1899,6 +2076,192 @@ export async function runSqlValueEncodingChecks(
     await check(results, 'sql-value-encoding', 'fixture 清理', async () => {
       await dropFixture();
     });
+  } finally {
+    await conn.dispose();
+  }
+  return summarize(results);
+}
+
+// ───────────────────────── M8-ER：关系收集（ER 图，概要 §5.11 / D-22）─────────────────────────
+
+/** ER 契约 fixture 表名（专用前缀 cf_er_；开始/结束双段清理，建表序满足 FK 引用先于被引用） */
+const ER_FIXTURE_TABLES = [
+  'cf_er_parent',
+  'cf_er_order',
+  'cf_er_line',
+  'cf_er_child',
+  'cf_er_self',
+  'cf_er_loose',
+] as const;
+
+/**
+ * relation-graph 组（@since M8-ER / D-22）：关系收集层契约（给定库 → 表/列/FK 关系模型）。
+ * 探针 = listKeys 方法存在性（P-19 同族：未实现 → 整组跳过，supportsErDiagram 未声明；
+ * 已实现则必须全过）。fixture 覆盖四类形状：单列 FK / 复合 FK（列序是 roundtrip 正确性
+ * 前提，PG ORDINALITY 口径）/ 自引用 FK / 无 FK 表。边方向口径：source = FK 子表（多端）、
+ * target = 被引用父表（一端）；端点不全的边不绘制、计入 hiddenEdges。
+ */
+export async function runRelationGraphChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  try {
+    if (typeof conn.listKeys !== 'function') {
+      await skip(results, 'relation-graph', '整组跳过', '驱动未实现 listKeys（supportsErDiagram 未声明）');
+      return summarize(results);
+    }
+    const dbs = await conn.listDatabases();
+    assert(dbs.length > 0, 'listDatabases 返回空数组');
+    const db = dbs[0].name;
+
+    // FK 安全顺序：引用方先删（line→order、child→parent、self 自引用）
+    const dropAll = async (): Promise<void> => {
+      const order = ['cf_er_line', 'cf_er_child', 'cf_er_self', 'cf_er_parent', 'cf_er_order', 'cf_er_loose'];
+      for (const t of order) {
+        try {
+          await conn.query({
+            sql: `DROP TABLE IF EXISTS ${quoteFor(conn, t)}`,
+            db,
+            maxRows: 1,
+            timeoutMs: SAMPLE_TIMEOUT_MS,
+          });
+        } catch {
+          // IF EXISTS 不支持或权限受限时忽略（清理尽力而为）
+        }
+      }
+    };
+
+    const buildFixtures = async (): Promise<void> => {
+      assert(
+        typeof conn.buildCreateTable === 'function',
+        '前置失败：buildCreateTable 未实现（ER fixture 依赖表结构编辑契约造数）',
+      );
+      await dropAll();
+      const specs: TableSpec[] = [
+        {
+          name: 'cf_er_parent',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'uname', dataType: 'varchar(64)', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+        },
+        {
+          name: 'cf_er_order',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
+          ],
+          uniqueKeys: [{ name: 'cf_er_uk_order', columns: ['yr', 'num'] }],
+        },
+        {
+          name: 'cf_er_line',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'order_yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
+            { name: 'order_num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
+          ],
+          foreignKeys: [
+            { name: 'cf_er_fk_line', columns: ['order_yr', 'order_num'], refTable: 'cf_er_order', refColumns: ['yr', 'num'] },
+          ],
+        },
+        {
+          name: 'cf_er_child',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'parent_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+          foreignKeys: [{ name: 'cf_er_fk_child', columns: ['parent_id'], refTable: 'cf_er_parent', refColumns: ['id'] }],
+        },
+        {
+          name: 'cf_er_self',
+          columns: [
+            { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
+            { name: 'manager_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
+          ],
+          foreignKeys: [{ name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'] }],
+        },
+        {
+          name: 'cf_er_loose',
+          columns: [{ name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 }],
+        },
+      ];
+      for (const spec of specs) {
+        await execDdlStatements(conn, db, await conn.buildCreateTable!(db, spec));
+      }
+    };
+
+    await check(results, 'relation-graph', 'fixture 建表（单列/复合/自引用 FK + 无关系表）', buildFixtures);
+
+    await check(results, 'relation-graph', '关系收集：表集过滤与列形状（PK 标记、ordinal 序）', async () => {
+      const graph = await collectRelationGraph(conn, db, { kind: 'all' });
+      const names = graph.tables.map((t) => t.name);
+      for (const t of ER_FIXTURE_TABLES) {
+        assert(names.includes(t), `表集缺 ${t}：${JSON.stringify(names)}`);
+      }
+      const child = graph.tables.find((t) => t.name === 'cf_er_child');
+      assert(child !== undefined, 'cf_er_child 缺失');
+      assert(
+        child!.columns.length === 2,
+        `cf_er_child 应 2 列，实际 ${JSON.stringify(child!.columns)}`,
+      );
+      assert(
+        child!.columns[0].name === 'id' && child!.columns[0].isPrimaryKey,
+        `首列应为 PK id：${JSON.stringify(child!.columns[0])}`,
+      );
+      assert(
+        child!.columns[1].name === 'parent_id' && !child!.columns[1].isPrimaryKey,
+        `次列应为非 PK parent_id：${JSON.stringify(child!.columns[1])}`,
+      );
+    });
+
+    await check(results, 'relation-graph', 'FK 边：单列 / 复合（列序对齐）/ 自引用', async () => {
+      const graph = await collectRelationGraph(conn, db, { kind: 'all' });
+      const findEdge = (source: string, target: string): ErEdgeSummary | undefined =>
+        graph.edges.find((e) => e.sourceTable === source && e.targetTable === target);
+      const single = findEdge('cf_er_child', 'cf_er_parent');
+      assert(single !== undefined, '缺 cf_er_child → cf_er_parent 单列 FK 边');
+      assert(
+        single!.sourceColumns.length === 1 &&
+          single!.sourceColumns[0] === 'parent_id' &&
+          single!.targetColumns.length === 1 &&
+          single!.targetColumns[0] === 'id',
+        `单列 FK 边形状不符：${JSON.stringify(single)}`,
+      );
+      const composite = findEdge('cf_er_line', 'cf_er_order');
+      assert(composite !== undefined, '缺 cf_er_line → cf_er_order 复合 FK 边');
+      assert(
+        composite!.sourceColumns.join(',') === 'order_yr,order_num' &&
+          composite!.targetColumns.join(',') === 'yr,num',
+        `复合 FK 边列序必须按约束声明对齐（PG ORDINALITY 口径）：${JSON.stringify(composite)}`,
+      );
+      const selfEdge = findEdge('cf_er_self', 'cf_er_self');
+      assert(selfEdge !== undefined, '自引用 FK 边缺失（ER 必须保留）');
+      assert(
+        !graph.edges.some((e) => e.sourceTable === 'cf_er_loose'),
+        '无 FK 表不应产生出边',
+      );
+    });
+
+    await check(results, 'relation-graph', 'selection 裁剪：边随端点裁剪 + hiddenEdges 计数', async () => {
+      const only = await collectRelationGraph(conn, db, { kind: 'selection', tables: ['cf_er_child'] });
+      assert(
+        only.tables.map((t) => t.name).join(',') === 'cf_er_child',
+        `selection 应只含 cf_er_child，实际 ${JSON.stringify(only.tables.map((t) => t.name))}`,
+      );
+      assert(only.edges.length === 0, '端点不全的 FK 边不绘制');
+      assert(only.hiddenEdges === 1, `hiddenEdges 应为 1，实际 ${only.hiddenEdges}`);
+      const pair = await collectRelationGraph(conn, db, {
+        kind: 'selection',
+        tables: ['cf_er_child', 'cf_er_parent'],
+      });
+      assert(
+        pair.edges.length === 1 && pair.edges[0].targetTable === 'cf_er_parent',
+        `两端点齐备时 FK 边应保留：${JSON.stringify(pair.edges)}`,
+      );
+      assert(pair.hiddenEdges === 0, `两端点齐备时 hiddenEdges 应为 0，实际 ${pair.hiddenEdges}`);
+    });
+
+    await check(results, 'relation-graph', 'fixture 清理', dropAll);
   } finally {
     await conn.dispose();
   }

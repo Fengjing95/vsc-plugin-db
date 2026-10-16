@@ -13,6 +13,7 @@ import type {
   ColumnMeta,
   DatabaseMeta,
   DatabaseSpec,
+  DataTypeOption,
   DdlStatement,
   IndexMeta,
   KeyMeta,
@@ -48,6 +49,25 @@ export interface DriverCapabilities {
   /** @since v0.1.11（M8-DBDDL / D-19）：库级 DDL——按需实现 buildCreateDatabase/buildAlterDatabase/
    *  buildDropDatabase + getDatabaseFormSchema（菜单按方法存在性裁剪，P-19 同族口径） */
   supportsDatabaseDdl?: boolean;
+  /** @since 表设计器批次 B（交互稿 §12.2）：表设计器各 Tab 能力。未声明 = 对应 Tab 隐藏，
+   *  编辑器回落纯列编辑（三方驱动无感降级）；supportsDdlEditor 未声明时整体无效 */
+  tableDesign?: {
+    /** 键 Tab 唯一键区（主键区恒随列编辑可用） */
+    uniqueKeys?: boolean;
+    /** 外键 Tab（create 内联语义） */
+    foreignKeys?: boolean;
+    /** 外键 alter 原地增删；false = alter 态外键只读 + 提示（SQLite 无原地 ALTER CONSTRAINT） */
+    foreignKeyAlter?: boolean;
+    /** 索引 Tab */
+    indexes?: boolean;
+    /** 索引类型下拉选项（BTREE/HASH 等；缺省 = 隐藏类型列） */
+    indexTypes?: string[];
+    /** 外键 ON DELETE/UPDATE 动作选项；缺省 = 标准四项（RESTRICT/CASCADE/SET NULL/NO ACTION） */
+    refActions?: string[];
+  };
+  /** @since M8-ER（概要 §5.11 / D-22）：ER 图查看——声明 = listKeys 的 FK 元数据完整可用
+   *  （关系收集零新增驱动方法，只消费 listObjects/listColumns/listKeys 自省）；未声明树无入口 */
+  supportsErDiagram?: boolean;
   hierarchy: NodeLevel[];
   editable: boolean;
   pagination: 'offset' | 'cursor' | 'none';
@@ -168,6 +188,9 @@ export interface IConnection extends Disposable {
   /** @since M8-B2：驱动自行 diff spec（目标）与 current（Host 实时派生的库内当前结构）；
    *  obj 为目标表现名（重命名时为旧名）；无结构差异返回空数组 */
   buildAlterTable?(db: string, obj: string, spec: TableSpec, current: TableSpec): Promise<DdlStatement[]>;
+  /** @since 表设计器批次 A（交互稿 §12.3）：列 Tab 类型建议词表——方言各自维护（C-14），
+   *  纯静态数据不需建连。未实现 = 编辑器类型框无感降级为纯手输 */
+  listDataTypes?(): DataTypeOption[];
   openSession?(): Promise<ISession>;
   getCompletionSource(db?: string): Promise<CompletionSource>;
   quoteIdentifier?(name: string): string;

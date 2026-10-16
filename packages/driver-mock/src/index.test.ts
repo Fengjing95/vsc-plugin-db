@@ -28,7 +28,7 @@ describe('driver-mock：M0 可插拔契约演示', () => {
   it('三级结构：连接 → 库 → 表/视图', async () => {
     const conn = await connection();
     const dbs = await conn.listDatabases();
-    expect(dbs.map((d) => d.name)).toEqual(['demo', 'analytics', 'big']);
+    expect(dbs.map((d) => d.name)).toEqual(['demo', 'shop', 'analytics', 'big']);
 
     const objs = await conn.listObjects('demo');
     expect(objs).toHaveLength(4);

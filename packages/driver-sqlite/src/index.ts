@@ -7,6 +7,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -27,7 +28,7 @@ import {
   type TestResult,
 } from '@db-explorer/core';
 // 方言词表（C-14/规范 §3.2：SQLite 全量 keywords/functions/snippets，勿散落 index.ts）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import { buildChangeStatements } from './changes';
 import { buildAlterTableStatements, buildCreateTableStatements } from './ddl';
 import { toDriverError } from './errors';
@@ -66,6 +67,15 @@ const capabilities: DriverCapabilities = {
   supportsCancel: false, // 同步引擎不可中断（D-16；契约组按此跳过取消组）
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
+  supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  // 表设计器批次 B（交互稿 §12.2 能力矩阵）：唯一键 alter 走表重建序列；外键 alter 无原地语法
+  // → foreignKeyAlter: false（UI alter 态外键 Tab 只读 + 提示，驱动 fail-closed E_UNSUPPORTED）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: false,
+    indexes: true,
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -532,6 +542,10 @@ export class SqliteConnection implements IConnection {
       rowKey[pk] = encodeCell(value, 'unknown');
     }
     return Object.keys(rowKey).length > 0 ? rowKey : undefined;
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

@@ -4,6 +4,8 @@
  * 纯数据，无依赖；DialectInfo.keywords 无消费方（仅声明性元数据），词表只服务补全。
  */
 
+import type { DataTypeOption } from '@db-explorer/core';
+
 export const KEYWORDS = [
   // DML
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
@@ -117,4 +119,37 @@ export const COMPLETION_SNIPPETS = [
     body: "SELECT ${1:col} ->> '${2:key}' FROM ${3:table};",
     description: 'JSONB 字段取文本值',
   },
+];
+
+/**
+ * 表结构编辑器类型建议词表（表设计器批次 A，交互稿 §12.3）：PG 常用面，按常用度排序。
+ * template 为带形参回填模板（回填后光标落形参位）；建议不是白名单——词表外类型照常手输，
+ * 合法性由驱动 fail-closed 校验兜底。
+ */
+export const DATA_TYPES: DataTypeOption[] = [
+  { value: 'text' },
+  { value: 'varchar', template: 'varchar()' },
+  { value: 'integer' },
+  { value: 'bigint' },
+  { value: 'boolean' },
+  { value: 'numeric', template: 'numeric(,)' },
+  { value: 'timestamp' },
+  { value: 'timestamptz' },
+  { value: 'date' },
+  { value: 'jsonb' },
+  { value: 'json' },
+  { value: 'uuid' },
+  { value: 'smallint' },
+  { value: 'real' },
+  { value: 'double precision' },
+  { value: 'char', template: 'char()' },
+  { value: 'bytea' },
+  { value: 'text[]' },
+  { value: 'serial' },
+  { value: 'bigserial' },
+  { value: 'time' },
+  { value: 'interval' },
+  { value: 'inet' },
+  { value: 'money' },
+  { value: 'xml' },
 ];

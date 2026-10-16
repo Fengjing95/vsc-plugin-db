@@ -50,7 +50,7 @@ describe('buildCreateTableStatements（M8-MSSQL）', () => {
     ).toThrowError(/E_VALIDATION|自增/);
   });
 
-  it('非法标识符 fail-closed（E_VALIDATION，驱动规范 §10）', () => {
+  it('标识符校验（危险字符黑名单，E_VALIDATION，驱动规范 §10）', () => {
     const bad = (name: string): void => {
       expect(() =>
         buildCreateTableStatements('dbo', {
@@ -59,9 +59,14 @@ describe('buildCreateTableStatements（M8-MSSQL）', () => {
         }),
       ).toThrowError(DriverError);
     };
-    bad('cf_ddl_x; DROP TABLE t');
-    bad('cf`_ddl');
-    bad('cf]ddl');
+    bad('cf\nddl'); // 控制字符
+    bad('cf]ddl'); // 方言引号字符（防逃逸）
+    // 分号/反引号/连字符由 [ ] 双写转义安全承载；连字符回归 test-api 类真实名曾被白名单误拒
+    const stmts = buildCreateTableStatements('dbo', {
+      name: 'cf-ddl_t;--x',
+      columns: [col('id', { dataType: 'bigint', nullable: false, isPrimaryKey: true })],
+    });
+    expect(stmts[0].sql).toContain('[dbo].[cf-ddl_t;--x]');
   });
 
   it('字面量 fail-closed：控制字符拒绝；数值/函数原样', () => {
@@ -190,7 +195,9 @@ describe('库级 DDL（M8-DBDDL / D-19：schema 建删，ADR D-21）', () => {
   it('CREATE SCHEMA；DROP SCHEMA 标 destructive（非空 schema 由服务端拒绝）', () => {
     expect(buildCreateSchemaStatements({ name: 'appdata' })).toEqual([{ sql: 'CREATE SCHEMA [appdata]' }]);
     expect(buildDropSchemaStatements('appdata')).toEqual([{ sql: 'DROP SCHEMA [appdata]', destructive: true }]);
-    expect(() => buildCreateSchemaStatements({ name: 'a; DROP SCHEMA x' })).toThrowError(DriverError);
+    // 黑名单口径：控制字符/右方括号拒绝；连字符等由 [ ] 引用承载（回归 test-api 类真实名）
+    expect(() => buildCreateSchemaStatements({ name: 'a\nb' })).toThrowError(DriverError);
     expect(() => buildDropSchemaStatements('a]b')).toThrowError(DriverError);
+    expect(buildCreateSchemaStatements({ name: 'app-data' })[0].sql).toBe('CREATE SCHEMA [app-data]');
   });
 });

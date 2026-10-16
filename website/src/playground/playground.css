@@ -1,0 +1,593 @@
+/* ============================================================
+   Playground — VSCode Workbench 复刻外壳（Dark Modern 口径）
+   颜色对齐 VSCode 默认深色主题（#181818 外框 / #1f1f1f 编辑器 /
+   #0078d4 强调 / #04395e 列表选中），与 webview tokens.css 同源观感。
+   ============================================================ */
+
+/* Hero 图位的内嵌容器（原独立页外壳改为官网首页内的活演示） */
+.pg-embed-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(43, 127, 255, 0.28);
+  border-radius: var(--radius-lg);
+  background: #1f1f1f;
+  box-shadow:
+    0 32px 96px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(43, 127, 255, 0.14);
+  scrollbar-width: thin;
+}
+
+.pg {
+  height: clamp(560px, 72vh, 780px);
+  min-width: 780px;
+  display: flex;
+  flex-direction: column;
+  background: #1f1f1f;
+  color: #cccccc;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- 标题栏 ---------- */
+.pg-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  flex: none;
+  padding: 0 14px;
+  background: #181818;
+  border-bottom: 1px solid #2b2b2b;
+}
+
+.pg-lights {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pg-lights i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.pg-lights i:nth-child(1) {
+  background: #ff5f57;
+}
+
+.pg-lights i:nth-child(2) {
+  background: #febc2e;
+}
+
+.pg-lights i:nth-child(3) {
+  background: #28c840;
+}
+
+.pg-title {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: #9d9d9c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 主体三栏 ---------- */
+.pg-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pg-activity {
+  flex: none;
+  width: 46px;
+  background: #181818;
+  border-right: 1px solid #2b2b2b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.pg-activity__icon {
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #868686;
+  position: relative;
+}
+
+.pg-activity__icon.is-active {
+  color: #ffffff;
+}
+
+.pg-activity__icon.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: #ffffff;
+}
+
+.pg-activity__bottom {
+  margin-top: auto;
+  margin-bottom: 6px;
+}
+
+/* ---------- 侧栏 ---------- */
+.pg-sidebar {
+  flex: none;
+  width: 264px;
+  background: #181818;
+  border-right: 1px solid #2b2b2b;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pg-sidebar__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 6px 18px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #bbbbbb;
+  text-transform: uppercase;
+}
+
+.pg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.pg-icon-btn:hover {
+  background: #2a2d2e;
+}
+
+.pg-tree {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+  user-select: none;
+}
+
+.pg-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding-right: 10px;
+  cursor: pointer;
+  color: #cccccc;
+  white-space: nowrap;
+}
+
+.pg-tree__row:hover {
+  background: #2a2d2e;
+}
+
+.pg-tree__row.is-active {
+  background: #04395e;
+  color: #ffffff;
+}
+
+.pg-tree__row--conn {
+  padding-left: 8px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.pg-tree__row--conn .pg-chevron {
+  visibility: hidden;
+}
+
+.pg-tree__row--db {
+  padding-left: 8px;
+}
+
+.pg-tree__row--obj {
+  padding-left: 0;
+}
+
+.pg-tree__indent {
+  flex: none;
+  width: 27px;
+}
+
+.pg-tree__row svg {
+  flex: none;
+  color: #a8b7c7;
+}
+
+.pg-tree__row--conn svg {
+  color: #6ea8ff;
+}
+
+.pg-tree__row--db > svg:first-child {
+  color: #868686;
+}
+
+.pg-tree__row--db svg:nth-child(2) {
+  color: #6ea8ff;
+}
+
+.pg-tree__row.is-view svg {
+  color: #9aa7bd;
+}
+
+.pg-chevron {
+  transition: transform 0.12s;
+}
+
+.pg-tree__row.is-expanded > .pg-chevron {
+  transform: rotate(90deg);
+}
+
+.pg-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-tree__estimate {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: #6b7890;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-tree__row.is-active .pg-tree__estimate {
+  color: #c8d8ee;
+}
+
+.pg-sidebar__btns {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* 树行悬停动作（ER 图 / 表设计入口） */
+.pg-tree__actions {
+  margin-left: auto;
+  display: inline-flex;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.pg-tree__row:hover .pg-tree__actions,
+.pg-tree__row:focus-within .pg-tree__actions {
+  opacity: 1;
+}
+
+.pg-tree__row:hover .pg-tree__estimate {
+  display: none;
+}
+
+.pg-tree__act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #9d9d9c;
+  cursor: pointer;
+}
+
+.pg-tree__act:hover {
+  background: #3c3c3c;
+  color: #ffffff;
+}
+
+.pg-sidebar__foot {
+  flex: none;
+  padding: 8px 14px;
+  border-top: 1px solid #2b2b2b;
+  font-size: 11px;
+  color: #6b7890;
+}
+
+/* ---------- 编辑器区 ---------- */
+.pg-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1f1f1f;
+}
+
+.pg-tabs {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  height: 36px;
+  background: #181818;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pg-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.pg-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 10px 0 14px;
+  border-right: 1px solid #2b2b2b;
+  background: #181818;
+  color: #9d9d9c;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+}
+
+.pg-tab svg {
+  color: #a8b7c7;
+}
+
+.pg-tab.is-active {
+  background: #1f1f1f;
+  color: #ffffff;
+}
+
+.pg-tab.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: #0078d4;
+}
+
+.pg-tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pg-tab__close:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.pg-editor__area {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #1f1f1f;
+}
+
+.pg-editor__area > .pg-welcome {
+  flex: 1;
+  min-height: 0;
+}
+
+.pg-frames {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Console Tab 的外壳代答 SQL 输入区（真产品里 SQL 在原生编辑器输入） */
+.pg-sqlbox {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #2b2b2b;
+  background: #1f1f1f;
+}
+
+.pg-sqlbox textarea {
+  min-height: 92px;
+  max-height: 200px;
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #d4d4d4;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  padding: 10px 14px 4px;
+  white-space: pre;
+}
+
+.pg-sqlbox__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px 8px 14px;
+  font-size: 11px;
+  color: #6b7890;
+}
+
+.pg-sqlbox__run {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border: none;
+  border-radius: 5px;
+  background: #0078d4;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pg-sqlbox__run:hover {
+  background: #026ec1;
+}
+
+.pg-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #1f1f1f;
+}
+
+.pg-frame.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ---------- 欢迎页 ---------- */
+.pg-welcome {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 32px;
+  color: #cccccc;
+}
+
+.pg-welcome img {
+  opacity: 0.9;
+}
+
+.pg-welcome h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.pg-welcome p {
+  max-width: 560px;
+  font-size: 13px;
+  color: #9d9d9c;
+}
+
+.pg-welcome__quick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.pg-welcome__quick button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 16px;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  background: #202020;
+  color: #cccccc;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.pg-welcome__quick button:hover {
+  border-color: #0078d4;
+  background: #04395e33;
+}
+
+.pg-welcome__quick strong {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #9cdcfe;
+}
+
+.pg-welcome__quick span {
+  font-size: 11.5px;
+  color: #9d9d9c;
+}
+
+.pg-welcome__hint {
+  font-size: 12px !important;
+  color: #6b7890 !important;
+}
+
+/* ---------- 状态栏 ---------- */
+.pg-statusbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  gap: 2px;
+  background: #181818;
+  border-top: 1px solid #2b2b2b;
+  font-size: 11.5px;
+  color: #bbbbbb;
+}
+
+.pg-status__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  height: 100%;
+  white-space: nowrap;
+}
+
+a.pg-status__item:hover {
+  background: #2a2d2e;
+}
+
+.pg-status__item.is-accent {
+  color: #ffffff;
+}
+
+.pg-status__item.is-accent svg {
+  color: #89d185;
+}
+
+.pg-status__item.is-dim {
+  color: #6b7890;
+}
+
+.pg-status__spacer {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .pg-sidebar {
+    width: 208px;
+  }
+}

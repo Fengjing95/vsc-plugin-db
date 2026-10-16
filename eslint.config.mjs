@@ -3,7 +3,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.vsix', 'packages/extension/media/**', '.agents/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.vsix', 'packages/extension/media/**', '.agents/**', 'website/public/playground/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

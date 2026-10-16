@@ -8,7 +8,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 
 export const site = {
   name: 'DB Kit',
-  version: 'v0.2.1',
+  version: 'v0.3.0',
   tagline: '在 VSCode 里，搞定数据库的一切',
   subTagline: '浏览 · 查询 · 编辑 · 导出 —— 六类数据源统一入口，开箱即连、零遥测。',
   extId: 'db-explorer-dev.db-kit',
@@ -20,6 +20,8 @@ export const site = {
     issues: `${REPO}/issues`,
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs`,
+    /** 在线 Playground：内嵌在首页 Hero 图位（#playground 锚点），浏览器内跑真实 webview 界面 + mock 驱动 */
+    playground: '#playground',
     /**
      * TODO(上线前)：建好「路线图征集」单一 roadmap issue 后，把此链接替换为该 issue 地址。
      * 当前用 Issues 列表占位（用户已选定单一 roadmap 策略，三卡共用）。

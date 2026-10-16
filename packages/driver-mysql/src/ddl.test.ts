@@ -46,11 +46,12 @@ describe('buildCreateTableStatements（M8-B2）', () => {
     expect(() => escapeDdlLiteral('a\nb')).toThrow(DriverError);
   });
 
-  it('非法标识符 fail-closed（E_VALIDATION）：表名/列名引号分号注入', () => {
-    expect(() => buildCreateTableStatements('myapp', baseSpec({ name: 'x; DROP TABLE t' }))).toThrow(DriverError);
-    expect(() =>
-      buildCreateTableStatements('myapp', baseSpec({ columns: [{ name: 'a`b', dataType: 'int', nullable: true, isPrimaryKey: false, ordinal: 1 }] })),
-    ).toThrow(DriverError);
+  it('标识符校验（危险字符黑名单）：反引号/控制字符拒绝；连字符等真实合法名放行', () => {
+    expect(() => buildCreateTableStatements('myapp', baseSpec({ name: 'x`y' }))).toThrow(DriverError);
+    expect(() => buildCreateTableStatements('myapp', baseSpec({ name: 'x\ny' }))).toThrow(DriverError);
+    // 分号/连字符由反引号双写转义安全承载（回归：test-api 类真实库名曾被白名单误拒）
+    const stmts = buildCreateTableStatements('test-api', baseSpec({ name: 'cf-ddl_t;--x' }));
+    expect(stmts[0].sql).toContain('`test-api`.`cf-ddl_t;--x`');
   });
 
   it('自增列必须为主键（MySQL 约束）', () => {
@@ -164,9 +165,12 @@ describe('库级 DDL（M8-DBDDL / D-19）', () => {
     ]);
   });
 
-  it('非法库名/字符集 fail-closed（E_VALIDATION）', () => {
-    expect(() => buildCreateDatabaseStatements({ name: 'a; DROP DATABASE x' })).toThrowError(DriverError);
+  it('库名/字符集校验（标识符黑名单 + 关键字白名单，E_VALIDATION）', () => {
+    expect(() => buildCreateDatabaseStatements({ name: 'a\nb' })).toThrowError(DriverError);
+    // 字符集是原样拼接的关键字（不可引用）——保持严格白名单
     expect(() => buildCreateDatabaseStatements({ name: 'mydb', charset: 'utf8; DROP DATABASE x' })).toThrowError(DriverError);
     expect(() => buildDropDatabaseStatements('cf`_db')).toThrowError(DriverError);
+    // 连字符库名合法（回归：test-api 类真实库名曾被白名单误拒）
+    expect(buildCreateDatabaseStatements({ name: 'test-api' })[0].sql).toBe('CREATE DATABASE `test-api`');
   });
 });

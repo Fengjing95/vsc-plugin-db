@@ -233,11 +233,13 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           collapsibleState: Collapsed,
           // M8-B2：支持表结构编辑的驱动追加 ddl 令牌（package.json when 控制新建表入口显隐）
           // M8-DBDDL：dbddl=实现 buildDropDatabase（删除库菜单）；dbddl-alter=另实现 buildAlterDatabase（编辑库）
+          // M8-ER：supportsErDiagram 声明追加 er 令牌（查看 ER 图入口，概要 §5.11 / D-22）
           contextValue: [
             'database',
             this.ddlCapable(connId) ? 'ddl' : null,
             this.dbDropCapable(connId) ? 'dbddl' : null,
             this.dbAlterCapable(connId) ? 'dbddl-alter' : null,
+            this.erCapable(connId) ? 'er' : null,
           ]
             .filter(Boolean)
             .join(' '),
@@ -520,6 +522,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
 
   private dbAlterCapable(connId: string): boolean {
     return typeof this.connections.getDriver(connId)?.buildAlterDatabase === 'function';
+  }
+
+  /** ER 图能力（M8-ER / D-22）：capabilities.supportsErDiagram 声明裁剪；未注册驱动保守为不支持 */
+  private erCapable(connId: string): boolean {
+    return this.connections.getDriver(connId)?.capabilities.supportsErDiagram === true;
   }
 }
 

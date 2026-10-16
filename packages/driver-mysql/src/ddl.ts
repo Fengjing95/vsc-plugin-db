@@ -1,4 +1,14 @@
-import { DriverError, type DatabaseMeta, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type DatabaseMeta,
+  type DatabaseSpec,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type TableSpec,
+} from '@db-explorer/core';
 
 /**
  * MySQL 表结构编辑语句生成（M8-B2，概要 §5.9 / 驱动规范 §3 @since v0.1.2）：
@@ -10,13 +20,28 @@ import { DriverError, type DatabaseMeta, type DatabaseSpec, type DdlStatement, t
  * 纯函数，有单测。
  */
 
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单）：只拒绝方言引号字符（反引号，防逃逸）与控制字符
+ *  （无法安全承载）；连字符/点/空格/中文等真实合法名交由 quoteMysqlIdentifier 双写转义承载——
+ *  DDL 不可参数化的 fail-closed 口径不变（注入面即引号逃逸，已从源头封死） */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F`]/;
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
+}
+
+/** 关键字面量校验（字符集/排序规则）：语句中原样拼接、不可引用——保持严格白名单
+ *  （标识符黑名单口径不适用于此类非引用插值） */
+const KEYWORD_RE = /^[A-Za-z0-9_$]+$/;
+
+function assertKeyword(kind: string, value: string): string {
+  if (!KEYWORD_RE.test(value) || value.length > 64) {
+    throw new DriverError('E_VALIDATION', `${kind} "${value}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  }
+  return value;
 }
 
 /** 字面量转义：数值与 CURRENT_TIMESTAMP 原样；其余字符串字面量单引号包裹（'' 翻倍，默认 sql_mode 下合法）；控制字符拒绝 */
@@ -55,6 +80,46 @@ function columnDefSql(col: TableSpec['columns'][number]): string {
   return parts.join(' ');
 }
 
+/** 列名清单字面量（键/外键/索引共用，表设计器批次 B） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => `\`${assertIdentifier('列名', c)}\``).join(', ');
+}
+
+/** CREATE TABLE 内联键/外键/索引子句（表设计器批次 B，交互稿 §12.4~12.6）：
+ *  命名 fail-closed（未命名自动 uk_/fk_/idx_ 表名_序号），外键引用列数须与本地一致 */
+function appendCreateKeyClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? []), ...(spec.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`UNIQUE KEY \`${name}\` (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    cols.push(
+      `CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES \`${assertIdentifier('引用表名', fk.refTable)}\` (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+  for (const idx of spec.indexes ?? []) {
+    const name = assertIdentifier('索引名', idx.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    const using = idx.type ? ` USING ${assertIdentifier('索引类型', idx.type)}` : '';
+    cols.push(`${idx.unique ? 'UNIQUE INDEX' : 'INDEX'} \`${name}\` (${columnListLit(idx.columns)})${using}`);
+  }
+}
+
 export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStatement[] {
   assertIdentifier('库名', db);
   assertIdentifier('表名', spec.name);
@@ -72,6 +137,7 @@ export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStat
   if (pk.length > 0) {
     cols.push(`PRIMARY KEY (${pk.join(', ')})`);
   }
+  appendCreateKeyClauses(cols, spec);
   const tail = spec.comment ? ` COMMENT=${escapeComment(spec.comment)}` : '';
   return [{ sql: `CREATE TABLE \`${db}\`.\`${spec.name}\` (\n  ${cols.join(',\n  ')}\n)${tail}` }];
 }
@@ -132,6 +198,29 @@ export function buildAlterTableStatements(
     statements.push({ sql: `ALTER TABLE ${alterPrefix} ${clauses.join(', ')}`, destructive: true });
   }
 
+  // ── 键/外键/索引 diff（表设计器批次 B，§12.7 红线：DROP 只由「基线存在且 spec 移除」生成）──
+  // 拆两半段：**删除半段在列删除之前**（外键/索引可能依赖将删的列，MySQL 对在用外键的删列直接拒绝）；
+  // 添加半段在列变更之后（外键/索引可引用新加列）
+  const taken = new Set<string>();
+  for (const k of [...(current.uniqueKeys ?? []), ...(current.foreignKeys ?? []), ...(current.indexes ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  const alterBase = `ALTER TABLE ${alterPrefix}`;
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  for (const k of [...ukDiff.dropped, ...ukDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP KEY \`${assertIdentifier('唯一键名', k.name!)}\`` });
+  }
+  for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP INDEX \`${assertIdentifier('索引名', k.name!)}\`` });
+  }
+  for (const k of [...fkDiff.dropped, ...fkDiff.changed]) {
+    statements.push({ sql: `${alterBase} DROP FOREIGN KEY \`${assertIdentifier('外键名', k.name!)}\`` });
+  }
+
   // 删列（可能丢数据 → destructive；自增列若已并入上方主键变更单句则跳过）
   for (const cur of current.columns) {
     if (!tgtByName.has(cur.name) && !(pkChanged && curPk.length > 0 && cur.autoIncrement)) {
@@ -166,6 +255,29 @@ export function buildAlterTableStatements(
 
   // 主键重建：已并入上方主键变更单句（此处不再重复生成）
 
+  // ── 键/外键/索引 diff 添加半段（列变更之后：外键/索引可引用新加列）
+  for (const k of [...ukDiff.added, ...ukDiff.changed]) {
+    const name = assertIdentifier('唯一键名', k.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    statements.push({ sql: `${alterBase} ADD UNIQUE KEY \`${name}\` (${columnListLit(k.columns)})` });
+  }
+  for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+    const name = assertIdentifier('索引名', k.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    const using = k.type ? ` USING ${assertIdentifier('索引类型', k.type)}` : '';
+    statements.push({ sql: `${alterBase} ADD ${k.unique ? 'UNIQUE ' : ''}INDEX \`${name}\` (${columnListLit(k.columns)})${using}` });
+  }
+  for (const k of [...fkDiff.added, ...fkDiff.changed]) {
+    if (k.refColumns.length !== k.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', k.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    statements.push({
+      sql: `${alterBase} ADD CONSTRAINT \`${name}\` FOREIGN KEY (${columnListLit(k.columns)}) REFERENCES \`${assertIdentifier('引用表名', k.refTable)}\` (${columnListLit(k.refColumns)})${foreignKeyActionSuffix(k)}`,
+    });
+  }
+
   // 表注释
   if ((spec.comment ?? '') !== (current.comment ?? '') && spec.comment) {
     statements.push({ sql: `ALTER TABLE ${alterPrefix} COMMENT=${escapeComment(spec.comment)}` });
@@ -180,10 +292,10 @@ export function buildCreateDatabaseStatements(spec: DatabaseSpec): DdlStatement[
   assertIdentifier('库名', spec.name);
   const parts = [`CREATE DATABASE \`${spec.name}\``];
   if (spec.charset) {
-    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+    parts.push(`CHARACTER SET ${assertKeyword('字符集', spec.charset)}`);
   }
   if (spec.collation) {
-    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+    parts.push(`COLLATE ${assertKeyword('排序规则', spec.collation)}`);
   }
   return [{ sql: parts.join(' ') }];
 }
@@ -199,10 +311,10 @@ export function buildAlterDatabaseStatements(
   }
   const parts: string[] = [];
   if (spec.charset && spec.charset !== current.charset) {
-    parts.push(`CHARACTER SET ${assertIdentifier('字符集', spec.charset)}`);
+    parts.push(`CHARACTER SET ${assertKeyword('字符集', spec.charset)}`);
   }
   if (spec.collation && spec.collation !== current.collation) {
-    parts.push(`COLLATE ${assertIdentifier('排序规则', spec.collation)}`);
+    parts.push(`COLLATE ${assertKeyword('排序规则', spec.collation)}`);
   }
   if (parts.length === 0) {
     return []; // 无差异（契约组口径）

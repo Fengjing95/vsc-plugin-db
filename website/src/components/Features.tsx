@@ -1,5 +1,6 @@
 import { features } from '../content/site';
 import { Reveal } from './Reveal';
+import { SpotlightCard } from './fx/SpotlightCard';
 
 export function Features() {
   return (
@@ -15,13 +16,13 @@ export function Features() {
         <div className="features__grid">
           {features.map((f, i) => (
             <Reveal key={f.title} delay={(i % 3) * 90}>
-              <article className="card feature">
+              <SpotlightCard className="card feature">
                 <span className="feature__icon" aria-hidden="true">
                   {f.icon}
                 </span>
                 <h3>{f.title}</h3>
                 <p>{f.desc}</p>
-              </article>
+              </SpotlightCard>
             </Reveal>
           ))}
         </div>

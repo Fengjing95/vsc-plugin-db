@@ -29,11 +29,17 @@ export const RpcMethods = {
   ddlPreview: 'ddl.preview',
   ddlExecute: 'ddl.execute',
   ddlClose: 'ddl.close',
+  /** @since 表设计器批次 B：外键 Tab 引用目标选择（引用表清单 / 引用表列清单） */
+  ddlRefTables: 'ddl.refTables',
+  ddlRefColumns: 'ddl.refColumns',
   /** @since v0.2.21（M8-DBDDL / D-19）：库级 DDL（新建/编辑库弹窗；删除走树命令无 RPC） */
   dbddlLoad: 'dbddl.load',
   dbddlPreview: 'dbddl.preview',
   dbddlExecute: 'dbddl.execute',
   dbddlClose: 'dbddl.close',
+  /** @since M8-ER（概要 §5.11 / D-22）：ER 图查看（库级关系图；节点双击打开表格视图） */
+  erGraph: 'er.getGraph',
+  erOpenTable: 'er.openTable',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
 } as const;
@@ -627,10 +633,50 @@ export const ColumnSpecSchema = z.object({
 });
 export type ColumnSpecPayload = z.infer<typeof ColumnSpecSchema>;
 
+// ── 键 / 外键 / 索引（表设计器批次 B，交互稿 §12.4~12.6；core 先行此处镜像，P-41）────
+
+export const UniqueKeySpecSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  columns: z.array(z.string().min(1).max(128)).min(1).max(32),
+});
+export type UniqueKeySpecPayload = z.infer<typeof UniqueKeySpecSchema>;
+
+export const ForeignKeySpecSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  columns: z.array(z.string().min(1).max(128)).min(1).max(32),
+  refTable: z.string().min(1).max(128),
+  refColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
+  onDelete: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).optional(),
+  onUpdate: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).optional(),
+});
+export type ForeignKeySpecPayload = z.infer<typeof ForeignKeySpecSchema>;
+
+export const IndexSpecSchema = z.object({
+  name: z.string().min(1).max(128).optional(),
+  columns: z.array(z.string().min(1).max(128)).min(1).max(32),
+  unique: z.boolean().optional(),
+  type: z.string().max(32).optional(),
+});
+export type IndexSpecPayload = z.infer<typeof IndexSpecSchema>;
+
+/** 表设计器 Tab 能力（交互稿 §12.2；驱动 capabilities.tableDesign 经 ddl.load 下发） */
+export const TableDesignFeaturesSchema = z.object({
+  uniqueKeys: z.boolean().optional(),
+  foreignKeys: z.boolean().optional(),
+  foreignKeyAlter: z.boolean().optional(),
+  indexes: z.boolean().optional(),
+  indexTypes: z.array(z.string().min(1).max(32)).max(16).optional(),
+  refActions: z.array(z.string().min(1).max(16)).max(8).optional(),
+});
+export type TableDesignFeaturesPayload = z.infer<typeof TableDesignFeaturesSchema>;
+
 export const TableSpecSchema = z.object({
   name: z.string().min(1).max(128),
   comment: z.string().max(2048).optional(),
   columns: z.array(ColumnSpecSchema).max(256),
+  uniqueKeys: z.array(UniqueKeySpecSchema).max(64).optional(),
+  foreignKeys: z.array(ForeignKeySpecSchema).max(64).optional(),
+  indexes: z.array(IndexSpecSchema).max(128).optional(),
 });
 export type TableSpecPayload = z.infer<typeof TableSpecSchema>;
 
@@ -649,12 +695,49 @@ export const DdlLoadParamsSchema = z.object({
 });
 export type DdlLoadParams = z.infer<typeof DdlLoadParamsSchema>;
 
+/** @since 表设计器批次 A：列 Tab 类型建议项（方言词表，交互稿 §12.3）。template 为带形参
+ *  回填模板（如 varchar() / decimal(,)，回填后光标定位到第一个逗号或右括号前）；缺省 = value 原样回填 */
+export const DataTypeOptionSchema = z.object({
+  value: z.string().min(1).max(128),
+  template: z.string().min(1).max(128).optional(),
+});
+export type DataTypeOptionPayload = z.infer<typeof DataTypeOptionSchema>;
+
 export const DdlLoadResultSchema = z.object({
   kind: z.enum(['create', 'alter']),
   /** create 态为 null（编辑器给空白模板）；alter 态为库内当前结构 */
   spec: TableSpecSchema.nullable(),
+  /** @since 表设计器批次 A：类型建议词表（驱动方言各自维护，C-14）；缺省 = 类型框纯手输 */
+  dataTypes: z.array(DataTypeOptionSchema).max(200).optional(),
+  /** @since 表设计器批次 B：Tab 能力声明（交互稿 §12.2）；缺省 = 各 Tab 隐藏（纯列编辑） */
+  features: TableDesignFeaturesSchema.optional(),
 });
 export type DdlLoadResult = z.infer<typeof DdlLoadResultSchema>;
+
+// ── ddl.refTables / ddl.refColumns（表设计器批次 B：外键引用目标选择）────────
+export const DdlRefTablesParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+});
+export type DdlRefTablesParams = z.infer<typeof DdlRefTablesParamsSchema>;
+
+export const DdlRefTablesResultSchema = z.object({
+  /** 当前库内的表名清单（仅 table；视图/集合不作为引用目标） */
+  tables: z.array(z.string().min(1).max(128)).max(2048),
+});
+export type DdlRefTablesResult = z.infer<typeof DdlRefTablesResultSchema>;
+
+export const DdlRefColumnsParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  table: z.string().min(1).max(128),
+});
+export type DdlRefColumnsParams = z.infer<typeof DdlRefColumnsParamsSchema>;
+
+export const DdlRefColumnsResultSchema = z.object({
+  columns: z.array(z.string().min(1).max(128)).max(256),
+});
+export type DdlRefColumnsResult = z.infer<typeof DdlRefColumnsResultSchema>;
 
 export const DdlPreviewParamsSchema = z.object({
   connId: z.string().min(1),
@@ -752,6 +835,96 @@ export type DbDdlExecuteResult = z.infer<typeof DbDdlExecuteResultSchema>;
 
 export const DbDdlCloseParamsSchema = z.object({}).optional();
 export type DbDdlCloseParams = z.infer<typeof DbDdlCloseParamsSchema>;
+
+// ── er.getGraph / er.openTable（M8-ER ER 图，概要 §5.11 / D-22 @since v0.2.27）──────────
+// 关系收集与分层布局在 Host（core erModel/erLayout，C-13）；Webview 只做视口变换与拖拽。
+
+export const ErGraphScopeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('all') }),
+  z.object({
+    kind: z.literal('selection'),
+    /** 选中表清单（打开引导 QuickPick 的选择结果；按 listObjects 序保留） */
+    tables: z.array(z.string().min(1).max(128)).min(1).max(300),
+  }),
+]);
+export type ErGraphScopePayload = z.infer<typeof ErGraphScopeSchema>;
+
+export const ErGraphParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  scope: ErGraphScopeSchema,
+  /** true = 绕元数据缓存重拉（工具栏「刷新」，失效该库 objects/columns/keys 后重建） */
+  refresh: z.boolean().optional(),
+});
+export type ErGraphParams = z.infer<typeof ErGraphParamsSchema>;
+
+export const ErColumnSummarySchema = z.object({
+  name: z.string().min(1).max(128),
+  dataType: z.string().min(1).max(256),
+  isPrimaryKey: z.boolean(),
+});
+export type ErColumnSummaryPayload = z.infer<typeof ErColumnSummarySchema>;
+
+export const ErTableSummarySchema = z.object({
+  name: z.string().min(1).max(128),
+  comment: z.string().max(2048).optional(),
+  columns: z.array(ErColumnSummarySchema).max(256),
+  /** 列超上限被截断的数量（缺省 0） */
+  columnsTruncated: z.number().int().min(0).optional(),
+});
+export type ErTableSummaryPayload = z.infer<typeof ErTableSummarySchema>;
+
+/** FK 关系边：source = FK 子表（多端）→ target = 被引用父表（一端）；复合 FK 单边、列序对齐 */
+export const ErEdgeSummarySchema = z.object({
+  name: z.string().max(128).optional(),
+  sourceTable: z.string().min(1).max(128),
+  sourceColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
+  targetTable: z.string().min(1).max(128),
+  targetColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
+});
+export type ErEdgeSummaryPayload = z.infer<typeof ErEdgeSummarySchema>;
+
+export const ErLayoutNodeSchema = z.object({
+  table: z.string().min(1).max(128),
+  x: z.number(),
+  y: z.number(),
+  width: z.number().positive(),
+  height: z.number().positive(),
+});
+export type ErLayoutNodePayload = z.infer<typeof ErLayoutNodeSchema>;
+
+/** 布局结果（Host 计算）。常量随载荷下发（nodeWidth/rowHeight 等——core erLayout 单一来源，
+ *  Webview 展开/折叠列后按同源常量重算节点高度，防双源漂移） */
+export const ErGraphResultSchema = z.object({
+  tables: z.array(ErTableSummarySchema).max(300),
+  edges: z.array(ErEdgeSummarySchema).max(2000),
+  layout: z.object({
+    nodes: z.array(ErLayoutNodeSchema).max(300),
+    width: z.number(),
+    height: z.number(),
+    nodeWidth: z.number().positive(),
+    headerHeight: z.number().positive(),
+    rowHeight: z.number().positive(),
+    padBottom: z.number().min(0),
+    layerGapX: z.number().min(0),
+    nodeGapY: z.number().min(0),
+  }),
+  tableCount: z.number().int().min(0),
+  /** 端点不全未绘制的 FK 边数（selection 裁剪 / 引用目标不在表集） */
+  hiddenEdges: z.number().int().min(0),
+});
+export type ErGraphResult = z.infer<typeof ErGraphResultSchema>;
+
+/** 节点双击 → 打开表格视图（Host 复用 openTablePanel 链路；无返回载荷） */
+export const ErOpenTableParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  table: z.string().min(1).max(128),
+});
+export type ErOpenTableParams = z.infer<typeof ErOpenTableParamsSchema>;
+
+export const ErOpenTableResultSchema = z.object({});
+export type ErOpenTableResult = z.infer<typeof ErOpenTableResultSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({

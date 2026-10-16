@@ -14,3 +14,5 @@ export * from './services/redisCommands';
 export * from './services/mongoCommands';
 export * from './services/completionContext';
 export * from './services/tableSpec';
+export * from './services/erModel';
+export * from './services/erLayout';

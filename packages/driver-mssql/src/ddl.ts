@@ -1,4 +1,13 @@
-import { DriverError, type DatabaseSpec, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type DatabaseSpec,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type TableSpec,
+} from '@db-explorer/core';
 import { quoteMssqlIdentifier } from './sql';
 
 /**
@@ -14,11 +23,15 @@ import { quoteMssqlIdentifier } from './sql';
  * 纯函数，有单测。
  */
 
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单）：只拒绝方言引号字符（右方括号，防逃逸）与控制字符；
+ *  连字符/点/空格/中文等真实合法名交由 quoteMssqlIdentifier 双写转义承载——DDL 不可参数化的
+ *  fail-closed 口径不变（注入面即引号逃逸，已从源头封死） */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F\]]/;
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
 }
@@ -75,6 +88,57 @@ function extendedPropertyStatements(
   );
 }
 
+/** 列名清单字面量（键/外键/索引共用，表设计器批次 B） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => quoteMssqlIdentifier(assertIdentifier('列名', c))).join(', ');
+}
+
+/** 索引类型前缀（T-SQL：CREATE [UNIQUE] [CLUSTERED|NONCLUSTERED] INDEX） */
+function mssqlIndexTypePrefix(type: string | undefined): string {
+  return type ? `${assertIdentifier('索引类型', type)} ` : '';
+}
+
+/** 唯一键/外键的 CREATE TABLE 内联 CONSTRAINT 子句（表设计器批次 B；索引走独立 CREATE INDEX） */
+function appendCreateConstraintClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`CONSTRAINT ${quoteMssqlIdentifier(name)} UNIQUE (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    cols.push(
+      `CONSTRAINT ${quoteMssqlIdentifier(name)} FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES ${quoteMssqlIdentifier(assertIdentifier('引用表名', fk.refTable))} (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+}
+
+/** 二级索引独立语句（CREATE [UNIQUE] [type] INDEX；T-SQL 无内联索引语法） */
+function createIndexStatements(db: string, spec: TableSpec): DdlStatement[] {
+  const taken = new Set((spec.uniqueKeys ?? []).map((k) => k.name).filter(Boolean) as string[]);
+  const qualified = `${quoteMssqlIdentifier(db)}.${quoteMssqlIdentifier(spec.name)}`;
+  return (spec.indexes ?? []).map((idx) => {
+    const name = assertIdentifier('索引名', idx.name ?? generateKeyName('idx', spec.name, taken));
+    taken.add(name);
+    return {
+      sql: `CREATE ${idx.unique ? 'UNIQUE ' : ''}${mssqlIndexTypePrefix(idx.type)}INDEX ${quoteMssqlIdentifier(name)} ON ${qualified} (${columnListLit(idx.columns)})`,
+    };
+  });
+}
+
 export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStatement[] {
   assertIdentifier('架构名', db);
   assertIdentifier('表名', spec.name);
@@ -95,8 +159,10 @@ export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStat
   if (pk.length > 0) {
     cols.push(`PRIMARY KEY CLUSTERED (${pk.join(', ')})`);
   }
+  appendCreateConstraintClauses(cols, spec);
   const statements: DdlStatement[] = [
     { sql: `CREATE TABLE ${quoteMssqlIdentifier(db)}.${quoteMssqlIdentifier(spec.name)} (\n  ${cols.join(',\n  ')}\n) ON [PRIMARY]` },
+    ...createIndexStatements(db, spec),
   ];
   if (spec.comment) {
     statements.push({ sql: extendedPropertyStatements(db, spec.name, spec.comment) });
@@ -189,6 +255,31 @@ export function buildAlterTableStatements(
     }
   }
 
+  // ②′ 键/外键/索引 diff 删除半段（表设计器批次 B，§12.7 红线：DROP 只由「基线存在且 spec 移除」
+  // 生成）——必须在列删除之前：T-SQL 对被外键依赖的列拒绝 DROP COLUMN
+  const keyTaken = new Set<string>();
+  for (const k of [...(current.uniqueKeys ?? []), ...(current.foreignKeys ?? []), ...(current.indexes ?? [])]) {
+    if (k.name) {
+      keyTaken.add(k.name);
+    }
+  }
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  for (const k of [...fkDiff.dropped, ...fkDiff.changed]) {
+    statements.push({
+      sql: `ALTER TABLE ${alterPrefix} DROP CONSTRAINT ${quoteMssqlIdentifier(assertIdentifier('外键名', k.name!))}`,
+    });
+  }
+  for (const k of [...ukDiff.dropped, ...ukDiff.changed]) {
+    statements.push({
+      sql: `ALTER TABLE ${alterPrefix} DROP CONSTRAINT ${quoteMssqlIdentifier(assertIdentifier('唯一键名', k.name!))}`,
+    });
+  }
+  for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+    statements.push({ sql: `DROP INDEX ${quoteMssqlIdentifier(assertIdentifier('索引名', k.name!))} ON ${alterPrefix}` });
+  }
+
   // ③ 删列（可能丢数据 → destructive）
   for (const cur of droppedCols) {
     statements.push({
@@ -233,6 +324,32 @@ export function buildAlterTableStatements(
   if (pkChanged && tgtPk.length > 0) {
     statements.push({
       sql: `ALTER TABLE ${alterPrefix} ADD PRIMARY KEY CLUSTERED (${tgtPk.map((n) => `${quoteMssqlIdentifier(n)} ASC`).join(', ')})`,
+    });
+  }
+
+  // ⑦′ 键/外键/索引 diff 添加半段（列变更之后：外键/索引可引用新加列）
+  for (const k of [...ukDiff.added, ...ukDiff.changed]) {
+    const name = assertIdentifier('唯一键名', k.name ?? generateKeyName('uk', spec.name, keyTaken));
+    keyTaken.add(name);
+    statements.push({
+      sql: `ALTER TABLE ${alterPrefix} ADD CONSTRAINT ${quoteMssqlIdentifier(name)} UNIQUE (${columnListLit(k.columns)})`,
+    });
+  }
+  for (const k of [...fkDiff.added, ...fkDiff.changed]) {
+    if (k.refColumns.length !== k.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${k.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', k.name ?? generateKeyName('fk', spec.name, keyTaken));
+    keyTaken.add(name);
+    statements.push({
+      sql: `ALTER TABLE ${alterPrefix} ADD CONSTRAINT ${quoteMssqlIdentifier(name)} FOREIGN KEY (${columnListLit(k.columns)}) REFERENCES ${quoteMssqlIdentifier(assertIdentifier('引用表名', k.refTable))} (${columnListLit(k.refColumns)})${foreignKeyActionSuffix(k)}`,
+    });
+  }
+  for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+    const name = assertIdentifier('索引名', k.name ?? generateKeyName('idx', spec.name, keyTaken));
+    keyTaken.add(name);
+    statements.push({
+      sql: `CREATE ${k.unique ? 'UNIQUE ' : ''}${mssqlIndexTypePrefix(k.type)}INDEX ${quoteMssqlIdentifier(name)} ON ${alterPrefix} (${columnListLit(k.columns)})`,
     });
   }
 

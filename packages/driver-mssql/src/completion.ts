@@ -4,6 +4,8 @@
  * 纯数据，无依赖；DialectInfo.keywords 无消费方（仅声明性元数据），词表只服务补全。
  */
 
+import type { DataTypeOption } from '@db-explorer/core';
+
 export const KEYWORDS = [
   // DML
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'DISTINCT', 'TOP', 'PERCENT',
@@ -121,4 +123,37 @@ export const COMPLETION_SNIPPETS = [
     body: "SELECT JSON_VALUE(${1:col}, '$.${2:path}') FROM ${3:table};",
     description: '从 JSON 文本列取标量值（SQL Server 2016+）',
   },
+];
+
+/**
+ * 表结构编辑器类型建议词表（表设计器批次 A，交互稿 §12.3）：T-SQL 常用面，按常用度排序。
+ * template 为带形参回填模板（回填后光标落形参位）；MAX 形态作为独立项直填；
+ * 建议不是白名单——词表外类型照常手输，合法性由驱动 fail-closed 校验兜底。
+ */
+export const DATA_TYPES: DataTypeOption[] = [
+  { value: 'INT' },
+  { value: 'BIGINT' },
+  { value: 'NVARCHAR', template: 'NVARCHAR()' },
+  { value: 'NVARCHAR(MAX)' },
+  { value: 'VARCHAR', template: 'VARCHAR()' },
+  { value: 'VARCHAR(MAX)' },
+  { value: 'BIT' },
+  { value: 'DECIMAL', template: 'DECIMAL(,)' },
+  { value: 'DATETIME2', template: 'DATETIME2()' },
+  { value: 'DATETIME' },
+  { value: 'DATE' },
+  { value: 'SMALLINT' },
+  { value: 'TINYINT' },
+  { value: 'UNIQUEIDENTIFIER' },
+  { value: 'FLOAT' },
+  { value: 'REAL' },
+  { value: 'CHAR', template: 'CHAR()' },
+  { value: 'NCHAR', template: 'NCHAR()' },
+  { value: 'VARBINARY', template: 'VARBINARY()' },
+  { value: 'VARBINARY(MAX)' },
+  { value: 'TIME', template: 'TIME()' },
+  { value: 'SMALLDATETIME' },
+  { value: 'DATETIMEOFFSET', template: 'DATETIMEOFFSET()' },
+  { value: 'MONEY' },
+  { value: 'XML' },
 ];

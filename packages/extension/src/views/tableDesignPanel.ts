@@ -68,6 +68,8 @@ export function openTableDesignPanel(
     logger: deps.logger,
     handlers: {
       [RpcMethods.ddlLoad]: (raw) => deps.ddl.load(raw),
+      [RpcMethods.ddlRefTables]: (raw) => deps.ddl.refTables(raw),
+      [RpcMethods.ddlRefColumns]: (raw) => deps.ddl.refColumns(raw),
       [RpcMethods.ddlPreview]: (raw) => deps.ddl.preview(raw),
       [RpcMethods.ddlExecute]: async (raw) => {
         const result = await deps.ddl.execute(raw);

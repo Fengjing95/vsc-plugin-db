@@ -1,4 +1,12 @@
-import { DriverError, type DdlStatement, type TableSpec } from '@db-explorer/core';
+import {
+  DriverError,
+  diffKeyEntries,
+  foreignKeyActionSuffix,
+  generateKeyName,
+  type DdlStatement,
+  type ForeignKeySpec,
+  type TableSpec,
+} from '@db-explorer/core';
 import { quoteIdentifier } from './sql';
 
 /**
@@ -16,13 +24,17 @@ import { quoteIdentifier } from './sql';
  * 纯函数，有单测。
  */
 
-const IDENT_RE = /^[A-Za-z0-9_$]+$/;
+/** 标识符校验（白名单 → 危险字符黑名单）：只拒绝方言引号字符（双引号，防逃逸）与控制字符；
+ *  连字符/点/空格/中文等真实合法名交由 quoteIdentifier 双写转义承载——DDL 不可参数化的
+ *  fail-closed 口径不变（注入面即引号逃逸，已从源头封死） */
+// eslint-disable-next-line no-control-regex -- 刻意匹配控制字符：拒绝它们正是本校验的职责（escapeDdlLiteral 同款豁免）
+const IDENT_DANGEROUS_RE = /[\u0000-\u001F\u007F"]/;
 
 const REBUILD_SUFFIX = '__dbx_rebuild';
 
 function assertIdentifier(kind: string, name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 128) {
-    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（字母/数字/_/$ 之外不允许）`);
+  if (!name || name.length > 128 || IDENT_DANGEROUS_RE.test(name)) {
+    throw new DriverError('E_VALIDATION', `${kind} "${name}" 含非法字符（方言引号字符与控制字符不允许）`);
   }
   return name;
 }
@@ -65,6 +77,51 @@ function columnDefSql(col: TableSpec['columns'][number], autoIncPk: string | und
   return parts.filter(Boolean).join(' ');
 }
 
+/** 列名清单字面量（键/外键/索引共用，表设计器批次 B） */
+function columnListLit(columns: readonly string[]): string {
+  if (columns.length === 0) {
+    throw new DriverError('E_VALIDATION', '键/索引至少需要一列');
+  }
+  return columns.map((c) => quoteIdentifier(assertIdentifier('列名', c))).join(', ');
+}
+
+/** 唯一键/外键的 CREATE TABLE 内联 CONSTRAINT 子句（表设计器批次 B，交互稿 §12.4/§12.5）：
+ *  SQLite 无 ALTER ADD/DROP CONSTRAINT——约束变更随表重建序列承载（§12.2 能力矩阵）；
+ *  外键 alter 由 buildAlterTableStatements fail-closed（E_UNSUPPORTED） */
+function appendInlineConstraintClauses(cols: string[], spec: TableSpec): void {
+  const taken = new Set<string>();
+  for (const k of [...(spec.uniqueKeys ?? []), ...(spec.foreignKeys ?? [])]) {
+    if (k.name) {
+      taken.add(k.name);
+    }
+  }
+  for (const uk of spec.uniqueKeys ?? []) {
+    const name = assertIdentifier('唯一键名', uk.name ?? generateKeyName('uk', spec.name, taken));
+    taken.add(name);
+    cols.push(`CONSTRAINT ${quoteIdentifier(name)} UNIQUE (${columnListLit(uk.columns)})`);
+  }
+  for (const fk of spec.foreignKeys ?? []) {
+    if (fk.refColumns.length !== fk.columns.length) {
+      throw new DriverError('E_VALIDATION', `外键 "${fk.name ?? '(未命名)'}" 引用列数须与本地列数一致`);
+    }
+    const name = assertIdentifier('外键名', fk.name ?? generateKeyName('fk', spec.name, taken));
+    taken.add(name);
+    cols.push(
+      `CONSTRAINT ${quoteIdentifier(name)} FOREIGN KEY (${columnListLit(fk.columns)}) REFERENCES ${quoteIdentifier(assertIdentifier('引用表名', fk.refTable))} (${columnListLit(fk.refColumns)})${foreignKeyActionSuffix(fk)}`,
+    );
+  }
+}
+
+/** 二级索引独立语句（CREATE [UNIQUE] INDEX；SQLite 索引无类型选项——显式传入 fail-closed） */
+function createIndexStatement(tableName: string, name: string, columns: readonly string[], unique?: boolean, type?: string): DdlStatement {
+  if (type) {
+    throw new DriverError('E_UNSUPPORTED', 'SQLite 索引无类型选项');
+  }
+  return {
+    sql: `CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${quoteIdentifier(assertIdentifier('索引名', name))} ON ${quoteIdentifier(tableName)} (${columnListLit(columns)})`,
+  };
+}
+
 function createTableSql(spec: TableSpec, tableName: string): string {
   const autoIncPk = singleAutoIncrementPk(spec);
   const cols = spec.columns.map((c) => columnDefSql(c, autoIncPk));
@@ -73,6 +130,7 @@ function createTableSql(spec: TableSpec, tableName: string): string {
   if (pks.length > 0 && !(pks.length === 1 && autoIncPk !== undefined)) {
     cols.push(`PRIMARY KEY (${pks.join(', ')})`);
   }
+  appendInlineConstraintClauses(cols, spec);
   return `CREATE TABLE ${quoteIdentifier(tableName)} (\n  ${cols.join(',\n  ')}\n)`;
 }
 
@@ -82,7 +140,15 @@ export function buildCreateTableStatements(db: string, spec: TableSpec): DdlStat
   if (spec.columns.length === 0) {
     throw new DriverError('E_VALIDATION', '表至少需要一列');
   }
-  return [{ sql: createTableSql(spec, spec.name) }];
+  const statements: DdlStatement[] = [{ sql: createTableSql(spec, spec.name) }];
+  // 索引不内联（SQLite CREATE TABLE 无 INDEX 子句）——独立语句随后执行
+  const taken = new Set([...(spec.uniqueKeys ?? []).map((k) => k.name).filter(Boolean) as string[], ...(spec.foreignKeys ?? []).map((k) => k.name).filter(Boolean) as string[]]);
+  for (const idx of spec.indexes ?? []) {
+    const name = idx.name ?? generateKeyName('idx', spec.name, taken);
+    taken.add(name);
+    statements.push(createIndexStatement(spec.name, name, idx.columns, idx.unique, idx.type));
+  }
+  return statements;
 }
 
 export function buildAlterTableStatements(
@@ -125,23 +191,45 @@ export function buildAlterTableStatements(
       (!c.nullable && (!c.defaultValue || c.defaultValue === '' || /^current_/i.test(c.defaultValue.trim()))),
   );
 
-  const renamed = spec.name !== obj;
-  const needsRebuild = pkChanged || changed.length > 0 || dropped.length + addedNeedRebuild.length > 0;
+  // 键/外键/索引 diff（表设计器批次 B，§12.7）：外键无原地 ALTER → E_UNSUPPORTED（§12.2 能力矩阵，
+  // UI alter 态外键 Tab 只读兜底）；唯一键变更无 ALTER CONSTRAINT → 并入表重建序列；索引可原地 DDL
+  const ukDiff = diffKeyEntries(spec.uniqueKeys, current.uniqueKeys);
+  const fkDiff = diffKeyEntries<ForeignKeySpec>(spec.foreignKeys, current.foreignKeys);
+  const idxDiff = diffKeyEntries(spec.indexes, current.indexes);
+  if (fkDiff.added.length + fkDiff.dropped.length + fkDiff.changed.length > 0) {
+    throw new DriverError('E_UNSUPPORTED', 'SQLite 不支持原地修改外键（需重建表）；请经 SQL Console 处理');
+  }
 
-  // 无需重建：加列（原地 ADD COLUMN）+ 重命名（最后执行，后续语句引用旧名）
+  const renamed = spec.name !== obj;
+  const needsRebuild =
+    pkChanged || changed.length > 0 || dropped.length + addedNeedRebuild.length > 0 || ukDiff.added.length + ukDiff.dropped.length + ukDiff.changed.length > 0;
+
+  // 无需重建：加列（原地 ADD COLUMN）+ 索引 diff（原地 DDL）+ 重命名（最后执行，后续语句引用旧名）
   if (!needsRebuild) {
-    const statements: DdlStatement[] = added.map((c) => ({
-      sql: `ALTER TABLE ${quoteIdentifier(obj)} ADD COLUMN ${columnDefSql(c, undefined)}`,
-    }));
+    const statements: DdlStatement[] = [];
+    for (const k of [...idxDiff.dropped, ...idxDiff.changed]) {
+      statements.push({ sql: `DROP INDEX ${quoteIdentifier(assertIdentifier('索引名', k.name!))}` });
+    }
+    statements.push(
+      ...added.map((c) => ({
+        sql: `ALTER TABLE ${quoteIdentifier(obj)} ADD COLUMN ${columnDefSql(c, undefined)}`,
+      })),
+    );
     if (renamed) {
       statements.push({
         sql: `ALTER TABLE ${quoteIdentifier(obj)} RENAME TO ${quoteIdentifier(spec.name)}`,
       });
     }
+    for (const k of [...idxDiff.added, ...idxDiff.changed]) {
+      const name = k.name ?? generateKeyName('idx', spec.name, []);
+      statements.push(createIndexStatement(spec.name, name, k.columns, k.unique, k.type));
+    }
     return statements;
   }
 
-  // 表重建序列（驱动规范 §5.4；整序列含 DROP TABLE → destructive 确认分级）
+  // 表重建序列（驱动规范 §5.4；整序列含 DROP TABLE → destructive 确认分级）。
+  // 目标唯一键/外键随新表 CREATE 内联承载（appendInlineConstraintClauses）；旧表索引随
+  // DROP TABLE 消失——目标索引集全量重建（此前「重建不迁移索引」已知限制就此收口）
   const statements: DdlStatement[] = [];
   const tmpName = `${obj}${REBUILD_SUFFIX}`;
   statements.push({ sql: 'PRAGMA foreign_keys = OFF' });
@@ -155,5 +243,11 @@ export function buildAlterTableStatements(
   statements.push({ sql: `DROP TABLE ${quoteIdentifier(obj)}`, destructive: true });
   statements.push({ sql: `ALTER TABLE ${quoteIdentifier(tmpName)} RENAME TO ${quoteIdentifier(spec.name)}` });
   statements.push({ sql: 'PRAGMA foreign_keys = ON' });
+  const idxTaken = new Set([...(spec.uniqueKeys ?? []).map((k) => k.name).filter(Boolean) as string[], ...(spec.foreignKeys ?? []).map((k) => k.name).filter(Boolean) as string[]]);
+  for (const idx of spec.indexes ?? []) {
+    const name = idx.name ?? generateKeyName('idx', spec.name, idxTaken);
+    idxTaken.add(name);
+    statements.push(createIndexStatement(spec.name, name, idx.columns, idx.unique, idx.type));
+  }
   return statements;
 }

@@ -35,12 +35,15 @@ describe('buildCreateTableStatements', () => {
     expect(statements[0].sql).not.toContain('AUTOINCREMENT');
   });
 
-  it('非法标识符 fail-closed（E_VALIDATION）：分号注入与反引号', () => {
-    for (const bad of ['cf_ddl_x; DROP TABLE t', 'cf`_ddl', 'a b', '名']) {
+  it('标识符校验（危险字符黑名单，E_VALIDATION）：双引号/控制字符拒绝；连字符/中文放行', () => {
+    for (const bad of ['cf_ddl_x" DROP TABLE t', 'cf\nddl']) {
       expect(() =>
         buildCreateTableStatements('main', { name: bad, columns: [col('id')] }),
       ).toThrowError(expect.objectContaining({ code: 'E_VALIDATION' }));
     }
+    // 分号/空格/中文由双引号双写转义安全承载（回归：test-api 类真实名曾被白名单误拒）
+    const stmts = buildCreateTableStatements('main', { name: 'cf-ddl 表', columns: [col('id')] });
+    expect(stmts[0].sql).toContain('"cf-ddl 表"');
   });
 
   it('字面量转义：数值原样、引号翻倍、控制字符拒绝', () => {

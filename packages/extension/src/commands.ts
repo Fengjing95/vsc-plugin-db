@@ -16,6 +16,7 @@ import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
 import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
+import { openErDiagramPanel } from './views/erDiagramPanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
@@ -43,6 +44,8 @@ export interface AppServices {
   ddl: DdlService;
   /** M8-DBDDL 库级 DDL（D-19）：新建/编辑库面板 RPC + 删库树操作 */
   dbddl: import('./services/dbDdlService').DbDdlService;
+  /** M8-ER ER 图（概要 §5.11 / D-22）：关系收集 + 分层布局（er.getGraph）+ 打开引导 */
+  er: import('./services/erService').ErService;
 }
 
 function copy(text: string, hint: string): void {
@@ -493,6 +496,48 @@ export function registerCommands(
         return;
       }
       openTableDesignPanel(context, services, { connId, db, obj });
+    }),
+
+    // ── M8-ER ER 图查看（概要 §5.11 / D-22 / 交互稿 §13；入口仅右键菜单，按能力令牌裁剪）──
+
+    vscode.commands.registerCommand('dbExplorer.showErDiagram', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        return;
+      }
+      if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
+        void vscode.window.showInformationMessage('当前数据库类型不支持 ER 图。');
+        return;
+      }
+      try {
+        const scope = await services.er.prepareOpen(connId, db);
+        if (!scope) {
+          return; // 用户取消选择（Esc / 空选集），无副作用
+        }
+        openErDiagramPanel(
+          context,
+          {
+            er: services.er,
+            logger: services.logger,
+            openTable: async ({ connId: cid, db: d, table }) => {
+              await openTablePanel(context, services, {
+                connId: cid,
+                db: d,
+                obj: table,
+                viewId: `${cid}/${d}/${table}`,
+                title: `${table} @ ${d}`,
+                readOnly: store.get(cid)?.readOnly ?? false,
+                env: store.get(cid)?.env ?? null,
+              });
+            },
+          },
+          { connId, db, scope },
+        );
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `打开 ER 图失败：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }),
 
     // ── M8-DBDDL 库级 DDL（概要 D-19 / 交互稿 §8.3；入口仅右键菜单，按驱动方法存在性裁剪）──

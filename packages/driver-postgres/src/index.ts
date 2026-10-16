@@ -1,7 +1,7 @@
 import pg from 'pg';
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
 // 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSONB/数组面）
-import { COMPLETION_SNIPPETS, FUNCTIONS, KEYWORDS } from './completion';
+import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import {
   DriverError,
   type ApplyResult,
@@ -9,6 +9,7 @@ import {
   type ColumnMeta,
   type CompletionSource,
   type ConnectionConfig,
+  type DataTypeOption,
   type DatabaseMeta,
   type DdlStatement,
   type DriverCapabilities,
@@ -72,6 +73,15 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-15）——buildCreateDatabase/buildDropDatabase
+  supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（约束式 UNIQUE/FK；PG 索引方法族）
+  tableDesign: {
+    uniqueKeys: true,
+    foreignKeys: true,
+    foreignKeyAlter: true,
+    indexes: true,
+    indexTypes: ['btree', 'hash', 'gin', 'gist', 'brin'],
+  },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -142,6 +152,20 @@ const pgQueryTypes = {
     return builtin;
   },
 };
+
+/** 数组列 → string[]：SQL 侧已 ::text 强制 text[]（builtin 解析为数组）；string 形态
+ *  （pg 数组字面量）兜底解析——只承载标识符名场景，带引号特殊名由主路径覆盖 */
+function toNameArray(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v.map((c) => String(c));
+  }
+  const s = String(v ?? '').trim();
+  if (s.startsWith('{') && s.endsWith('}')) {
+    const inner = s.slice(1, -1);
+    return inner.length === 0 ? [] : inner.split(',').map((c) => c.replace(/^"(.*)"$/s, '$1').replace(/\\(.)/g, '$1'));
+  }
+  return [];
+}
 
 /** 建连/取数配置（连接与 testConnection 同源，防参数漂移） */
 function buildClientConfig(cfg: ConnectionConfig, secret: string): pg.ClientConfig {
@@ -271,8 +295,10 @@ export class PostgresConnection implements IConnection {
   async listIndexes(db: string, obj: string): Promise<IndexMeta[]> {
     this.assertLive();
     try {
+      // 列集：pg_get_indexdef 第二参是 1 起的列号——generate_series(1, indnatts) 直接传 k
+      // （曾传 k+1 整体偏移一位：单列索引回 [""]、双列回 [第二列, ""]，树上索引列集恒错——CI 契约实跑抓到）
       const rows = await this.queryRows(
-        'SELECT i.relname AS name, ix.indisunique AS uniq, ix.indisprimary AS ispk, am.amname AS itype, ARRAY (SELECT pg_catalog.pg_get_indexdef(ix.indexrelid, k + 1, true) FROM pg_catalog.generate_series(1, ix.indnatts) AS k) AS cols FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid JOIN pg_catalog.pg_am am ON am.oid = i.relam WHERE n.nspname = $1 AND c.relname = $2 ORDER BY i.relname',
+        'SELECT i.relname AS name, ix.indisunique AS uniq, ix.indisprimary AS ispk, am.amname AS itype, ARRAY (SELECT pg_catalog.pg_get_indexdef(ix.indexrelid, k, true) FROM pg_catalog.generate_series(1, ix.indnatts) AS k) AS cols FROM pg_catalog.pg_index ix JOIN pg_catalog.pg_class c ON c.oid = ix.indrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid JOIN pg_catalog.pg_am am ON am.oid = i.relam WHERE n.nspname = $1 AND c.relname = $2 ORDER BY i.relname',
         [db, obj],
       );
       return rows.map((r) => ({
@@ -300,17 +326,21 @@ export class PostgresConnection implements IConnection {
         keys.push({ name: String(pkName[0]?.name ?? `${obj}_pkey`), kind: 'PK', columns: pkCols });
       }
 
+      // 外键列集：attname 是 name 类型，ARRAY(SELECT …) 产出 name[]（OID 1003，pg builtin 无解析器
+      // → 回原始字符串，r.cols.map 崩——CI 契约实跑抓到）；元素 ::text 强制产出 text[]（OID 1009，
+      // builtin 解析为数组）。列序用 unnest WITH ORDINALITY 保约束顺序（ANY() 不保序，复合外键列序
+      // 是 roundtrip/UI 成对映射的正确性前提）
       const fks = await this.queryRows(
-        "SELECT con.conname AS name, ARRAY (SELECT a.attname FROM pg_catalog.pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey)) AS cols, ft.relname AS reftable, ARRAY (SELECT fa.attname FROM pg_catalog.pg_attribute fa WHERE fa.attrelid = con.confrelid AND fa.attnum = ANY (con.confkey)) AS refcols FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class ft ON ft.oid = con.confrelid WHERE n.nspname = $1 AND c.relname = $2 AND con.contype = 'f' ORDER BY con.conname",
+        "SELECT con.conname AS name, ARRAY (SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum ORDER BY k.ord) AS cols, ft.relname AS reftable, ARRAY (SELECT fa.attname::text FROM unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) JOIN pg_catalog.pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = fk.attnum ORDER BY fk.ord) AS refcols FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class ft ON ft.oid = con.confrelid WHERE n.nspname = $1 AND c.relname = $2 AND con.contype = 'f' ORDER BY con.conname",
         [db, obj],
       );
       for (const r of fks) {
         keys.push({
           name: String(r.name),
           kind: 'FK',
-          columns: (r.cols as unknown[]).map((c) => String(c)),
+          columns: toNameArray(r.cols),
           refTable: String(r.reftable),
-          refColumns: (r.refcols as unknown[]).map((c) => String(c)),
+          refColumns: toNameArray(r.refcols),
         });
       }
 
@@ -504,6 +534,10 @@ export class PostgresConnection implements IConnection {
       rowKey[pk] = encodeCell(value, typeByName.get(pk) ?? 'unknown');
     }
     return Object.keys(rowKey).length > 0 ? rowKey : undefined;
+  }
+
+  listDataTypes(): DataTypeOption[] {
+    return DATA_TYPES;
   }
 
   async getCompletionSource(db?: string): Promise<CompletionSource> {

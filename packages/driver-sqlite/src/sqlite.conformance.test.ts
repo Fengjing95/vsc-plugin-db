@@ -11,6 +11,7 @@ import {
   runInteractiveTransactionChecks,
   runMetadataChecks,
   runPaginationChecks,
+  runRelationGraphChecks,
   runSqlValueEncodingChecks,
   type SqlValueEncodingCase,
 } from '@db-explorer/driver-conformance';
@@ -201,11 +202,20 @@ describe('sqlite conformance（sql.js 引擎，进程内实跑）', () => {
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(SQLITE_VE_CASES.length + 2);
   });
 
-  it('ddl 组（表结构编辑：加列/删列/PK 重建，SQLite 方言）', async () => {
+  it('ddl 组（表结构编辑：加列/删列/PK 重建 + 键/外键/索引，SQLite 方言）', async () => {
     const summary = await runDdlChecks(makeConn);
     logFailures(summary);
     expect(summary.failed).toBe(0);
-    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(7);
+    // 原 7 项 + 键/外键/索引段 6 项（外键 alter 按 E_UNSUPPORTED 能力边界 skip，§12.2）
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(12);
+  });
+
+  it('relation-graph 组（M8-ER / D-22：单列/复合/自引用 FK + selection 裁剪）', async () => {
+    const summary = await runRelationGraphChecks(makeConn);
+    logFailures(summary);
+    expect(summary.failed).toBe(0);
+    // C-3：组必须实跑（supportsErDiagram 已声明）——fixture / 表集列形状 / FK 边 / selection / 清理
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
   });
 
   it('interactive-transaction 组（D-09；commit 落盘对其他连接可见）', async () => {
