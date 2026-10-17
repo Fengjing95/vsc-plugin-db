@@ -54,17 +54,17 @@ CSV / JSON / XLSX 流式导出转入后台执行：通知中心看进度、随�
 
 ## 🗺️ 支持矩阵
 
-| 能力 | MySQL | PostgreSQL | SQL Server | SQLite | MongoDB | Redis |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| 资源树浏览 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 表格编辑 | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
-| SQL Console / 命令控制台 | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
-| 结构编辑（表 / 列） | ✓ | ✓ | ✓ | ✓ | — | — |
-| 库级 DDL | ✓ | ✓ | ✓ 建/删 schema | — | ✓ | — |
-| SSL / SSH 隧道 | ✓ | ✓ | ✓ | — | ✓ | ✓ |
-| 后台导出 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 能力 | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 资源树浏览 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 表格编辑 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
+| SQL Console / 命令控制台 | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
+| 结构编辑（表 / 列） | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| 库级 DDL | ✓ | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | — | ✓ | — |
+| SSL / SSH 隧道 | ✓ | ✓ | ✓ | ✓ 隧道 | — | ✓ | ✓ |
+| 后台导出 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-> SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 `GO` 批与触发器表的 INSERT 回填（详见[驱动说明](https://github.com/Fengjing95/vsc-plugin-db/tree/main/packages/driver-mssql)）；完整口径见[仓库文档](https://github.com/Fengjing95/vsc-plugin-db/tree/main/docs)。
+> SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 `GO` 批与触发器表的 INSERT 回填；Oracle 19c+（thin）：空串即 NULL（引擎语义）、Console 超大整数精度受限、暂不支持 TCPS 加密（详见[驱动说明](https://github.com/Fengjing95/vsc-plugin-db/tree/main/packages/driver-mssql)）；完整口径见[仓库文档](https://github.com/Fengjing95/vsc-plugin-db/tree/main/docs)。
 
 ## 📦 安装
 

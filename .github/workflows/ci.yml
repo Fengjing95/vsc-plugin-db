@@ -188,3 +188,81 @@ jobs:
           path: /tmp/vitest-output.txt
           retention-days: 7
           if-no-files-found: ignore
+
+  # M8-Oracle（D-23）：Oracle 契约独立 job——镜像 GB 级（slim-faststart ~1.5GB），与主 job
+  # 的 5 个数据源 service 磁盘隔离（14GB runner 预算）；主 job 四道门禁已覆盖其余全部面，
+  # 本 job 只补「契约静默缺考」保底（ORACLE_* 门控，驱动规范 §11）
+  oracle-contract:
+    runs-on: ubuntu-latest
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        ports:
+          - 1521:1521
+        env:
+          ORACLE_PASSWORD: OracleContract2026
+          APP_USER: oracle_runner
+          APP_USER_PASSWORD: OracleRunner2026
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # faststart 变体冷启动仍需分钟级；service health 已由 options 旗标兜底（docker 旗标 P-52 口径），
+      # 此步再等一次 health 位（脚本化明确失败信息）
+      - name: 等待 Oracle 就绪（service health 探测）
+        run: |
+          CID=$(docker ps --filter "ancestor=gvenzl/oracle-free:23-slim-faststart" --format '{{.ID}}' | head -1)
+          if [ -z "$CID" ]; then
+            echo "::error::未找到 oracle service 容器"
+            exit 1
+          fi
+          for i in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' "$CID")" = "healthy" ]; then
+              echo "oracle ready（第 ${i} 次探测，间隔 10s）"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Oracle 600s 内未就绪"
+          docker logs "$CID" 2>&1 | tail -50
+          exit 1
+
+      - name: Oracle 契约（ORACLE_* 门控实跑）
+        run: |
+          set -o pipefail
+          npx vitest run packages/driver-oracle/src/oracle.conformance.test.ts 2>&1 | tee /tmp/vitest-oracle.txt
+        env:
+          ORACLE_HOST: 127.0.0.1
+          ORACLE_PORT: 1521
+          ORACLE_SERVICE: FREEPDB1
+          ORACLE_USER: oracle_runner
+          ORACLE_PASSWORD: OracleRunner2026
+          ORACLE_ADMIN_USER: system
+          ORACLE_ADMIN_PASSWORD: OracleContract2026
+
+      - name: 失败输出转运行摘要与注记
+        if: failure()
+        run: |
+          {
+            echo '## Oracle 契约失败输出（vitest 尾部 200 行）'
+            echo '<details open><summary>展开</summary>'
+            echo ''
+            echo '```text'
+            tail -n 200 /tmp/vitest-oracle.txt 2>/dev/null || echo '（无输出文件）'
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"

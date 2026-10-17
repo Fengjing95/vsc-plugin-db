@@ -5,6 +5,7 @@ import {
   specFromTable,
   type ChangeSet,
   type ColumnMeta,
+  type DatabaseSpec,
   type ErEdgeSummary,
   type FilterCondition,
   type FilterOp,
@@ -1396,6 +1397,24 @@ function quoteFor(conn: IConnection, name: string): string {
   return `${open}${name}${close}`;
 }
 
+/** fixture 清理（@since M8-Oracle）：先 `DROP TABLE IF EXISTS`（MySQL/PG/MSSQL/SQLite/23ai+ Oracle），
+ *  失败回落普通 DROP 吞错——Oracle ≤19c 无 IF EXISTS 语法（恒 ORA-00933 被吞会导致 fixture
+ *  残留 → 重建 955 级联，实跑踩）；普通 DROP 在表不存在/被依赖（ORA-02449）时同样吞错 */
+async function dropTableBestEffort(conn: IConnection, db: string, table: string): Promise<void> {
+  const q = quoteFor(conn, table);
+  try {
+    await conn.query({ sql: `DROP TABLE IF EXISTS ${q}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+    return;
+  } catch {
+    // IF EXISTS 不支持（Oracle ≤19c）→ 回落普通 DROP
+  }
+  try {
+    await conn.query({ sql: `DROP TABLE ${q}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
+  } catch {
+    // 表不存在（942）/被外键依赖（02449）等——清理尽力而为
+  }
+}
+
 async function execDdlStatements(
   conn: IConnection,
   db: string,
@@ -1445,16 +1464,7 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
     assert(dbs.length > 0, 'listDatabases 返回空数组');
     const db = dbs[0].name;
     const dropFixture = async (): Promise<void> => {
-      try {
-        await conn.query({
-          sql: `DROP TABLE IF EXISTS ${quoteFor(conn, DDL_FIXTURE_TABLE)}`,
-          db,
-          maxRows: 1,
-          timeoutMs: SAMPLE_TIMEOUT_MS,
-        });
-      } catch {
-        // IF EXISTS 不支持或权限受限时忽略（fixture 清理尽力而为）
-      }
+      await dropTableBestEffort(conn, db, DDL_FIXTURE_TABLE);
     };
 
     await check(results, 'ddl', 'buildCreateTable 执行后 listColumns 与 spec 一致', async () => {
@@ -1544,11 +1554,7 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
     } else {
       const REF_FIXTURE_TABLE = 'cf_ddl_ref';
       const dropRefFixture = async (): Promise<void> => {
-        try {
-          await conn.query({ sql: `DROP TABLE IF EXISTS ${quoteFor(conn, REF_FIXTURE_TABLE)}`, db, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
-        } catch {
-          // 引用表清理尽力而为（末尾还有整段清理兜底）
-        }
+        await dropTableBestEffort(conn, db, REF_FIXTURE_TABLE);
       };
       const baselineOf = async (): Promise<TableSpec> =>
         specFromTable(
@@ -1748,9 +1754,17 @@ export async function runDdlChecks(create: () => Promise<IConnection>): Promise<
  *   命令域数据源（Mongo）库名字符集更宽，安全由引号化 + 删除名称确认承载）
  * 方法在 driver 层（懒连接树菜单同口径）；语句执行经 conn.query（同 runDdlChecks 口径）。
  */
+
+export interface DatabaseDdlOptions {
+  /** @since M8-Oracle / D-23：建库 spec 覆盖——CREATE USER 需要密码等驱动专属字段
+   *  （缺省 { name, collection: 'cf_init' }，collection 仅 Mongo 消费） */
+  createSpec?: (name: string) => DatabaseSpec;
+}
+
 export async function runDatabaseDdlChecks(
   driver: IDatabaseDriver,
   create: () => Promise<IConnection>,
+  opts?: DatabaseDdlOptions,
 ): Promise<ConformanceSummary> {
   const results: CheckResult[] = [];
   const conn = await create();
@@ -1797,7 +1811,7 @@ export async function runDatabaseDdlChecks(
         const before = (await conn.listDatabases()).map((d) => d.name);
         assert(!before.includes(unique), `fixture 库 ${unique} 已存在（前次残留）`);
         // collection 字段仅 MongoDB 消费（首个 collection 隐式建库，D-19 修订）；SQL 驱动忽略
-        const stmts = await driver.buildCreateDatabase!({ name: unique, collection: 'cf_init' });
+        const stmts = await driver.buildCreateDatabase!(opts?.createSpec ? opts.createSpec(unique) : { name: unique, collection: 'cf_init' });
         assert(stmts.length > 0, 'buildCreateDatabase 返回空语句集');
         for (const s of stmts) {
           await conn.query({ sql: s.sql, maxRows: 1, timeoutMs: SAMPLE_TIMEOUT_MS });
@@ -1979,18 +1993,8 @@ export async function runSqlValueEncodingChecks(
     assert(opts.cases.length > 0, '调用方未提供值编码用例');
     const db = opts.db;
     const table = opts.fixtureTable ?? VE_FIXTURE_TABLE;
-    const quote = (n: string): string => quoteFor(conn, n);
     const dropFixture = async (): Promise<void> => {
-      try {
-        await conn.query({
-          sql: `DROP TABLE IF EXISTS ${quote(table)}`,
-          db,
-          maxRows: 1,
-          timeoutMs: SAMPLE_TIMEOUT_MS,
-        });
-      } catch {
-        // fixture 清理尽力而为（同 runDdlChecks）
-      }
+      await dropTableBestEffort(conn, db, table);
     };
 
     const spec: TableSpec = {
@@ -2056,7 +2060,8 @@ export async function runSqlValueEncodingChecks(
 
     for (const c of opts.cases) {
       await check(results, 'sql-value-encoding', `值编码往返 ${c.column}（${c.dataType}）`, async () => {
-        const expected = c.read ?? c.write;
+        // 'read' in c 判定（非 ??）：null 预期合法——Oracle 空串写读为 null 的引擎语义断言（D-23）
+        const expected = 'read' in c ? c.read : c.write;
         assert(
           veValueMatches(rowA[c.column], expected),
           `往返不一致：写入 ${JSON.stringify(c.write) ?? String(c.write)} → 读回 ${JSON.stringify(rowA[c.column]) ?? String(rowA[c.column])}，期望 ${JSON.stringify(expected) ?? String(expected)}`,
@@ -2117,16 +2122,7 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
     const dropAll = async (): Promise<void> => {
       const order = ['cf_er_line', 'cf_er_child', 'cf_er_self', 'cf_er_parent', 'cf_er_order', 'cf_er_loose'];
       for (const t of order) {
-        try {
-          await conn.query({
-            sql: `DROP TABLE IF EXISTS ${quoteFor(conn, t)}`,
-            db,
-            maxRows: 1,
-            timeoutMs: SAMPLE_TIMEOUT_MS,
-          });
-        } catch {
-          // IF EXISTS 不支持或权限受限时忽略（清理尽力而为）
-        }
+        await dropTableBestEffort(conn, db, t);
       }
     };
 

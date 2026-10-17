@@ -79,7 +79,14 @@ export class DbDdlService {
     const p = DbDdlPreviewParamsSchema.parse(raw);
     const { driver, conn } = await this.requireDbDdlConnection(p.connId, 'buildCreateDatabase');
     const statements = await this.buildStatements(driver, conn, p);
-    return { statements };
+    // 预览载荷掩码（C-10 / D-23）：CREATE USER 的 IDENTIFIED BY "…" 在预览中掩码显示——
+    // 预览文本可复制/截图，密码原文只随执行路径存在（同源生成，掩码仅作用于展示副本）
+    return {
+      statements: statements.map((s) => ({
+        ...s,
+        sql: s.sql.replace(/(IDENTIFIED BY\s+)"[^"]*"/gi, '$1"●●●●●●"'),
+      })),
+    };
   }
 
   async execute(raw: unknown): Promise<DbDdlExecuteResult> {

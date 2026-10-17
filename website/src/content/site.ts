@@ -41,6 +41,7 @@ export const engines: Engine[] = [
   { key: 'mysql', name: 'MySQL', logo: withBase('assets/logos/MySQL.svg') },
   { key: 'postgresql', name: 'PostgreSQL', logo: withBase('assets/logos/PostgreSql.svg') },
   { key: 'mssql', name: 'SQL Server', logo: withBase('assets/logos/SQLServer.svg') },
+  { key: 'oracle', name: 'Oracle', logo: withBase('assets/logos/Oracle.svg') },
   { key: 'sqlite', name: 'SQLite', logo: withBase('assets/logos/sqlite.svg') },
   { key: 'mongodb', name: 'MongoDB', logo: withBase('assets/logos/mongoDB.svg') },
   { key: 'redis', name: 'Redis', logo: withBase('assets/logos/Redis.svg') },
@@ -50,17 +51,17 @@ export type CellValue = 'yes' | 'no' | string; // 'yes'=✓，'no'=—，其余�
 
 // 逐格口径 = packages/extension/README.md §支持矩阵
 export const matrixRows: { label: string; cells: CellValue[] }[] = [
-  { label: '资源树浏览', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
-  { label: '表格编辑', cells: ['yes', 'yes', 'yes', 'yes', '文档编辑', '只读'] },
-  { label: 'SQL Console / 命令控制台', cells: ['yes', 'yes', 'yes', 'yes', 'mongosh', 'yes'] },
-  { label: '结构编辑（表 / 列）', cells: ['yes', 'yes', 'yes', 'yes', 'no', 'no'] },
-  { label: '库级 DDL', cells: ['yes', 'yes', '建/删 schema', 'no', 'yes', 'no'] },
-  { label: 'SSL / SSH 隧道', cells: ['yes', 'yes', 'yes', 'no', 'yes', 'yes'] },
-  { label: '后台导出', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+  { label: '资源树浏览', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+  { label: '表格编辑', cells: ['yes', 'yes', 'yes', 'yes', 'yes', '文档编辑', '只读'] },
+  { label: 'SQL Console / 命令控制台', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'mongosh', 'yes'] },
+  { label: '结构编辑（表 / 列）', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'no', 'no'] },
+  { label: '库级 DDL', cells: ['yes', 'yes', '建/删 schema', '建/删 schema', 'no', 'yes', 'no'] },
+  { label: 'SSL / SSH 隧道', cells: ['yes', 'yes', 'yes', '隧道', 'no', 'yes', 'yes'] },
+  { label: '后台导出', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
 ];
 
 export const matrixFootnote =
-  'SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 GO 批与触发器表的 INSERT 回填。';
+  'SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 GO 批与触发器表的 INSERT 回填；Oracle 19c+（thin）：空串即 NULL、Console 超大整数精度受限、暂不支持 TCPS 加密。';
 
 export type Feature = { icon: string; title: string; desc: string };
 
@@ -127,7 +128,6 @@ export const heroShot = {
 export type ComingItem = { name: string; desc: string; tags?: string[] };
 
 export const comingSoon: ComingItem[] = [
-  { name: 'Oracle', desc: '企业级关系型数据库' },
   {
     name: '国产数据库（信创）',
     desc: '国产数据库阵营合一张卡，优先级听你的',

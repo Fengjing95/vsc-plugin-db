@@ -91,6 +91,17 @@ export function DatabaseDesignPage() {
                     </option>
                   ))}
                 </select>
+              ) : f.type === 'password' ? (
+                /* @since v0.1.16（M8-Oracle / D-23）：建库密码字段（CREATE USER）——
+                 * 输入掩码显示；值随 spec 瞬时经 RPC 提交，不落任何存储（与连接表单同边界，C-10） */
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  value={String(values[f.key] ?? '')}
+                  placeholder={f.placeholder}
+                  readOnly={readonly}
+                  onChange={(e) => setValue(f.key, e.target.value)}
+                />
               ) : (
                 <Input
                   value={String(values[f.key] ?? '')}

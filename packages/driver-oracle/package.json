@@ -1,0 +1,19 @@
+{
+  "name": "@db-explorer/driver-oracle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Oracle Database 驱动（node-oracledb thin，纯 JS）：元数据自省（schema 上树 D-15/D-21 同构）、分页取数（OFFSET/FETCH）、SQL 执行、参数化筛选下推、变更集（短事务 + RETURNING 回填）、DDL 生成（M8-Oracle / D-23）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@db-explorer/core": "workspace:*",
+    "oracledb": "^7.0.0"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-conformance": "workspace:*",
+    "@types/oracledb": "^7.0.3"
+  }
+}
