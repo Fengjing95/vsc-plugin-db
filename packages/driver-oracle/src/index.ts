@@ -525,9 +525,16 @@ export class OracleConnection implements IConnection {
 
   async query(req: QueryRequest): Promise<ResultSet[]> {
     const started = Date.now();
-    // req.db（schema，D-23）仅作元数据绑定语境；语句原样下发——未限定名按连接用户默认 schema 解析
+    // req.db（schema，D-23）仅作元数据绑定语境；语句原样下发——未限定名按连接用户默认 schema 解析。
+    // autoCommit=true：Oracle 隐式事务模型 + 池化连接下逐语句执行，DML 不自动提交会悬挂在
+    // 某个池连接的未决事务里（下一条语句换连接即不可见，P-36 同族）——Console 口径与
+    // mysql/pg/mssql 的隐式自动提交对齐；手动事务走 openSession（专用连接 + 显式 COMMIT）
     const res = await this.withConnection(
-      (conn) => conn.execute(req.sql, req.params ?? [], { outFormat: oracledb.OUT_FORMAT_ARRAY }),
+      (conn) =>
+        conn.execute(req.sql, req.params ?? [], {
+          outFormat: oracledb.OUT_FORMAT_ARRAY,
+          autoCommit: true,
+        }),
       { timeoutMs: req.timeoutMs, signal: req.signal },
     );
     return [await mapExecuteResult(res as unknown as ExecResult, req.maxRows, Date.now() - started)];
