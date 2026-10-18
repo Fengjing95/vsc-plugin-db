@@ -22,6 +22,24 @@ describe('interpolateSqlParams（占位符回填实际值，预览语句可读�
   it('JSON 对象参数序列化为带引号字面量', () => {
     expect(interpolateSqlParams('UPDATE t SET j = ?', [{ a: 1 }])).toBe(`UPDATE t SET j = '{"a":1}'`);
   });
+
+  it('序号占位符 $N / :N / @pN 按编号取参（pg / oracle / mssql，M8-Oracle 扩展）', () => {
+    expect(interpolateSqlParams('UPDATE "t" SET "a" = $1 WHERE "id" = $2', ['x', 7])).toBe(
+      `UPDATE "t" SET "a" = 'x' WHERE "id" = 7`,
+    );
+    expect(interpolateSqlParams('INSERT INTO "t" ("a") VALUES (:1)', ['v'])).toBe(`INSERT INTO "t" ("a") VALUES ('v')`);
+    expect(interpolateSqlParams('UPDATE [t] SET [a] = @p1 WHERE [id] = @p2', ['x', 7])).toBe(
+      `UPDATE [t] SET [a] = 'x' WHERE [id] = 7`,
+    );
+  });
+
+  it('字符串字面量内不替换；out 绑定越界占位符保留', () => {
+    // 字面量内的 :1 / ? 不改写（值内容保护）
+    expect(interpolateSqlParams("SELECT '比率 2:1', :1 FROM t", ['x'])).toBe(`SELECT '比率 2:1', 'x' FROM t`);
+    // oracle RETURNING INTO 的 out 占位符超出 params 长度 → 保留原样
+    const oracle = 'INSERT INTO "t" ("a") VALUES (:1) RETURNING "id" INTO :2';
+    expect(interpolateSqlParams(oracle, ['v'])).toBe(`INSERT INTO "t" ("a") VALUES ('v') RETURNING "id" INTO :2`);
+  });
 });
 
 describe('highlightSql（SQL 语法高亮，预览语句/DDL 统一入口）', () => {

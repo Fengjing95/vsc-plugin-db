@@ -20,6 +20,7 @@ const DRIVER_LOGO_KEYS: Record<string, string> = {
   sqlite3: 'sqlite',
   mongodb: 'mongodb',
   mongo: 'mongodb',
+  oracle: 'oracle',
 };
 
 /** 无素材驱动的 emoji 回落（与既有卡片视觉延续；未知驱动走通用图标） */

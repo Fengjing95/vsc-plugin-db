@@ -63,6 +63,7 @@ const DRIVER_LOGO_FILES: Record<string, string> = {
   sqlite: 'sqlite.svg',
   sqlite3: 'sqlite.svg',
   mongodb: 'mongodb.svg',
+  oracle: 'oracle.svg',
   mongo: 'mongodb.svg',
 };
 

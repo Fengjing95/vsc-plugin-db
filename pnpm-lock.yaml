@@ -107,6 +107,22 @@ importers:
         specifier: workspace:^
         version: link:../driver-conformance
 
+  packages/driver-oracle:
+    dependencies:
+      '@db-explorer/core':
+        specifier: workspace:*
+        version: link:../core
+      oracledb:
+        specifier: ^7.0.0
+        version: 7.0.1
+    devDependencies:
+      '@db-explorer/driver-conformance':
+        specifier: workspace:*
+        version: link:../driver-conformance
+      '@types/oracledb':
+        specifier: ^7.0.3
+        version: 7.0.3
+
   packages/driver-postgres:
     dependencies:
       '@db-explorer/core':
@@ -169,6 +185,9 @@ importers:
       '@db-explorer/driver-mysql':
         specifier: workspace:*
         version: link:../driver-mysql
+      '@db-explorer/driver-oracle':
+        specifier: workspace:*
+        version: link:../driver-oracle
       '@db-explorer/driver-postgres':
         specifier: workspace:*
         version: link:../driver-postgres
@@ -1166,6 +1185,9 @@ packages:
 
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/oracledb@7.0.3':
+    resolution: {integrity: sha512-dH4zGmD0b5k62O3BqWRM/qRD41pSKNeQOuPu4FDzvbn8d4DAkLWeLYkPObjvuMJsZNPL4ceSuMiPcOpKyjvhCg==}
 
   '@types/pegjs@0.10.6':
     resolution: {integrity: sha512-eLYXDbZWXh2uxf+w8sXS8d6KSoXTswfps6fvCUuVAGN8eRpfe7h9eSRydxiSJvo9Bf+GzifsDOr9TMQlmJdmkw==}
@@ -2317,6 +2339,10 @@ packages:
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
+
+  oracledb@7.0.1:
+    resolution: {integrity: sha512-xlM0Ceh6A5stQLAdEfKf3pgCSkbOjQLo2ZPEi3+kXklz+KbZD3fLi/nsTSbQeZZNFBSFDNxdn1Ek3+bxG40M8w==}
+    engines: {node: '>=14.17'}
 
   p-limit@3.1.0:
     resolution: {integrity: sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==}
@@ -3738,6 +3764,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/oracledb@7.0.3':
+    dependencies:
+      '@types/node': 20.19.43
+
   '@types/pegjs@0.10.6': {}
 
   '@types/pg@8.23.1':
@@ -4940,6 +4970,8 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
       word-wrap: 1.2.5
+
+  oracledb@7.0.1: {}
 
   p-limit@3.1.0:
     dependencies:

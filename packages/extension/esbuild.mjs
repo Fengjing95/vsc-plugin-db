@@ -19,7 +19,7 @@ const options = {
   // （cpu-features，try/catch 降级），exceljs 体积大且含动态 require，打包无收益。
   // pg 与 mysql2/node-redis 同口径整体打包（纯 JS）；pg-native 是 pg 的可选 native 客户端
   // （未安装），静态打包会被 esbuild 解析报错 → 标 external（运行时仅在 native 路径才 require）
-  external: ['vscode', 'ssh2', 'cpu-features', 'exceljs', 'pg-native'],
+  external: ['vscode', 'ssh2', 'cpu-features', 'exceljs', 'pg-native', 'oracledb'],
   format: 'cjs',
   platform: 'node',
   target: 'node18',
@@ -72,9 +72,18 @@ if (existsSync(webviewSrc)) {
 // （实测 readable-stream@2/3 并存），扁平布局会静默发错版本；嵌套解析天然按消费者就近命中。
 // 可选 native 依赖（cpu-features/nan/pg-native）不物化：缺省 try/catch 降级（P-32）/永不
 // 触达（P-43）。exceljs 剪掉 dist/（21MB 浏览器 UMD 构建，入口只 require lib/）。
-const stageExternals = ['ssh2', 'exceljs'];
+const stageExternals = ['ssh2', 'exceljs', 'oracledb'];
 const stageDstRoot = join(scriptDir, 'dist', 'node_modules');
 const stageReq = createRequire(join(scriptDir, 'package.json'));
+// pnpm 严格隔离：external 不在本包依赖里时（oracledb ∈ driver-oracle），经归属驱动包解析
+const stageReqViaDriver = createRequire(stageReq.resolve('@db-explorer/driver-oracle/package.json'));
+const resolveStagePkg = (name) => {
+  try {
+    return stageReq.resolve(`${name}/package.json`);
+  } catch {
+    return stageReqViaDriver.resolve(`${name}/package.json`);
+  }
+};
 const STAGE_MAX_DEPTH = 12;
 const copyPkgTree = (pkgDir, dstDir, visited, depth) => {
   if (depth > STAGE_MAX_DEPTH) {
@@ -97,6 +106,9 @@ const copyPkgTree = (pkgDir, dstDir, visited, depth) => {
       if (base === '.bin') return false;
       if (/\.(md|markdown|map)$/i.test(base)) return false;
       if (pkg.name === 'exceljs' && src === join(pkgDir, 'dist')) return false;
+      // oracledb：build/ 是 thick 模式预编译二进制（三平台 ~2.4MB）——thin 模式永不加载，
+      // 不物化（缺省即正途，P-32 可选 native 不物化同口径）
+      if (pkg.name === 'oracledb' && src === join(pkgDir, 'build')) return false;
       return true;
     },
   });
@@ -116,7 +128,7 @@ mkdirSync(stageDstRoot, { recursive: true });
 let stagedCount = 0;
 for (const name of stageExternals) {
   const visited = new Map();
-  copyPkgTree(dirname(stageReq.resolve(`${name}/package.json`)), join(stageDstRoot, name), visited, 0);
+  copyPkgTree(dirname(resolveStagePkg(name)), join(stageDstRoot, name), visited, 0);
   stagedCount += visited.size;
 }
 console.log(`[stage] dist/webview + dist/node_modules（${stageExternals.join(', ')} 闭包，共 ${stagedCount} 个落位）`);

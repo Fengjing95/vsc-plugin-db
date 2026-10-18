@@ -43,14 +43,35 @@ function sqlLiteral(v: unknown): string {
 }
 
 /**
- * 将参数化 SQL 中的 ? 占位符按序回填为参数字面量（仅展示：预览语句可读性）。
- * 驱动生成的语句中 ? 只作占位符；若原文注释里含 ? 会被一并替换（展示层可接受）。
- * params 缺省/为空时原样返回；占位符多于参数时多余的 ? 保留。
+ * 将参数化 SQL 中的占位符回填为参数字面量（仅展示：预览语句可读性）。
+ * 支持 ?（mysql/sqlite 顺序占位）与按序号取参的 $N（pg）/ :N（oracle）/ @pN（mssql）。
+ * 字符串字面量内不替换（避免改写值内容，如 '比率 2:1'）；序号占位符按编号取参，
+ * 越界保留原样（如 oracle RETURNING INTO 的 out 绑定占位符超出 params 长度）。
+ * params 缺省/为空时原样返回。
  */
 export function interpolateSqlParams(sql: string, params?: unknown[]): string {
   if (!params || params.length === 0) {
     return sql;
   }
-  let i = 0;
-  return sql.replace(/\?/g, () => (i < params.length ? sqlLiteral(params[i++]) : '?'));
+  // 按字符串字面量切段：字面量段原样保留，非字面量段做占位符替换。
+  // 单趟合并替换（? 与序号占位符同一遍）——两段式链式替换会把上一步产出的字面量
+  // （如 '{"a":1}' 中的 :1）再当占位符改写
+  const literalRe = /'(?:[^']|'')*'/g;
+  let questionSeq = 0;
+  const substitute = (segment: string): string =>
+    segment.replace(/\?|(?:\$(\d+)|@p(\d+)|:(\d+))\b/g, (whole, d1, d2, d3) => {
+      if (whole === '?') {
+        return questionSeq < params.length ? sqlLiteral(params[questionSeq++]) : '?';
+      }
+      const n = Number([d1, d2, d3].find((v) => v !== undefined));
+      return n >= 1 && n <= params.length ? sqlLiteral(params[n - 1]) : whole;
+    });
+  let last = 0;
+  let out = '';
+  for (const m of sql.matchAll(literalRe)) {
+    out += substitute(sql.slice(last, m.index)) + m[0];
+    last = m.index + m[0].length;
+  }
+  out += substitute(sql.slice(last));
+  return out;
 }

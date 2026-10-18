@@ -28,13 +28,17 @@ export interface DatabaseMeta {
 
 /** 库级 DDL 目标模型（@since v0.1.11，M8-DBDDL / D-19）：buildCreateDatabase/buildAlterDatabase 输入。
  *  charset/collation 仅 MySQL 消费（PG schema / Mongo 不参与建库）；
- *  collection 仅 MongoDB 建库消费（D-19 修订：建库 = 创建首个 collection 隐式建库，SQL 驱动忽略） */
+ *  collection 仅 MongoDB 建库消费（D-19 修订：建库 = 创建首个 collection 隐式建库，SQL 驱动忽略）；
+ *  password 仅 Oracle 消费（M8-Oracle / D-23：CREATE USER 需密码，Host 预览/日志侧掩码 C-10） */
 export interface DatabaseSpec {
   name: string;
   charset?: string;
   collation?: string;
   /** @since v0.1.11 修订（D-19）：MongoDB 建库所需的首个 collection 名 */
   collection?: string;
+  /** @since v0.1.16（M8-Oracle / D-23）：CREATE USER 密码（Oracle「库」= schema = 用户）；
+   *  fail-closed 校验在驱动（非空、无引号/控制字符）；语句含密码原文，预览/日志掩码由 Host 承载 */
+  password?: string;
 }
 
 export interface ObjectMeta {

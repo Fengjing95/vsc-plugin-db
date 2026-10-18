@@ -12,7 +12,84 @@ permissions:
   contents: write # gh release create
 
 jobs:
+  # M8-Oracle（D-23）：Oracle 契约独立 job（GB 级镜像磁盘隔离，与 ci.yml 同款）——
+  # v0.2.0 教训（release 缺 mssql service → 契约整组 skip 假绿）的预防性收口：
+  # release 主 job needs 本 job，Oracle 契约不绿不出 VSIX
+  oracle-contract:
+    runs-on: ubuntu-latest
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        ports:
+          - 1521:1521
+        env:
+          ORACLE_PASSWORD: OracleContract2026
+          APP_USER: oracle_runner
+          APP_USER_PASSWORD: OracleRunner2026
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 等待 Oracle 就绪（service health 探测）
+        run: |
+          CID=$(docker ps --filter "ancestor=gvenzl/oracle-free:23-slim-faststart" --format '{{.ID}}' | head -1)
+          if [ -z "$CID" ]; then
+            echo "::error::未找到 oracle service 容器"
+            exit 1
+          fi
+          for i in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' "$CID")" = "healthy" ]; then
+              echo "oracle ready（第 ${i} 次探测，间隔 10s）"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Oracle 600s 内未就绪"
+          docker logs "$CID" 2>&1 | tail -50
+          exit 1
+
+      - name: Oracle 契约（ORACLE_* 门控实跑）
+        run: |
+          set -o pipefail
+          npx vitest run packages/driver-oracle/src/oracle.conformance.test.ts 2>&1 | tee /tmp/vitest-oracle.txt
+        env:
+          ORACLE_HOST: 127.0.0.1
+          ORACLE_PORT: 1521
+          ORACLE_SERVICE: FREEPDB1
+          ORACLE_USER: oracle_runner
+          ORACLE_PASSWORD: OracleRunner2026
+          ORACLE_ADMIN_USER: system
+          ORACLE_ADMIN_PASSWORD: OracleContract2026
+
+      - name: 失败输出转运行摘要
+        if: failure()
+        run: |
+          {
+            echo '## Oracle 契约失败输出（vitest 尾部 200 行）'
+            echo '<details open><summary>展开</summary>'
+            echo ''
+            echo '```text'
+            tail -n 200 /tmp/vitest-oracle.txt 2>/dev/null || echo '（无输出文件）'
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   release:
+    needs: oracle-contract
     runs-on: ubuntu-latest
     services:
       # 与 ci.yml 同矩阵：契约测试必须真实实例（Mysql 为发布 Must 口径，D-20/§12.5）

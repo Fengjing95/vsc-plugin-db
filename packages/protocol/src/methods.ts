@@ -782,6 +782,9 @@ export const DatabaseSpecSchema = z.object({
   collation: z.string().max(256).optional(),
   /** @since D-19 修订：MongoDB 建库所需的首个 collection 名 */
   collection: z.string().min(1).max(120).optional(),
+  /** @since v0.1.16（M8-Oracle / D-23）：CREATE USER 密码（Oracle「库」= schema = 用户）；
+   *  仅随 dbddl.preview/execute 瞬时经过，不落任何存储（与连接表单密码同边界，C-10） */
+  password: z.string().min(1).max(128).optional(),
 });
 export type DatabaseSpecPayload = z.infer<typeof DatabaseSpecSchema>;
 

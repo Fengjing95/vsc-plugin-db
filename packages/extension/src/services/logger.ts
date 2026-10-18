@@ -65,8 +65,14 @@ export function describeTarget(options: Record<string, unknown>): string {
   return `${host}:${port}`;
 }
 
-/** SQL 摘要：压平空白并截断（日志单行可读；超长语句以 … 截断示意） */
+/** SQL 摘要：压平空白并截断（日志单行可读；超长语句以 … 截断示意）。
+ *  密码字面量掩码（C-10，M8-Oracle / D-23）：CREATE USER 的 IDENTIFIED BY "…"/'…' 进入日志前
+ *  掩码——库级 DDL 语句含密码原文，日志面板不得留存（掩码只作用于日志摘要，不改执行语句） */
 export function sqlDigest(sql: string, max = 120): string {
-  const flat = sql.replace(/\s+/g, ' ').trim();
+  const flat = sql
+    .replace(/(IDENTIFIED BY\s+)"[^"]*"/gi, '$1"●●●●●●"')
+    .replace(/(IDENTIFIED BY\s+)'[^']*'/gi, "$1'●●●●●●'")
+    .replace(/\s+/g, ' ')
+    .trim();
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }

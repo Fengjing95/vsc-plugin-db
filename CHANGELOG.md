@@ -2,6 +2,31 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.4.0] - 2026-10-18
+
+新增 Oracle Database 驱动——支持矩阵扩展为七类外部数据源（M8-Oracle / ADR D-23）。
+
+### 特性
+
+- **Oracle 驱动**（`oracledb` thin 纯 JS 内核，无需 Oracle Instant Client，要求数据库 12.1+）：连接绑定单个 PDB（服务名寻址 + SYSDBA 角色可选，树上「库」= schema）；表格编辑（短事务 + 字段级乐观锁 + `RETURNING` 主键回填，NUMBER 全精度保真）；SQL Console（方言全量补全、plsql 格式化、危险语句拦截）；表结构编辑器全 Tab（IDENTITY 自增、`COMMENT ON` 注释、键 / 外键 / 索引）；库级 DDL（建 / 删 schema = `CREATE` / `DROP USER`，预览与日志对密码掩码）；ER 图；真实服务端取消（`connection.break()`，取消后连接可复用）；交互式事务
+- **Oracle 契约 CI**：增 `gvenzl/oracle-free` 独立 job（GB 级镜像与主 job 磁盘隔离）——契约十二组在本地常驻 19c 实例实跑全绿 + CI 23ai 实跑（`ORACLE_*` 门控，双版本行为矩阵）
+- **变更预览参数回填扩展**：`$N`（PostgreSQL）/ `:N`（Oracle）/ `@pN`（SQL Server）按编号回填实际值，字符串字面量内不替换——此前 PG / SQL Server 的提交预览只显示裸占位符
+
+### 修复
+
+- **空表格点「新增行」白屏（全部驱动）**——新增行聚焦索引差一，空表算出 -1 后取不存在的行抛渲染异常整树卸载；非空表此前误聚焦最后一条数据行，一并修正
+- **Oracle Console DML 不生效**——Oracle 隐式事务 + 池化逐语句执行下，INSERT / UPDATE 悬挂在未决事务（下一条查询换连接即不可见）；Console 改自动提交，手动事务走交互式事务入口（专用连接 + 显式 COMMIT）
+- 连接表单 Oracle 卡片图标回落 emoji（别名映射漏项；树图标正常的不对称）
+
+### 已知限制（Oracle）
+
+- 空串即 NULL（引擎语义：空串写入存为 NULL、永远读不回；预览 / 回执有提示）
+- Console 结果中超过 2^53 的 NUMBER 精度失真（表格路径经按列取回保真，无此问题）
+- DATE / TIMESTAMP 按客户端本地时区解释；`TIMESTAMP WITH TIME ZONE` 渲染为 UTC 墙上时间、原始偏移丢失
+- PL/SQL 匿名块含分号会被 Console 语句切分器腰斩（暂不可用，切分器 BEGIN/END 感知列为待修）
+- 同形外键禁止重复（引擎约束 ORA-02275，设计器给出明确报错）；IDENTITY 自增不可原地增删（提示需重建表）
+- 暂不支持 TCPS / SSL 加密与 Oracle Wallet 认证；物化视图不入树
+
 ## [0.3.0] - 2026-10-16
 
 表结构编辑器 Tab 化 + ER 图查看 + 官网在线演示。
