@@ -475,6 +475,9 @@ export const useTableStore = create<TableState>((set, get) => ({
     if (rowIndex >= s.rows.length) {
       return { kind: 'inserted' as const };
     }
+    if (rowIndex < 0) {
+      return { kind: 'normal' as const }; // 非法索引防御：白屏（React 渲染期异常）比错值代价大
+    }
     const row = s.rows[rowIndex];
     const key = rowKeyString(rowKeyOfRow(row, s.columns, s.primaryKey));
     if (s.deletes[key]) {
@@ -490,7 +493,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   effectiveValue(rowIndex, colIndex) {
     const s = get();
     const col = s.columns[colIndex];
-    if (!col) {
+    if (!col || rowIndex < 0) {
       return null;
     }
     if (rowIndex >= s.rows.length) {
@@ -603,10 +606,12 @@ export const useTableStore = create<TableState>((set, get) => ({
     set({ inserts: [...s.inserts, { tempId, values: {} }] });
     queueOp({ op: 'addRow', tempId, values: {} });
     scheduleSync(set, get);
-    // 聚焦第一个可编辑列
+    // 聚焦第一个可编辑列。新插入行的展示位 = rows.length + 旧 inserts.length（追加后
+    // 新行序 = 新总数 - 1 = 旧数）——空表（rows=0 且首次新增）下旧式 `-1` 写法算出 -1，
+    // 聚焦 effect 经 effectiveValue 取 rows[-1] 直接 TypeError 白屏
     const colIndex = s.columns.findIndex((c) => c.type !== 'binary' && !s.primaryKey.includes(c.name));
     if (colIndex >= 0) {
-      set({ editing: { rowIndex: s.rows.length + s.inserts.length - 1, colIndex } });
+      set({ editing: { rowIndex: s.rows.length + s.inserts.length, colIndex } });
     }
   },
 
