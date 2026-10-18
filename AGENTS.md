@@ -23,7 +23,18 @@
 - **C-9 下推与性能**：筛选/排序必须在驱动 SQL 层下推（参数化），禁止取全表内存过滤；默认不执行全表 `COUNT(*)`；单次传输上限 5000 行 / 5MB。
 - **C-10 密钥安全**：密码只存 SecretStorage（`dbExplorer.secrets.<connId>`），永不写入 settings/日志/错误/导出文件；SQL 强制参数化，禁止字符串拼接用户值。唯一例外：`FetchRowsRequest.whereSql/orderBySql` 为用户在筛选栏手写的 SQL 片段（自撰 SQL 而非数据值，驱动规范 §4），按设计原样拼接。
 - **C-14 方言补全词表（驱动规范 §3.2 @since v0.1.6）**：新增数据库类型（驱动）必须同步适配 SQL 语法——在驱动 `src/completion.ts` 提供方言全量三份词表（KEYWORDS/FUNCTIONS/COMPLETION_SNIPPETS）并经 `getCompletionSource` 注入；SQL 方言差异是本质性的（UPSERT/引号/关键字/函数集互不通用），**禁止跨驱动复用词表**；键值数据源（supportsSQL=false）为命令域全量词表（先例 driver-redis）。发布 Checklist 有对应验收项。
-- **C-15 官网同步（官网批次）**：驱动支持状态变更（新驱动接入、能力矩阵格子变化、Coming Soon 目标转正）必须同步 `website/src/content/site.ts` 的 `engines` / `matrixRows` / `comingSoon` 三处数据并跑通官网构建门禁（`pnpm --filter db-kit-website build`），随当次驱动改动一并提交；官网文案严禁超出支持矩阵口径（虚构防差评）；站点部署在腾讯云 EdgeOne（https://dbkit.easyremember.cn ，仓库内无发布 workflow），上线发布由人工执行。
+- **C-15 官网同步（官网批次）**：驱动支持状态变更（新驱动接入、能力矩阵格子变化、Coming Soon 目标转正）必须同步 `website/src/content/site.ts` 的 `engines` / `matrixRows` / `comingSoon` 三处数据（**含 `version` 字段——发版时随版本号一并更新**）并跑通官网构建门禁（`pnpm --filter db-kit-website build`），随当次驱动改动一并提交；官网文案严禁超出支持矩阵口径（虚构防差评）；站点部署在腾讯云 EdgeOne（https://dbkit.easyremember.cn ），**EdgeOne 监听 `website` 分支——该分支有推送即自动构建部署**（`website` 分支 = main 的镜像，发版时把 main 合入 `website` 推送即上线，见 C-16 第 8 步）。
+- **C-16 发版 Runbook（v0.4.0 起沉淀，agent 可全自主执行）**：唯一发布物是扩展 VSIX（@db-explorer/* 内部包不发 npm）。按序执行，任何一步门禁红即停：
+  1. **版本 bump 三处**：根 `package.json`、`packages/extension/package.json`、`website/src/content/site.ts` 的 `version`——tag `vX.Y.Z` / 两处 package.json / site.ts / CHANGELOG 四处必须一致（release 守卫核对，不一致挂在「发布守卫」step）。新驱动/新功能 → minor，纯修复 → patch。
+  2. **CHANGELOG.md 手写条目**（Keep a Changelog 中文格式，节标题 `## [X.Y.Z] - 日期`，分「特性 / 修复 / 已知限制」；新驱动如实写已知限制）——**CHANGELOG 无对应条目不打 tag**（D-20 人工检查点）。
+  3. **官网同步**（C-15）：矩阵 / Coming Soon 转正 / version 字段。
+  4. **四道门禁 + 官网构建门禁全绿**（C-1；禁止管道串联吞退出码，P-41）。
+  5. **提交** `chore(release): 版本 X → Y——摘要`（参照 9c5e736 / d5af7a3 风格）。
+  6. **push main 并等 CI 全绿**（`gha-run-inspect` 技能匿名核实）——发布同 SHA 的完整契约覆盖由这次 CI 承载。
+  7. **打 tag 并推送**：`git tag vX.Y.Z && git push origin vX.Y.Z` → 触发 release workflow（门禁 → vsce package --no-dependencies --minify → GitHub Release 附产物）。
+  8. **官网上线**：`git fetch origin website && git merge origin/website`（或直接把 main 推到 website 分支）→ 推送 `website` 分支 → EdgeOne 自动构建部署（线上地址 dbkit.easyremember.cn）。
+  9. **发布后核实**（匿名 API，gha-run-inspect 口径）：Release run 与 CI run 结论、GitHub Release 的 VSIX asset 存在、`oracle-contract` 等独立契约 job 非 skip。
+  10. **矩阵同步纪律**：新增契约 service 必须同时改 `ci.yml` 与 `release.yml`（后者自 v0.4.0 起 Oracle 为独立 needs job）——只改 ci.yml = 发布门禁契约整组 skip 假绿（v0.2.0 缺 mssql / v0.4.0 差点漏 oracle，两次教训）。
 
 ### Webview
 - **C-11 CSP/nonce**：所有 `<script>` 必须带 nonce；HTML 构建统一走 `packages/extension/src/views/webviewHtmlInject.ts`，禁止绕过自拼 HTML。
@@ -184,4 +195,4 @@
 | 调试运行 | VSCode 打开根目录 → F5（preLaunchTask 自动构建 webview+extension） |
 | 测试 | 根目录 `pnpm test`（vitest，含 webview 纯函数与 DoD perf） |
 | 产品官网（website/） | Vite+React 单页（并入 workspace，包名 `db-kit-website`；CI「构建官网」step 仅做构建门禁；**线上地址 https://dbkit.easyremember.cn（腾讯云 EdgeOne，域名根路径 base=/），仓库内无 Pages/部署 workflow**，push 不触发网站发布）；**文案唯一事实源 `website/src/content/site.ts`**（全部取自 extension README，禁止虚构；`urls.roadmapIssue` 当前是 Issues 列表占位，单一 roadmap issue 建好后替换）；素材构建期经 `website/scripts/copy-assets.mjs` 从 docs/images、webview logos、extension-icon.svg 拷入 `public/assets/`（gitignore 防双源漂移）；滚动进场是 IntersectionObserver 一次性 reveal——**自动化截图前必须先逐屏滚动触发**，且页面 `scroll-behavior: smooth` 会让快速 scrollTo 循环滞后漏触发（先置 `scrollBehavior='auto'`）；`body overflow-x:hidden` + fixed 背景下 Chromium fullPage 截图会内容重复拼接，验证一律用逐屏视口截图 |
-| 发布/打包（发布准备批次 / D-20） | 打包：`pnpm --filter db-kit exec vsce package --no-dependencies`（发布构建加 `-- --minify`；**插件更名 db-explorer→db-kit 后所有 `--filter` 引用须同步，见 P-55**）；**口径**：esbuild external 的 ssh2/exceljs 构建期把真实依赖闭包**按链接解引用、经典嵌套布局**物化到 `dist/node_modules`（`require('ssh2')` 从 dist/extension.js 就近解析；闭包内 readable-stream@2/3 多版本并存，扁平布局会静默发错版本；exceljs 剪 21MB 浏览器 dist/；`--no-dependencies` 不做 npm 依赖收集）；Webview 产物构建期拷 `dist/webview`（`webviewHtml.ts` 包内优先、兄弟目录兜底——VSIX 安装后兄弟目录不存在）；`.vscodeignore` 排除 26MB sourcemap；根 LICENSE/CHANGELOG.md 构建期拷入包目录（vsce 只认打包目录内文档，副本 gitignore）；版本管理 = 手动 bump + CHANGELOG.md（D-20 修订 T-14 的 changesets）→ tag `vX.Y.Z` 触发 release workflow（门禁→打包→GitHub Release 附产物） |
+| 发布/打包（发布准备批次 / D-20） | 打包：`pnpm --filter db-kit exec vsce package --no-dependencies`（发布构建加 `-- --minify`；**插件更名 db-explorer→db-kit 后所有 `--filter` 引用须同步，见 P-55**）；**口径**：esbuild external 的 ssh2/exceljs 构建期把真实依赖闭包**按链接解引用、经典嵌套布局**物化到 `dist/node_modules`（`require('ssh2')` 从 dist/extension.js 就近解析；闭包内 readable-stream@2/3 多版本并存，扁平布局会静默发错版本；exceljs 剪 21MB 浏览器 dist/；`--no-dependencies` 不做 npm 依赖收集）；Webview 产物构建期拷 `dist/webview`（`webviewHtml.ts` 包内优先、兄弟目录兜底——VSIX 安装后兄弟目录不存在）；`.vscodeignore` 排除 26MB sourcemap；根 LICENSE/CHANGELOG.md 构建期拷入包目录（vsce 只认打包目录内文档，副本 gitignore）；版本管理 = 手动 bump + CHANGELOG.md（D-20 修订 T-14 的 changesets）→ **发版全流程 Runbook 见 C-16**（bump 三处 / CHANGELOG / 门禁 / push main 等绿 / tag / website 分支推送自动部署 / 发布后核实） |
