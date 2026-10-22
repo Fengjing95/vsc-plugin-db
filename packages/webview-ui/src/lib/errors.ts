@@ -13,6 +13,10 @@ const CODE_MESSAGES: Record<string, string> = {
   E_CAPACITY: '结果超出上限',
   E_CANCELED: '已取消',
   E_UNKNOWN_METHOD: '插件与视图版本不一致，请重载窗口',
+  // M9-AI（D-24 / 交互稿 §15.5）
+  E_AI_NOT_CONFIGURED: 'AI 功能需要先配置模型服务',
+  E_AI_REQUEST_FAILED: 'AI 服务请求失败',
+  E_AI_ABORTED: '已取消',
 };
 
 export function errorCodeToMessage(code: string | undefined, fallback: string): string {

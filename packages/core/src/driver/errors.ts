@@ -17,6 +17,15 @@ export type DriverErrorCode =
 
 const RETRYABLE_CODES = new Set<DriverErrorCode>(['E_CONN', 'E_TIMEOUT']);
 
+/**
+ * AI 辅助错误码族（概要 §5.12 / D-24，与 DriverErrorCode 并列；UI 仍按 code 映射不解析文本）。
+ * 定义在 core 侧：AiProvider 抛出、protocol 镜像进 RpcErrorCode、webview errors.ts 承载文案。
+ */
+export type AiErrorCode = 'E_AI_NOT_CONFIGURED' | 'E_AI_REQUEST_FAILED' | 'E_AI_ABORTED';
+
+/** RPC/会话层复用码（protocol 同名字面量镜像）：状态失配类错误（如 fixId 绑定的文档已改）经 DriverError 承载 */
+export type RpcStateErrorCode = 'E_STATE_LOST';
+
 /** 变更集失败定位（驱动规范 §8-1：抛出首个错误须含 kind/tempId/rowKey） */
 export interface ChangeErrorMeta {
   kind?: 'insert' | 'update' | 'delete';
@@ -25,7 +34,7 @@ export interface ChangeErrorMeta {
 }
 
 export class DriverError extends Error {
-  readonly code: DriverErrorCode;
+  readonly code: DriverErrorCode | AiErrorCode | RpcStateErrorCode;
   /** 原始错误摘要（已脱敏） */
   readonly detail?: string;
   readonly retryable: boolean;
@@ -33,7 +42,7 @@ export class DriverError extends Error {
   readonly meta?: ChangeErrorMeta;
 
   constructor(
-    code: DriverErrorCode,
+    code: DriverErrorCode | AiErrorCode | RpcStateErrorCode,
     message: string,
     opts?: { detail?: string; cause?: unknown; meta?: ChangeErrorMeta },
   ) {
@@ -42,7 +51,7 @@ export class DriverError extends Error {
     this.code = code;
     this.detail = opts?.detail;
     this.meta = opts?.meta;
-    this.retryable = RETRYABLE_CODES.has(code);
+    this.retryable = RETRYABLE_CODES.has(code as DriverErrorCode);
   }
 
   static is(err: unknown): err is DriverError {

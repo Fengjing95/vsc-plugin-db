@@ -274,9 +274,32 @@
         "title": "查看 ER 图",
         "category": "数据库",
         "icon": "$(graph-scatter)"
+      },
+      {
+        "command": "dbExplorer.ai.settings",
+        "title": "AI 设置",
+        "category": "数据库",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "dbExplorer.ai.generateSql",
+        "title": "AI 生成 SQL",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.ai.explainSql",
+        "title": "AI 解释 SQL",
+        "category": "数据库"
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "dbExplorer.ai.explainSql",
+          "when": "editorLangId == sql",
+          "group": "dbkit@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "dbExplorer.saveQuery",
@@ -284,6 +307,14 @@
         },
         {
           "command": "dbExplorer.formatSql",
+          "when": "editorLangId == sql"
+        },
+        {
+          "command": "dbExplorer.ai.generateSql",
+          "when": "editorLangId == sql"
+        },
+        {
+          "command": "dbExplorer.ai.explainSql",
           "when": "editorLangId == sql"
         }
       ],
@@ -293,8 +324,12 @@
           "group": "navigation@1"
         },
         {
-          "command": "dbExplorer.refresh",
+          "command": "dbExplorer.ai.settings",
           "group": "navigation@2"
+        },
+        {
+          "command": "dbExplorer.refresh",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -475,6 +510,11 @@
         "key": "ctrl+shift+enter",
         "mac": "cmd+shift+enter",
         "when": "editorTextFocus && editorLangId == sql"
+      },
+      {
+        "command": "dbExplorer.ai.generateSql",
+        "key": "alt+\\",
+        "when": "editorTextFocus && editorLangId == sql"
       }
     ],
     "configuration": {
@@ -524,6 +564,16 @@
           "type": "boolean",
           "default": false,
           "description": "无主键表开启\"全列匹配\"编辑模式（WHERE 含全部列原值，含二进制列的表仍不可编辑，D-03）"
+        },
+        "dbExplorer.ai.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "AI 服务地址（OpenAI 兼容 base URL，如 https://api.openai.com/v1；API 密钥在 AI 设置页配置、只存系统密钥库）"
+        },
+        "dbExplorer.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "AI 模型名（如 deepseek-chat）"
         }
       }
     }

@@ -5,6 +5,14 @@ import {
   ConnDbOptionsResultSchema,
   ConnSaveParamsSchema,
   ConnTestParamsSchema,
+  AiApplyFixParamsSchema,
+  AiFixErrorParamsSchema,
+  AiFixErrorResultSchema,
+  AiSaveSettingsParamsSchema,
+  AiSettingsResultSchema,
+  AiTestSettingsParamsSchema,
+  ConsoleAiEventSchema,
+  ConsoleAiSchema,
   ConsoleBannerSchema,
   ConsoleActivatedEventSchema,
   ConsoleExecuteParamsSchema,
@@ -303,5 +311,72 @@ describe('方法参数校验', () => {
 
   it('协议版本常量为 1', () => {
     expect(RPC_PROTOCOL_VERSION).toBe(1);
+  });
+});
+
+describe('ai.* 方法校验（M9-AI / D-24）', () => {
+  it('ai.getSettings：只回 endpoint/model/hasKey（密钥永不回传）', () => {
+    const parsed = AiSettingsResultSchema.parse({ endpoint: 'https://x/v1', model: 'm', hasKey: true });
+    expect(parsed.hasKey).toBe(true);
+    expect(Object.keys(parsed).sort()).toEqual(['endpoint', 'hasKey', 'model']);
+  });
+
+  it('ai.saveSettings：apiKey/clearKey 可缺省（缺省 = 不修改已存密钥）', () => {
+    const minimal = AiSaveSettingsParamsSchema.parse({ endpoint: 'https://x/v1', model: 'm' });
+    expect(minimal.apiKey).toBeUndefined();
+    expect(minimal.clearKey).toBeUndefined();
+    expect(AiSaveSettingsParamsSchema.parse({ endpoint: 'e', model: 'm', apiKey: 'sk-1' }).apiKey).toBe('sk-1');
+    expect(
+      AiSaveSettingsParamsSchema.parse({ endpoint: 'e', model: 'm', clearKey: true }).clearKey,
+    ).toBe(true);
+  });
+
+  it('ai.testSettings 与 saveSettings 同形（按表单当前值测试）', () => {
+    expect(AiTestSettingsParamsSchema).toBe(AiSaveSettingsParamsSchema);
+  });
+
+  it('ai.fixError：consoleId + 正整数 seq', () => {
+    expect(AiFixErrorParamsSchema.parse({ consoleId: 'c1', seq: 3 }).seq).toBe(3);
+    expect(() => AiFixErrorParamsSchema.parse({ consoleId: 'c1', seq: 0 })).toThrow();
+  });
+
+  it('ai.fixError 结果：fixId + 原/建议 SQL + 可选 note', () => {
+    const parsed = AiFixErrorResultSchema.parse({
+      fixId: 'fix-1',
+      originalSql: 'SELECT',
+      suggestedSql: 'SELECT 1',
+    });
+    expect(parsed.note).toBeUndefined();
+    expect(
+      AiFixErrorResultSchema.parse({ fixId: 'f', originalSql: 'a', suggestedSql: 'b', note: '缺列' }).note,
+    ).toBe('缺列');
+  });
+
+  it('ai.applyFix：mode 只接受 replace/insert', () => {
+    expect(AiApplyFixParamsSchema.parse({ fixId: 'f', mode: 'replace' }).mode).toBe('replace');
+    expect(() => AiApplyFixParamsSchema.parse({ fixId: 'f', mode: 'execute' })).toThrow();
+  });
+
+  it('ConsoleRun.documentBound 可选（有文档来源的执行标记）', () => {
+    const base = {
+      consoleId: 'c1',
+      runId: 'r1',
+      startedAt: 1,
+      durationMs: 1,
+      status: 'ok' as const,
+      items: [],
+    };
+    expect(ConsoleRunSchema.parse(base).documentBound).toBeUndefined();
+    expect(ConsoleRunSchema.parse({ ...base, documentBound: true }).documentBound).toBe(true);
+  });
+
+  it('ConsoleStateResult.ai 与 evt:console.ai：解释流式状态可解析，null 表示已清除', () => {
+    const running = { seq: 1, status: 'running' as const, content: '部分' };
+    expect(ConsoleStateResultSchema.parse({ consoleId: 'c1', bound: true, ai: running }).ai).toEqual(running);
+    expect(ConsoleStateResultSchema.parse({ consoleId: 'c1', bound: true, ai: null }).ai).toBeNull();
+    expect(ConsoleStateResultSchema.parse({ consoleId: 'c1', bound: true }).ai).toBeUndefined();
+    expect(ConsoleAiEventSchema.parse({ consoleId: 'c1', ai: running }).ai).toEqual(running);
+    expect(ConsoleAiEventSchema.parse({ consoleId: 'c1', ai: null }).ai).toBeNull();
+    expect(() => ConsoleAiSchema.parse({ seq: 1, status: 'paused', content: '' })).toThrow();
   });
 });

@@ -17,6 +17,7 @@ import {
 } from '@db-explorer/core';
 import {
   RpcEvents,
+  type ConsoleAi,
   type ConsoleBanner,
   type ConsoleRun,
   type ConsoleRunItem,
@@ -106,6 +107,8 @@ interface ConsoleState {
   controller?: AbortController;
   /** 本轮执行的语句总数（结果面板“执行中 N/M”展示） */
   runningTotal?: number;
+  /** M9-AI：该 Console 最近一次 AI 解释（每 Console 单条，新解释整体替换，交互稿 §15.3） */
+  ai?: ConsoleAi;
   /** 刚关闭的 untitled 文档指纹（另存迁移匹配用，§7.1） */
 }
 
@@ -797,6 +800,8 @@ export class ConsoleService implements vscode.Disposable {
       durationMs: 0,
       status: 'running',
       dangerOverridden: dangerOverridden || undefined,
+      // M9-AI：消息 Tab 错误 item 的「✨ 修复建议」按此显隐（无文档来源不显示，交互稿 §15.4）
+      documentBound: origin ? true : undefined,
       items: [],
     };
     state.run = run;
@@ -1065,7 +1070,57 @@ export class ConsoleService implements vscode.Disposable {
           : undefined,
       banner: state.banner,
       run: state.run,
+      ai: state.ai ?? null,
     };
+  }
+
+  // ── M9-AI（概要 §5.12 / 交互稿 §15.3-15.4）：AI 解释状态与修复定位入口 ──
+
+  /**
+   * 更新该 Console 的 AI 解释状态并推送 evt:console.ai。
+   * reveal=true（解释开始）时切换底部视图跟随并激活显示；增量推送不切换（防反复重引导）。
+   */
+  setAi(consoleId: string, ai: ConsoleAi | null, opts?: { reveal?: boolean }): void {
+    const state = this.consoles.get(consoleId);
+    if (!state) {
+      return;
+    }
+    state.ai = ai ?? undefined;
+    if (opts?.reveal) {
+      this.setActiveConsole(consoleId);
+      revealConsoleResultView();
+    }
+    pushToConsolePanel(consoleId, {
+      event: RpcEvents.consoleAi,
+      payload: { consoleId, ai: ai ?? null },
+    });
+  }
+
+  /** Console 绑定信息（AI 修复/上下文用；undefined = 不存在） */
+  consoleInfoFor(consoleId: string): { consoleId: string; connId: string; db: string | null } | undefined {
+    const state = this.consoles.get(consoleId);
+    return state ? { consoleId: state.consoleId, connId: state.connId, db: state.db } : undefined;
+  }
+
+  /** 指定执行 item（须带错误；AI 修复入口只对错误 item 有意义） */
+  errorItemFor(consoleId: string, seq: number): ConsoleRunItem | undefined {
+    const state = this.consoles.get(consoleId);
+    return state?.run?.items.find((i) => i.seq === seq && i.error);
+  }
+
+  /** Console → 文档 URI 反查（untitled 内存映射 + fileBindings；AI 修复定位语句用） */
+  documentUriForConsole(consoleId: string): vscode.Uri | undefined {
+    for (const [key, cid] of this.untitledBindings) {
+      if (cid === consoleId) {
+        return vscode.Uri.parse(key);
+      }
+    }
+    for (const [fsPath, binding] of this.fileBindings) {
+      if (binding.consoleId === consoleId) {
+        return vscode.Uri.file(fsPath);
+      }
+    }
+    return undefined;
   }
 
   async exportResult(

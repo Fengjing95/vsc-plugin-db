@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { DriverErrorCode } from '@db-explorer/core';
+import type { AiErrorCode, DriverErrorCode } from '@db-explorer/core';
 
 export const RPC_PROTOCOL_VERSION = 1;
 
@@ -40,6 +40,16 @@ export const RpcMethods = {
   /** @since M8-ER（概要 §5.11 / D-22）：ER 图查看（库级关系图；节点双击打开表格视图） */
   erGraph: 'er.getGraph',
   erOpenTable: 'er.openTable',
+  /** @since M9-AI（概要 §5.12 / D-24）：AI 辅助——设置读写/连通测试 + 错误修复建议（生成与
+   *  解释走编辑器 Host 命令 + console item 推送，不经 RPC）；openSettings 供 webview 引导去配置 */
+  aiGetSettings: 'ai.getSettings',
+  aiSaveSettings: 'ai.saveSettings',
+  aiTestSettings: 'ai.testSettings',
+  aiFixError: 'ai.fixError',
+  aiApplyFix: 'ai.applyFix',
+  aiOpenSettings: 'ai.openSettings',
+  /** 解释 Tab 错误态「重试」：复跑该 Console 最近一次 AI 解释（入参 Host 侧缓存） */
+  aiRetryExplain: 'ai.retryExplain',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
 } as const;
@@ -54,10 +64,12 @@ export const RpcEvents = {
   consoleRunning: 'evt:console.running',
   consoleUpdated: 'evt:console.updated',
   consoleActivated: 'evt:console.activated',
+  /** @since M9-AI：AI 解释流式推送（ai=null 表示该 Console 的 AI 解释已清除） */
+  consoleAi: 'evt:console.ai',
 } as const;
 
-/** RPC 层错误码：复用 DriverErrorCode，仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
-export type RpcErrorCode = DriverErrorCode | 'E_UNKNOWN_METHOD' | 'E_STATE_LOST';
+/** RPC 层错误码：复用 DriverErrorCode + AiErrorCode（D-24 与驱动码并列），仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
+export type RpcErrorCode = DriverErrorCode | AiErrorCode | 'E_UNKNOWN_METHOD' | 'E_STATE_LOST';
 
 // ── sys.handshake ──────────────────────────────────────────────
 export const HandshakeParamsSchema = z.object({
@@ -543,6 +555,9 @@ export const ConsoleRunSchema = z.object({
   status: z.enum(['running', 'ok', 'error', 'canceled']),
   /** 横幅“仍要执行”覆盖记录（仅本地日志用，交互稿 §7.4） */
   dangerOverridden: z.boolean().optional(),
+  /** @since M9-AI：本轮执行来自有文档来源的入口（Ctrl+Enter / CodeLens / 选区）——
+   *  消息 Tab 错误 item 据此显隐「✨ 修复建议」（历史重跑/结果面板重跑无文档来源不显示） */
+  documentBound: z.boolean().optional(),
   items: z.array(ConsoleRunItemSchema),
 });
 export type ConsoleRun = z.infer<typeof ConsoleRunSchema>;
@@ -555,8 +570,19 @@ export const ConsoleBannerSchema = z.object({
 });
 export type ConsoleBanner = z.infer<typeof ConsoleBannerSchema>;
 
-export const ConsoleStateParamsSchema = z.object({
-  /** 空 = Host 解析为「最近执行的 Console」（底部面板单例视图的引导路径） */
+/** @since M9-AI（概要 §5.12 / 交互稿 §15.3）：Console 的最近一次 AI 解释——
+ *  每 Console 单条（新解释整体替换旧解释）；running 态 content 为已流式收到的部分文本 */
+export const ConsoleAiSchema = z.object({
+  seq: z.number().int().min(1),
+  status: z.enum(['running', 'done', 'error']),
+  /** Markdown 文本（流式追加）；error 态为已收到的前缀（可为空） */
+  content: z.string(),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+});
+export type ConsoleAi = z.infer<typeof ConsoleAiSchema>;
+
+export const ConsoleStateParamsSchema = z.object({  /** 空 = Host 解析为「最近执行的 Console」（底部面板单例视图的引导路径） */
   consoleId: z.string(),
 });
 export type ConsoleStateParams = z.infer<typeof ConsoleStateParamsSchema>;
@@ -576,6 +602,8 @@ export const ConsoleStateResultSchema = z.object({
     .optional(),
   banner: ConsoleBannerSchema.nullable().optional(),
   run: ConsoleRunSchema.nullable().optional(),
+  /** @since M9-AI：该 Console 的最近一次 AI 解释（重载恢复；null/缺省 = 无） */
+  ai: ConsoleAiSchema.nullable().optional(),
 });
 export type ConsoleStateResult = z.infer<typeof ConsoleStateResultSchema>;
 
@@ -984,3 +1012,77 @@ export const ConsoleActivatedEventSchema = z.object({
   consoleId: z.string(),
 });
 export type ConsoleActivatedEvent = z.infer<typeof ConsoleActivatedEventSchema>;
+
+/** evt:console.ai 负载（M9-AI）：ai=null 表示该 Console 的 AI 解释已清除 */
+export const ConsoleAiEventSchema = z.object({
+  consoleId: z.string(),
+  ai: ConsoleAiSchema.nullable(),
+});
+export type ConsoleAiEvent = z.infer<typeof ConsoleAiEventSchema>;
+
+// ── ai.*（M9-AI AI 辅助，概要 §5.12 / D-24 @since v0.4.x）────────────────────
+// 设置读写与错误修复走 RPC；生成与解释走编辑器 Host 命令（不经 RPC，解释经 evt:console.ai 推送）。
+// 密钥边界（C-10）：key 只进 SecretStorage——getSettings 只回 hasKey 永不回传明文，
+// saveSettings/testSettings 的 apiKey 缺省 = 沿用已存值（与 conn.test 密码同边界）。
+
+export const AiSettingsResultSchema = z.object({
+  endpoint: z.string(),
+  model: z.string(),
+  hasKey: z.boolean(),
+});
+export type AiSettingsResult = z.infer<typeof AiSettingsResultSchema>;
+
+export const AiSaveSettingsParamsSchema = z.object({
+  endpoint: z.string().max(2048),
+  model: z.string().max(256),
+  /** 缺省 = 不修改已存密钥；空串按缺省处理（表单留空语义） */
+  apiKey: z.string().optional(),
+  /** true = 清除已存密钥（设置页「清除」动作） */
+  clearKey: z.boolean().optional(),
+});
+export type AiSaveSettingsParams = z.infer<typeof AiSaveSettingsParamsSchema>;
+
+/** 测试连接：按表单当前值测试（字段缺省回落已存值，密钥缺省回落 SecretStorage） */
+export const AiTestSettingsParamsSchema = AiSaveSettingsParamsSchema;
+export type AiTestSettingsParams = z.infer<typeof AiTestSettingsParamsSchema>;
+
+export const AiTestSettingsResultSchema = z.object({
+  ok: z.boolean(),
+  latencyMs: z.number().optional(),
+  model: z.string().optional(),
+});
+export type AiTestSettingsResult = z.infer<typeof AiTestSettingsResultSchema>;
+
+export const AiFixErrorParamsSchema = z.object({
+  consoleId: z.string().min(1),
+  /** 消息 Tab 错误 item 序号（ConsoleRunItem.seq） */
+  seq: z.number().int().min(1),
+});
+export type AiFixErrorParams = z.infer<typeof AiFixErrorParamsSchema>;
+
+export const AiFixErrorResultSchema = z.object({
+  /** 修复凭据（Host 内存暂存，applyFix 时校验文档版本 + 语句偏移） */
+  fixId: z.string(),
+  originalSql: z.string(),
+  suggestedSql: z.string(),
+  /** AI 一行原因解释（可选，缺省隐藏说明行） */
+  note: z.string().optional(),
+});
+export type AiFixErrorResult = z.infer<typeof AiFixErrorResultSchema>;
+
+export const AiApplyFixParamsSchema = z.object({
+  fixId: z.string().min(1),
+  mode: z.enum(['replace', 'insert']),
+});
+export type AiApplyFixParams = z.infer<typeof AiApplyFixParamsSchema>;
+
+export const AiApplyFixResultSchema = z.object({});
+export type AiApplyFixResult = z.infer<typeof AiApplyFixResultSchema>;
+
+export const AiOpenSettingsParamsSchema = z.object({}).optional();
+export type AiOpenSettingsParams = z.infer<typeof AiOpenSettingsParamsSchema>;
+
+export const AiRetryExplainParamsSchema = z.object({
+  consoleId: z.string().min(1),
+});
+export type AiRetryExplainParams = z.infer<typeof AiRetryExplainParamsSchema>;

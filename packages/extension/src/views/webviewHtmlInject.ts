@@ -5,7 +5,14 @@
  *    外部脚本同样必须携带 nonce，否则被静默拦截（页面全白的根因）
  * 3. 注入 CSP 与引导数据（__BOOTSTRAP__）
  */
-export type WebviewPage = 'table' | 'connectionForm' | 'console' | 'tableDesign' | 'databaseDesign' | 'erDiagram';
+export type WebviewPage =
+  | 'table'
+  | 'connectionForm'
+  | 'console'
+  | 'tableDesign'
+  | 'databaseDesign'
+  | 'erDiagram'
+  | 'aiSettings';
 
 export interface WebviewBootstrap {
   page: WebviewPage;

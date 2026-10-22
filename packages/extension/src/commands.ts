@@ -46,6 +46,8 @@ export interface AppServices {
   dbddl: import('./services/dbDdlService').DbDdlService;
   /** M8-ER ER 图（概要 §5.11 / D-22）：关系收集 + 分层布局（er.getGraph）+ 打开引导 */
   er: import('./services/erService').ErService;
+  /** M9-AI AI 辅助（概要 §5.12 / D-24）：生成（NL→SQL）/ 解释 / 错误修复三能力 + 设置守卫 */
+  ai: import('./services/aiAssistService').AiAssistService;
 }
 
 function copy(text: string, hint: string): void {
@@ -68,6 +70,18 @@ export function registerCommands(
     // 打开日志（M8 优化）：聚焦输出面板 Database Explorer 频道（不自动弹出，仅显式入口）
     vscode.commands.registerCommand('dbExplorer.showLog', () => {
       services.logger.show();
+    }),
+
+    // M9-AI（D-24）：设置页 / 生成（CodeLens 传 [uri, position] 语句前插入；快捷键光标处）/
+    // 解释（活动编辑器选区或光标语句 → Console「AI 解释」Tab 流式）
+    vscode.commands.registerCommand('dbExplorer.ai.settings', () => {
+      services.ai.openSettings();
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.generateSql', (uri?: vscode.Uri, position?: vscode.Position) => {
+      void services.ai.generateSql(uri, position);
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.explainSql', () => {
+      void services.ai.explainActiveSql();
     }),
 
     vscode.commands.registerCommand('dbExplorer.newConnection', () => {
