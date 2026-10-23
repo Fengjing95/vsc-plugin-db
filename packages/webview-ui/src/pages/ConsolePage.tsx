@@ -9,8 +9,8 @@ import {
   runItemSummary,
   runStatusText,
 } from '../lib/consoleView';
-import { errorCodeToMessage } from '../lib/errors';
 import { parseAiMarkdown } from '../lib/aiMarkdown';
+import { rpcErrorText } from '../lib/errors';
 import { RpcError, subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
@@ -97,6 +97,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
     seq: number;
     loading: boolean;
     error: string;
+    errorCode?: string;
     result: AiFixErrorResult | null;
   } | null>(null);
   const [applying, setApplying] = useState(false);
@@ -131,13 +132,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
       const result = await useConsoleStore.getState().fixError(seq);
       setFixState({ seq, loading: false, error: '', result });
     } catch (err) {
-      const text =
-        err instanceof RpcError
-          ? errorCodeToMessage(err.code, err.message.replace(/^\[E_[A-Z_]+\]\s*/, ''))
-          : err instanceof Error
-            ? err.message
-            : String(err);
-      setFixState({ seq, loading: false, error: text, result: null });
+      const text = err instanceof RpcError ? rpcErrorText(err) : err instanceof Error ? err.message : String(err);
+      setFixState({ seq, loading: false, error: text, errorCode: err instanceof RpcError ? err.code : undefined, result: null });
     }
   };
 
@@ -151,12 +147,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
       showToast({ kind: 'info', text: '已应用到编辑器（不会自动执行）' });
       setFixState(null);
     } catch (err) {
-      const text =
-        err instanceof RpcError
-          ? errorCodeToMessage(err.code, err.message.replace(/^\[E_[A-Z_]+\]\s*/, ''))
-          : err instanceof Error
-            ? err.message
-            : String(err);
+      const text = err instanceof RpcError ? rpcErrorText(err) : err instanceof Error ? err.message : String(err);
       setFixState({ ...fixState, loading: false, error: text });
     } finally {
       setApplying(false);
@@ -265,7 +256,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
           {ai.status === 'error' ? (
             <div className="flex flex-col gap-2" role="alert">
               <div className="rounded-sm border border-destructive/40 px-3 py-2 text-[12px] text-destructive">
-                {errorCodeToMessage(ai.errorCode, ai.errorMessage ?? 'AI 解释失败')}
+                {rpcErrorText({ code: ai.errorCode, message: ai.errorMessage ?? '' }) || 'AI 解释失败'}
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => void retryExplain()}>
@@ -372,9 +363,11 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
       <AiFixModal
         loading={fixState?.loading ?? false}
         error={fixState?.error ?? ''}
+        errorCode={fixState?.errorCode}
         result={fixState?.result ?? null}
         applying={applying}
         onApply={(mode) => void applyFix(mode)}
+        onOpenSettings={() => void openAiSettings()}
         onClose={() => setFixState(null)}
       />
 

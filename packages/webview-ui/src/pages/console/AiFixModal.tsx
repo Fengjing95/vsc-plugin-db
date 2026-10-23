@@ -6,13 +6,16 @@ import { lineDiff } from '../../lib/aiDiff';
  * AI 修复建议 Modal（M9-AI / D-24 / 交互稿 §15.4）：
  * 原 SQL vs 建议 SQL 双栏（行级 LCS diff 着色），确认后替换原语句 / 插入为新语句——
  * **不自动执行**：应用仅为文档编辑，用户自行 Ctrl+Enter（危险判定与 prod 确认照常）。
+ * 错误态展示完整原因（rpcErrorText）+ 未配置时的「去配置」直达。
  */
 export interface AiFixModalProps {
   loading: boolean;
   error: string;
+  errorCode?: string;
   result: AiFixErrorResult | null;
   applying: boolean;
   onApply: (mode: 'replace' | 'insert') => void;
+  onOpenSettings: () => void;
   onClose: () => void;
 }
 
@@ -42,7 +45,7 @@ function SqlPane({ title, diff, side }: { title: string; diff: ReturnType<typeof
 }
 
 export function AiFixModal(props: AiFixModalProps): React.JSX.Element | null {
-  const { loading, error, result, applying, onApply, onClose } = props;
+  const { loading, error, errorCode, result, applying, onApply, onOpenSettings, onClose } = props;
   if (!loading && !error && !result) {
     return null;
   }
@@ -64,8 +67,17 @@ export function AiFixModal(props: AiFixModalProps): React.JSX.Element | null {
         <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
           {loading && <div className="text-[13px] text-muted-foreground">AI 正在生成修复建议…</div>}
           {!loading && error !== '' && (
-            <div role="alert" className="rounded-sm border border-destructive/40 px-3 py-2 text-[12px] text-destructive">
-              {error}
+            <div role="alert" className="flex flex-col gap-2">
+              <div className="rounded-sm border border-destructive/40 px-3 py-2 text-[12px] text-destructive">
+                {error}
+              </div>
+              {errorCode === 'E_AI_NOT_CONFIGURED' && (
+                <div>
+                  <Button variant="secondary" onClick={onOpenSettings}>
+                    去配置
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           {!loading && result && (

@@ -6,7 +6,7 @@ import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ConsoleService } from '../services/consoleService';
 import type { AiAssistService } from '../services/aiAssistService';
-import type { Logger } from '../services/logger';
+import { describeError, type Logger } from '../services/logger';
 
 /**
  * Console 结果视图（M5 试点：底部面板形态，D-02 备选位置）：
@@ -88,21 +88,36 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         },
         handlers: ai
           ? {
-              [RpcMethods.aiFixError]: (raw) => {
+              [RpcMethods.aiFixError]: async (raw) => {
                 const p = raw as { consoleId?: string; seq?: number };
-                return ai.fixError(String(p.consoleId ?? ''), Number(p.seq ?? 0));
+                try {
+                  return await ai.fixError(String(p.consoleId ?? ''), Number(p.seq ?? 0));
+                } catch (err) {
+                  deps.logger.error('ai', `AI 修复建议失败：${describeError(err)}`);
+                  throw err;
+                }
               },
-              [RpcMethods.aiApplyFix]: (raw) => {
+              [RpcMethods.aiApplyFix]: async (raw) => {
                 const p = raw as { fixId?: string; mode?: 'replace' | 'insert' };
-                return ai.applyFix(String(p.fixId ?? ''), p.mode === 'insert' ? 'insert' : 'replace');
+                try {
+                  return await ai.applyFix(String(p.fixId ?? ''), p.mode === 'insert' ? 'insert' : 'replace');
+                } catch (err) {
+                  deps.logger.error('ai', `AI 修复应用失败：${describeError(err)}`);
+                  throw err;
+                }
               },
               [RpcMethods.aiOpenSettings]: () => {
                 ai.openSettings();
                 return Promise.resolve({});
               },
-              [RpcMethods.aiRetryExplain]: (raw) => {
+              [RpcMethods.aiRetryExplain]: async (raw) => {
                 const p = raw as { consoleId?: string };
-                return ai.retryExplain(String(p.consoleId ?? ''));
+                try {
+                  return await ai.retryExplain(String(p.consoleId ?? ''));
+                } catch (err) {
+                  deps.logger.error('ai', `AI 解释重试失败：${describeError(err)}`);
+                  throw err;
+                }
               },
             }
           : undefined,

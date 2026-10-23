@@ -6,7 +6,7 @@ import {
   AiTestSettingsParamsSchema,
   type AiSettingsResult,
 } from '@db-explorer/protocol';
-import type { Logger } from './logger';
+import { describeError, type Logger } from './logger';
 
 /**
  * AI 设置存取（M9-AI / D-24 / 交互稿 §15.1）：
@@ -105,6 +105,9 @@ export class AiSettingsStore {
       prompt: 'ping',
       maxTokens: 8,
       temperature: 0,
+    }).catch((err) => {
+      this.logger.error('ai', `AI 测试连接失败：${describeError(err)}`);
+      throw err;
     });
     const latencyMs = Date.now() - start;
     const model = (p.model || this.config().model).trim();

@@ -59,6 +59,8 @@ export class AiAssistService {
   private readonly fixes = new Map<string, FixEntry>();
   private aiSeq = 0;
   private fixSeq = 0;
+  /** 锚点行内 loading 装饰（行尾 `$(sync~spin) AI 正在生成…`，随进度清除）——复用单例 DecorationType 防泄漏 */
+  private aiStatusDecoration?: vscode.TextEditorDecorationType;
 
   constructor(
     private readonly connections: ConnectionManager,
@@ -74,6 +76,32 @@ export class AiAssistService {
   /** 设置页入口（命令 / webview [去配置] 引导共用） */
   openSettings(): void {
     this.openSettingsPanel();
+  }
+
+  /** 锚点行尾内联状态（生成 loading；装饰渲染不入文件，交互稿 §15.2/实机反馈） */
+  private showEditorStatus(editor: vscode.TextEditor, position: vscode.Position, text: string): void {
+    if (!this.aiStatusDecoration) {
+      this.aiStatusDecoration = vscode.window.createTextEditorDecorationType({});
+    }
+    const lineEnd = editor.document.lineAt(position.line).range.end;
+    editor.setDecorations(this.aiStatusDecoration, [
+      {
+        range: new vscode.Range(lineEnd, lineEnd),
+        renderOptions: {
+          after: {
+            contentText: `  $(sync~spin) ${text}`,
+            color: new vscode.ThemeColor('editorGhostText.foreground'),
+            fontStyle: 'italic',
+          },
+        },
+      },
+    ]);
+  }
+
+  private clearEditorStatus(editor: vscode.TextEditor): void {
+    if (this.aiStatusDecoration) {
+      editor.setDecorations(this.aiStatusDecoration, []);
+    }
   }
 
   private async ensureConfiguredOrGuide(): Promise<boolean> {
@@ -218,6 +246,19 @@ export class AiAssistService {
       return;
     }
     const { system, user } = buildGeneratePrompt({ nl, context: loaded.context, selectedTables: loaded.selectedTables });
+    this.logger.info(
+      'ai',
+      `AI 生成开始：${loaded.label} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表${
+        loaded.selectedTables ? `（选定 ${loaded.selectedTables.length}）` : ''
+      } · prompt ${user.length} 字符`,
+    );
+
+    const editor = await vscode.window.showTextDocument(doc);
+    const anchored = position !== undefined;
+    const anchorOffset = anchored ? doc.offsetAt(position) : doc.offsetAt(editor.selection.active);
+    const anchorPos = doc.positionAt(anchorOffset);
+    // 编辑器内 loading（锚点行尾 spinner 装饰，渲染不入文件）+ 窗口进度通知（取消入口）
+    this.showEditorStatus(editor, anchorPos, 'AI 正在生成…');
     let sql = '';
     try {
       sql = await vscode.window.withProgress(
@@ -234,14 +275,14 @@ export class AiAssistService {
       this.logger.error('ai', `AI 生成失败：${describeError(err)}`);
       this.showAiError(err, 'toast');
       return;
+    } finally {
+      this.clearEditorStatus(editor);
     }
     if (!sql) {
       void vscode.window.showInformationMessage('AI 未返回可用的 SQL，可重试。');
       return;
     }
-    const editor = await vscode.window.showTextDocument(doc);
-    const anchored = position !== undefined;
-    const offset = anchored ? doc.offsetAt(position) : doc.offsetAt(editor.selection.active);
+    const offset = anchored ? anchorOffset : doc.offsetAt(editor.selection.active);
     // 直插即草稿（D-24）：CodeLens 锚点 = 语句前插入（补两空行分隔）；光标 = 原位插入
     const insertText = anchored ? `${sql}\n\n` : sql;
     const applied = await editor.edit((builder) => builder.insert(doc.positionAt(offset), insertText));
@@ -249,7 +290,10 @@ export class AiAssistService {
       return;
     }
     editor.selection = new vscode.Selection(doc.positionAt(offset), doc.positionAt(offset + sql.length));
-    this.logger.info('ai', `AI 生成完成（${sql.length} 字符）→ ${doc.uri.fsPath}${anchored ? '（语句前插入）' : '（光标处）'}`);
+    this.logger.info(
+      'ai',
+      `AI 生成完成：${provider.modelId} · ${sql.length} 字符 → ${doc.uri.fsPath}${anchored ? '（语句前插入）' : '（光标处）'}`,
+    );
   }
 
   private askPrompt(title: string, placeholder: string): Promise<string | undefined> {
@@ -344,6 +388,10 @@ export class AiAssistService {
     const provider = await this.settings.resolveProvider();
     const { system, user } = buildExplainPrompt({ sql, context: loaded.context, selectedTables: loaded.selectedTables });
     this.lastExplains.set(consoleId, { info, sql });
+    this.logger.info(
+      'ai',
+      `AI 解释开始：${consoleId} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表 · SQL ${sql.length} 字符 / prompt ${user.length} 字符`,
+    );
 
     this.explainControllers.get(consoleId)?.abort(); // 新一轮取消上一轮（结果面板以最近一次为准）
     const controller = new AbortController();
@@ -441,9 +489,17 @@ export class AiAssistService {
       context: loaded.context,
       selectedTables: loaded.selectedTables,
     });
-    const response = await provider.complete({ system, prompt: user });
+    this.logger.info(
+      'ai',
+      `AI 修复开始：${consoleId} #${seq} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表 · 语句 ${item.sql.length} 字符 / 错误码 ${item.error.code}`,
+    );
+    const response = await provider.complete({ system, prompt: user }).catch((err) => {
+      this.logger.error('ai', `AI 修复失败：${describeError(err)}`);
+      throw err;
+    });
     const suggestedSql = extractSqlFromResponse(response);
     if (!suggestedSql) {
+      this.logger.error('ai', `AI 修复失败：模型未返回 SQL（响应 ${response.length} 字符）`);
       throw new DriverError('E_AI_REQUEST_FAILED', 'AI 未返回可用的 SQL，可重试');
     }
     const fixId = `fix-${Date.now()}-${++this.fixSeq}`;

@@ -21,6 +21,8 @@ export interface AiCompletionRequest {
 export interface AiProvider {
   /** 稳定标识（日志/设置页展示用） */
   readonly id: string;
+  /** 模型标识（日志打点用——日志只记模型名与长度，不记 prompt 原文，C-10/§15.6） */
+  readonly modelId: string;
   complete(req: AiCompletionRequest): Promise<string>;
 }
 
@@ -94,6 +96,10 @@ export class OpenAICompatProvider implements AiProvider {
   readonly id = 'openai-compat';
   private readonly config: Required<Omit<OpenAiCompatConfig, 'fetchImpl'>> & Pick<OpenAiCompatConfig, 'fetchImpl'>;
   private readonly fetchImpl: typeof fetch;
+
+  get modelId(): string {
+    return this.config.model;
+  }
 
   constructor(config: OpenAiCompatConfig) {
     this.config = {

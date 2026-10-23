@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AiSettingsResult } from '@db-explorer/protocol';
 import { Button } from '../components/ui/button';
-import { errorCodeToMessage } from '../lib/errors';
+import { rpcErrorText } from '../lib/errors';
 import { RpcError, request } from '../rpc/client';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
@@ -45,8 +45,9 @@ export function AiSettingsPage() {
   }, []);
 
   const errorTextOf = (err: unknown): string => {
+    // 完整原因透传（实机反馈：401/超时/模型名错的 detail 在 message 里，不能只给模板文案）
     if (err instanceof RpcError) {
-      return errorCodeToMessage(err.code, err.message.replace(/^\[E_[A-Z_]+\]\s*/, ''));
+      return rpcErrorText(err);
     }
     return err instanceof Error ? err.message : String(err);
   };

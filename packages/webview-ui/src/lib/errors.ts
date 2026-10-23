@@ -25,3 +25,17 @@ export function errorCodeToMessage(code: string | undefined, fallback: string): 
   }
   return fallback;
 }
+
+/**
+ * RPC 错误 → 完整文案（实机反馈：错误码映射模板会把 detail 吞掉，AI 类错误的
+ * 具体原因——超时/401/模型名错——恰恰在 message 里）。已知码 = 模板 + 分隔 detail；
+ * 未知码直接用 message（含 detail）。
+ */
+export function rpcErrorText(err: { code?: string; message: string }): string {
+  const detail = err.message.replace(/^\[[A-Z_0-9]+\]\s*/, '').trim();
+  const base = err.code !== undefined ? CODE_MESSAGES[err.code] : undefined;
+  if (base !== undefined) {
+    return detail !== '' && detail !== base ? `${base}：${detail}` : base;
+  }
+  return detail !== '' ? detail : (err.code ?? '操作失败');
+}
