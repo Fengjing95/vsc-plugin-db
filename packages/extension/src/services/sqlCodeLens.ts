@@ -56,8 +56,14 @@ export function registerSqlCodeLens(annotations: ExecutionAnnotations): vscode.D
         );
         lensLines.add(0);
       }
-      // 光标跟随：光标行无语句入口（空行/语句间）时补生成入口
-      if (cursorLine >= 0 && cursorLine < doc.lineCount && !lensLines.has(cursorLine)) {
+      // 光标跟随（实机反馈二修）：仅当光标聚焦**空白行**时补生成入口——语句行已有
+      // 「▶ 执行 + ✨ 生成 SQL」同排，非空行的额外入口是噪音
+      if (
+        cursorLine >= 0 &&
+        cursorLine < doc.lineCount &&
+        !lensLines.has(cursorLine) &&
+        doc.lineAt(cursorLine).isEmptyOrWhitespace
+      ) {
         const pos = new vscode.Position(cursorLine, 0);
         lenses.push(
           new vscode.CodeLens(new vscode.Range(pos, pos), {

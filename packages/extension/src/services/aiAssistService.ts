@@ -304,27 +304,11 @@ export class AiAssistService {
     try {
       sql = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'AI 正在生成 SQL…', cancellable: true },
-        async (progress, token) => {
+        async (_progress, token) => {
           const controller = new AbortController();
           token.onCancellationRequested(() => controller.abort());
-          let reasoning = '';
-          let lastTick = 0;
           return extractSqlFromResponse(
-            await provider.complete({
-              system,
-              prompt: user,
-              signal: controller.signal,
-              onReasoning: (delta) => {
-                reasoning += delta;
-                const now = Date.now();
-                if (now - lastTick < 200) {
-                  return; // 思考滚动节流
-                }
-                lastTick = now;
-                const tail = reasoning.replace(/\s+/g, ' ').trim().slice(-90);
-                progress.report({ message: tail });
-              },
-            }),
+            await provider.complete({ system, prompt: user, signal: controller.signal }),
           );
         },
       );
@@ -538,7 +522,7 @@ export class AiAssistService {
     if (!stmt) {
       this.logger.error(
         'ai',
-        `AI 修复定位失败：文档 ${doc.uri.fsPath}（${doc.lineCount} 行）无匹配语句；快照=${origin ? '有' : '无'}；原语句前 40 字符「${item.sql.slice(0, 40)}」`,
+        `AI 修复定位失败：文档 ${doc.uri.fsPath}（${doc.lineCount} 行，版本 执行时=${origin?.version ?? '?'} / 当前=${doc.version}，快照=${origin ? '有' : '无'}）；原语句前 40 字符「${item.sql.slice(0, 40)}」`,
       );
       throw new DriverError(
         'E_VALIDATION',
@@ -590,7 +574,12 @@ export class AiAssistService {
     return { fixId, originalSql: item.sql, suggestedSql };
   }
 
-  /** 主路径：执行时的语句范围快照——偏移处当前文本与原语句（空白归一化）一致即命中 */
+  /**
+   * 主路径：执行时的语句范围快照。
+   * 版本一致（文档自执行以来一个字符都没动过）→ 快照必然有效，直通命中——绕开任何
+   * 文本归一化死角（实机反馈三修：「文件没改动」仍报定位失败的根治）；版本不同（确实
+   * 编辑过）→ 再按偏移处文本与原语句（空白归一化）一致校验。
+   */
   private locateByOrigin(
     doc: vscode.TextDocument,
     origin: { uriString: string; start: number; end: number; version: number } | undefined,
@@ -598,6 +587,9 @@ export class AiAssistService {
   ): { start: number; end: number; text: string } | undefined {
     if (!origin || origin.uriString !== doc.uri.toString()) {
       return undefined;
+    }
+    if (origin.version === doc.version) {
+      return { start: origin.start, end: origin.end, text: sql };
     }
     const text = doc.getText(new vscode.Range(doc.positionAt(origin.start), doc.positionAt(origin.end)));
     if (text.replace(/\s+/g, ' ').trim() !== sql.replace(/\s+/g, ' ').trim()) {
