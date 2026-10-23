@@ -83,6 +83,12 @@ export function registerCommands(
     vscode.commands.registerCommand('dbExplorer.ai.explainSql', () => {
       void services.ai.explainActiveSql();
     }),
+    // 失败语句行 CodeLens「✨ 修复建议」入口（编辑器内，实机反馈 #4）
+    vscode.commands.registerCommand('dbExplorer.ai.fixErrorAt', (uri?: vscode.Uri, position?: vscode.Position) => {
+      if (uri && position) {
+        void services.ai.fixErrorAt(uri, position);
+      }
+    }),
 
     vscode.commands.registerCommand('dbExplorer.newConnection', () => {
       openConnectionForm(context, services, undefined);

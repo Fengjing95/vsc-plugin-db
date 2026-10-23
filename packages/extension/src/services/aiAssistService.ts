@@ -104,6 +104,46 @@ export class AiAssistService {
     }
   }
 
+  /**
+   * 应用后的「放弃」出口（实机反馈 #5：Copilot 式保留/丢弃）——VSCode 公开 API 无法在
+   * diff 编辑器里放「保留/放弃」按钮（Copilot 内联聊天是私有 UI），最接近的形态：
+   * 应用即生效 + 通知按钮一键还原原文（或 Ctrl+Z）。后续编辑介入时拒绝盲还原。
+   */
+  private offerDiscard(
+    editor: vscode.TextEditor,
+    start: vscode.Position,
+    originalText: string,
+    appliedText: string,
+    label: string,
+  ): void {
+    const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
+    void vscode.window
+      .showInformationMessage(`${label}（Ctrl+Z 可撤销）`, '放弃这次修改')
+      .then((pick) => {
+        if (pick !== '放弃这次修改') {
+          return;
+        }
+        try {
+          const doc = editor.document;
+          const appliedRange = new vscode.Range(
+            start,
+            doc.positionAt(doc.offsetAt(start) + appliedText.length),
+          );
+          if (norm(doc.getText(appliedRange)) !== norm(appliedText)) {
+            void vscode.window.showInformationMessage('后续编辑已介入，无法自动放弃——请用 Ctrl+Z 逐步撤销。');
+            return;
+          }
+          void editor.edit((builder) => builder.replace(appliedRange, originalText)).then((ok) => {
+            if (ok) {
+              this.logger.info('ai', `已放弃 AI 修改（还原原文）：${doc.uri.fsPath}`);
+            }
+          });
+        } catch {
+          void vscode.window.showInformationMessage('编辑器已关闭，无法自动放弃——重新打开后用 Ctrl+Z。');
+        }
+      });
+  }
+
   private async ensureConfiguredOrGuide(): Promise<boolean> {
     if (await this.settings.isConfigured()) {
       return true;
@@ -257,17 +297,34 @@ export class AiAssistService {
     const anchored = position !== undefined;
     const anchorOffset = anchored ? doc.offsetAt(position) : doc.offsetAt(editor.selection.active);
     const anchorPos = doc.positionAt(anchorOffset);
-    // 编辑器内 loading（锚点行尾 spinner 装饰，渲染不入文件）+ 窗口进度通知（取消入口）
+    // 编辑器内 loading（锚点行尾 spinner 装饰，渲染不入文件）+ 通知进度（右下角常驻可见、
+    // 可取消、思考过程滚动显示——实机反馈 #1/#2）
     this.showEditorStatus(editor, anchorPos, 'AI 正在生成…');
     let sql = '';
     try {
       sql = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: 'AI 正在生成 SQL…', cancellable: true },
-        async (_progress, token) => {
+        { location: vscode.ProgressLocation.Notification, title: 'AI 正在生成 SQL…', cancellable: true },
+        async (progress, token) => {
           const controller = new AbortController();
           token.onCancellationRequested(() => controller.abort());
+          let reasoning = '';
+          let lastTick = 0;
           return extractSqlFromResponse(
-            await provider.complete({ system, prompt: user, signal: controller.signal }),
+            await provider.complete({
+              system,
+              prompt: user,
+              signal: controller.signal,
+              onReasoning: (delta) => {
+                reasoning += delta;
+                const now = Date.now();
+                if (now - lastTick < 200) {
+                  return; // 思考滚动节流
+                }
+                lastTick = now;
+                const tail = reasoning.replace(/\s+/g, ' ').trim().slice(-90);
+                progress.report({ message: tail });
+              },
+            }),
           );
         },
       );
@@ -294,6 +351,7 @@ export class AiAssistService {
       'ai',
       `AI 生成完成：${provider.modelId} · ${sql.length} 字符 → ${doc.uri.fsPath}${anchored ? '（语句前插入）' : '（光标处）'}`,
     );
+    this.offerDiscard(editor, doc.positionAt(offset), '', insertText, `已插入 AI 生成的 SQL（${sql.length} 字符）`);
   }
 
   private askPrompt(title: string, placeholder: string): Promise<string | undefined> {
@@ -473,9 +531,19 @@ export class AiAssistService {
       throw new DriverError('E_UNSUPPORTED', 'AI 修复仅支持 SQL 数据源');
     }
     const doc = await vscode.workspace.openTextDocument(uri);
-    const stmt = this.locateStatement(doc, item.sql);
+    // 定位（实机反馈 #3）：主路径 = 执行时的语句范围快照（偏移处原文仍一致即命中），
+    // 回退 = 全文语句文本匹配（文档其他位置被编辑导致偏移漂移时仍可命中）
+    const origin = this.console.itemOriginFor(consoleId, seq);
+    const stmt = this.locateByOrigin(doc, origin, item.sql) ?? this.locateStatement(doc, item.sql);
     if (!stmt) {
-      throw new DriverError('E_VALIDATION', '文档已修改，无法定位原语句——请基于当前文档重新执行后再试');
+      this.logger.error(
+        'ai',
+        `AI 修复定位失败：文档 ${doc.uri.fsPath}（${doc.lineCount} 行）无匹配语句；快照=${origin ? '有' : '无'}；原语句前 40 字符「${item.sql.slice(0, 40)}」`,
+      );
+      throw new DriverError(
+        'E_VALIDATION',
+        '无法在当前文档中定位原语句（文档可能已修改或已关闭重建）——请基于当前文档重新执行后再试',
+      );
     }
     const provider = await this.settings.resolveProvider();
     const loaded = await this.loadAiContext({ connId: info.connId, db: info.db, consoleId });
@@ -522,12 +590,54 @@ export class AiAssistService {
     return { fixId, originalSql: item.sql, suggestedSql };
   }
 
-  /** 在当前文档文本中按空白归一化匹配原语句（执行后文档未被编辑即命中） */
+  /** 主路径：执行时的语句范围快照——偏移处当前文本与原语句（空白归一化）一致即命中 */
+  private locateByOrigin(
+    doc: vscode.TextDocument,
+    origin: { uriString: string; start: number; end: number; version: number } | undefined,
+    sql: string,
+  ): { start: number; end: number; text: string } | undefined {
+    if (!origin || origin.uriString !== doc.uri.toString()) {
+      return undefined;
+    }
+    const text = doc.getText(new vscode.Range(doc.positionAt(origin.start), doc.positionAt(origin.end)));
+    if (text.replace(/\s+/g, ' ').trim() !== sql.replace(/\s+/g, ' ').trim()) {
+      return undefined;
+    }
+    return { start: origin.start, end: origin.end, text };
+  }
+
+  /** 回退：在当前文档全文中按空白归一化匹配原语句 */
   private locateStatement(doc: vscode.TextDocument, sql: string): { start: number; end: number; text: string } | undefined {
     const target = sql.replace(/\s+/g, ' ').trim();
     return splitSqlStatements(doc.getText()).find(
       (s) => s.text.replace(/\s+/g, ' ').trim() === target,
     );
+  }
+
+  /**
+   * 编辑器内修复入口（实机反馈 #4）：失败语句行 CodeLens「✨ 修复建议」→ 定位 Console
+   * 错误 item → 推送 evt:console.fixRequest 让结果面板直接打开修复 Modal（走既有 RPC）。
+   */
+  async fixErrorAt(uri: vscode.Uri, position: vscode.Position): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(uri);
+    if (doc.languageId !== 'sql') {
+      return;
+    }
+    const state = await this.console.ensureBinding(doc);
+    if (!state) {
+      return; // 未选择连接
+    }
+    const stmt = statementAtOffset(splitSqlStatements(doc.getText()), doc.offsetAt(position));
+    if (!stmt) {
+      void vscode.window.showInformationMessage('该位置已无语句（文档可能刚被编辑）。');
+      return;
+    }
+    const item = this.console.findErrorItemBySql(state.consoleId, stmt.text);
+    if (!item) {
+      void vscode.window.showInformationMessage('该语句最近的执行没有错误记录——编辑后请重新执行再试。');
+      return;
+    }
+    this.console.requestFix(state.consoleId, item.seq);
   }
 
   async applyFix(fixId: string, mode: 'replace' | 'insert'): Promise<Record<string, never>> {
@@ -570,6 +680,12 @@ export class AiAssistService {
     editor.selection = selection;
     this.fixes.delete(fixId);
     this.logger.info('ai', `AI 修复建议已应用（${mode === 'replace' ? '替换原语句' : '插入为新语句'}）→ ${doc.uri.fsPath}`);
+    if (mode === 'replace') {
+      this.offerDiscard(editor, start, entry.originalSql, entry.suggestedSql, '已替换原语句');
+    } else {
+      const insertOffset = doc.offsetAt(selection.anchor) - 2;
+      this.offerDiscard(editor, doc.positionAt(insertOffset), '', `\n\n${entry.suggestedSql}`, '已插入修复语句');
+    }
     return {};
   }
 }

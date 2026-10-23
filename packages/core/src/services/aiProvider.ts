@@ -14,6 +14,8 @@ export interface AiCompletionRequest {
   signal?: AbortSignal;
   /** 流式增量回调（解释 Tab 流式渲染；生成/修复可不传，只取全量返回） */
   onDelta?: (delta: string) => void;
+  /** 推理过程增量（DeepSeek reasoner 的 reasoning_content 等；不保证所有服务提供） */
+  onReasoning?: (delta: string) => void;
   temperature?: number;
   maxTokens?: number;
 }
@@ -62,24 +64,38 @@ export function parseSseFrame(buffer: string): { events: string[]; rest: string 
   return { events, rest };
 }
 
-/** OpenAI 流式帧负载 → 增量文本：choices[0].delta.content；[DONE]/非 JSON/空 delta → null */
-export function extractOpenAiDelta(data: string): string | null {
+/** OpenAI 流式帧负载解析：正文（choices[0].delta.content，兼容 message.content 形态）+
+ *  推理过程（delta.reasoning_content / delta.reasoning——DeepSeek reasoner 等非标字段）。
+ *  [DONE]/非 JSON → 双 null。 */
+export function extractOpenAiEvent(data: string): { content: string | null; reasoning: string | null } {
   if (data === '[DONE]') {
-    return null;
+    return { content: null, reasoning: null };
   }
   try {
     const parsed = JSON.parse(data) as {
-      choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+      choices?: Array<{
+        delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+        message?: { content?: string };
+      }>;
     };
-    const delta = parsed.choices?.[0]?.delta?.content;
-    if (typeof delta === 'string') {
-      return delta;
+    const choice = parsed.choices?.[0];
+    const delta = choice?.delta;
+    let content: string | null = null;
+    if (typeof delta?.content === 'string') {
+      content = delta.content;
+    } else if (typeof choice?.message?.content === 'string') {
+      // 部分 OpenAI 兼容服务对短回答直接回 message 形态，兜底取用（一次性增量）
+      content = choice.message.content;
     }
-    // 部分 OpenAI 兼容服务对短回答直接回 message 形态，兜底取用（一次性增量）
-    const message = parsed.choices?.[0]?.message?.content;
-    return typeof message === 'string' ? message : null;
+    let reasoning: string | null = null;
+    if (typeof delta?.reasoning_content === 'string') {
+      reasoning = delta.reasoning_content;
+    } else if (typeof delta?.reasoning === 'string') {
+      reasoning = delta.reasoning;
+    }
+    return { content, reasoning };
   } catch {
-    return null;
+    return { content: null, reasoning: null };
   }
 }
 
@@ -155,6 +171,16 @@ export class OpenAICompatProvider implements AiProvider {
         throw fail('E_AI_REQUEST_FAILED', 'AI 服务返回了空响应体');
       }
       let buffer = '';
+      const consume = (data: string): void => {
+        const evt = extractOpenAiEvent(data);
+        if (evt.reasoning !== null && evt.reasoning !== '') {
+          req.onReasoning?.(evt.reasoning);
+        }
+        if (evt.content !== null && evt.content !== '') {
+          acc.text += evt.content;
+          req.onDelta?.(evt.content);
+        }
+      };
       // undici/Node 18 fetch body 为 async iterable（DOM 类型不可迭代，经 unknown 中转）；
       // 逐 chunk 解码 + 跨 chunk 半帧缓冲
       for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
@@ -162,21 +188,13 @@ export class OpenAICompatProvider implements AiProvider {
         const { events, rest } = parseSseFrame(buffer);
         buffer = rest;
         for (const data of events) {
-          const delta = extractOpenAiDelta(data);
-          if (delta !== null && delta !== '') {
-            acc.text += delta;
-            req.onDelta?.(delta);
-          }
+          consume(data);
         }
       }
       // flush 残余（部分服务不带 [DONE] 直接关流，尾帧可能缺空行结尾）
       const { events } = parseSseFrame(`${buffer}\n\n`);
       for (const data of events) {
-        const delta = extractOpenAiDelta(data);
-        if (delta !== null && delta !== '') {
-          acc.text += delta;
-          req.onDelta?.(delta);
-        }
+        consume(data);
       }
       return acc.text;
     } catch (err) {

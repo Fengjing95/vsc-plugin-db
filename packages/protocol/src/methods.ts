@@ -66,6 +66,8 @@ export const RpcEvents = {
   consoleActivated: 'evt:console.activated',
   /** @since M9-AI：AI 解释流式推送（ai=null 表示该 Console 的 AI 解释已清除） */
   consoleAi: 'evt:console.ai',
+  /** @since M9-AI 实机反馈：编辑器内「✨ 修复建议」入口 → Webview 直接打开修复 Modal */
+  consoleFixRequest: 'evt:console.fixRequest',
 } as const;
 
 /** RPC 层错误码：复用 DriverErrorCode + AiErrorCode（D-24 与驱动码并列），仅另加 E_UNKNOWN_METHOD / E_STATE_LOST */
@@ -1019,6 +1021,13 @@ export const ConsoleAiEventSchema = z.object({
   ai: ConsoleAiSchema.nullable(),
 });
 export type ConsoleAiEvent = z.infer<typeof ConsoleAiEventSchema>;
+
+/** evt:console.fixRequest 负载（M9-AI 编辑器内修复入口）：Webview 打开修复 Modal 走 ai.fixError */
+export const ConsoleFixRequestEventSchema = z.object({
+  consoleId: z.string(),
+  seq: z.number().int().min(1),
+});
+export type ConsoleFixRequestEvent = z.infer<typeof ConsoleFixRequestEventSchema>;
 
 // ── ai.*（M9-AI AI 辅助，概要 §5.12 / D-24 @since v0.4.x）────────────────────
 // 设置读写与错误修复走 RPC；生成与解释走编辑器 Host 命令（不经 RPC，解释经 evt:console.ai 推送）。

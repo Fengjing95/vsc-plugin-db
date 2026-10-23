@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { AiFixErrorResult, ConsoleRunItem } from '@db-explorer/protocol';
+import { useEffect } from 'react';
+import type { ConsoleRunItem } from '@db-explorer/protocol';
 import { Button } from '../components/ui/button';
 import {
   isExplainResultSet,
@@ -11,7 +11,7 @@ import {
 } from '../lib/consoleView';
 import { parseAiMarkdown } from '../lib/aiMarkdown';
 import { rpcErrorText } from '../lib/errors';
-import { RpcError, subscribeEvents } from '../rpc/client';
+import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
 import { ConsoleGrid } from './console/ConsoleGrid';
@@ -85,22 +85,15 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const rerun = useConsoleStore((s) => s.rerun);
   const exportItem = useConsoleStore((s) => s.exportItem);
   const exporting = useConsoleStore((s) => s.exporting);
+  const fixModal = useConsoleStore((s) => s.fixModal);
+  const openFix = useConsoleStore((s) => s.openFix);
+  const applyFix = useConsoleStore((s) => s.applyFix);
+  const dismissFix = useConsoleStore((s) => s.dismissFix);
   const retryExplain = useConsoleStore((s) => s.retryExplain);
   const openAiSettings = useConsoleStore((s) => s.openAiSettings);
-  const showToast = useConsoleStore((s) => s.showToast);
   const closePanel = useConsoleStore((s) => s.closePanel);
   const dismissToast = useConsoleStore((s) => s.dismissToast);
   const toast = useConsoleStore((s) => s.toast);
-
-  // M9-AI 修复 Modal 状态（交互稿 §15.4：loading → diff 确认 → apply；错误行内呈现）
-  const [fixState, setFixState] = useState<{
-    seq: number;
-    loading: boolean;
-    error: string;
-    errorCode?: string;
-    result: AiFixErrorResult | null;
-  } | null>(null);
-  const [applying, setApplying] = useState(false);
 
   useEffect(() => {
     void useConsoleStore.getState().bootstrap(consoleId);
@@ -125,34 +118,6 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const active = tabs.find((t) => t.id === activeTab) ?? tabs[0] ?? null;
   const activeItem = active?.kind === 'result' ? active.item : undefined;
   const activeResultSet = activeItem?.resultSet;
-
-  const openFix = async (seq: number): Promise<void> => {
-    setFixState({ seq, loading: true, error: '', result: null });
-    try {
-      const result = await useConsoleStore.getState().fixError(seq);
-      setFixState({ seq, loading: false, error: '', result });
-    } catch (err) {
-      const text = err instanceof RpcError ? rpcErrorText(err) : err instanceof Error ? err.message : String(err);
-      setFixState({ seq, loading: false, error: text, errorCode: err instanceof RpcError ? err.code : undefined, result: null });
-    }
-  };
-
-  const applyFix = async (mode: 'replace' | 'insert'): Promise<void> => {
-    if (!fixState?.result) {
-      return;
-    }
-    setApplying(true);
-    try {
-      await useConsoleStore.getState().applyFix(fixState.result.fixId, mode);
-      showToast({ kind: 'info', text: '已应用到编辑器（不会自动执行）' });
-      setFixState(null);
-    } catch (err) {
-      const text = err instanceof RpcError ? rpcErrorText(err) : err instanceof Error ? err.message : String(err);
-      setFixState({ ...fixState, loading: false, error: text });
-    } finally {
-      setApplying(false);
-    }
-  };
 
   const messageItems: ConsoleRunItem[] = run ? run.items.filter((i) => !i.resultSet) : [];
 
@@ -359,16 +324,16 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         </div>
       )}
 
-      {/* M9-AI 修复建议 Modal（§15.4）：diff 确认后替换/插入，不自动执行 */}
+      {/* M9-AI 修复建议 Modal（§15.4）：diff 确认后替换/插入，不自动执行；store 驱动（支持编辑器入口事件） */}
       <AiFixModal
-        loading={fixState?.loading ?? false}
-        error={fixState?.error ?? ''}
-        errorCode={fixState?.errorCode}
-        result={fixState?.result ?? null}
-        applying={applying}
+        loading={fixModal.loading}
+        error={fixModal.error}
+        errorCode={fixModal.errorCode}
+        result={fixModal.result}
+        applying={fixModal.applying}
         onApply={(mode) => void applyFix(mode)}
         onOpenSettings={() => void openAiSettings()}
-        onClose={() => setFixState(null)}
+        onClose={dismissFix}
       />
 
       {toast && (

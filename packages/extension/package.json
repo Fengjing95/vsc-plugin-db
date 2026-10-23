@@ -290,6 +290,11 @@
         "command": "dbExplorer.ai.explainSql",
         "title": "AI 解释 SQL",
         "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.ai.fixErrorAt",
+        "title": "AI 修复建议（CodeLens 入口）",
+        "category": "数据库"
       }
     ],
     "menus": {

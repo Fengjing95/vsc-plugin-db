@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OpenAICompatProvider, extractOpenAiDelta, joinUrl, parseSseFrame } from './aiProvider';
+import { OpenAICompatProvider, extractOpenAiEvent, joinUrl, parseSseFrame } from './aiProvider';
 
 describe('parseSseFrame', () => {
   it('单帧解析（data: 前缀）', () => {
@@ -31,22 +31,41 @@ describe('parseSseFrame', () => {
   });
 });
 
-describe('extractOpenAiDelta', () => {
+describe('extractOpenAiEvent', () => {
   it('choices[0].delta.content', () => {
-    expect(extractOpenAiDelta('{"choices":[{"delta":{"content":"Hi"}}]}')).toBe('Hi');
+    expect(extractOpenAiEvent('{"choices":[{"delta":{"content":"Hi"}}]}')).toEqual({
+      content: 'Hi',
+      reasoning: null,
+    });
   });
 
-  it('[DONE] 返回 null', () => {
-    expect(extractOpenAiDelta('[DONE]')).toBeNull();
+  it('reasoning_content / reasoning 双字段取推理过程', () => {
+    expect(
+      extractOpenAiEvent('{"choices":[{"delta":{"reasoning_content":"思考中"}}]}'),
+    ).toEqual({ content: null, reasoning: '思考中' });
+    expect(extractOpenAiEvent('{"choices":[{"delta":{"reasoning":"thinking"}}]}')).toEqual({
+      content: null,
+      reasoning: 'thinking',
+    });
   });
 
-  it('空 delta / 非 JSON 返回 null', () => {
-    expect(extractOpenAiDelta('{"choices":[{"delta":{}}]}')).toBeNull();
-    expect(extractOpenAiDelta('not-json')).toBeNull();
+  it('[DONE] 双 null', () => {
+    expect(extractOpenAiEvent('[DONE]')).toEqual({ content: null, reasoning: null });
   });
 
-  it('delta.content 为空串按有增量处理（返回空串）', () => {
-    expect(extractOpenAiDelta('{"choices":[{"delta":{"content":""}}]}')).toBe('');
+  it('空 delta / 非 JSON 双 null', () => {
+    expect(extractOpenAiEvent('{"choices":[{"delta":{}}]}')).toEqual({
+      content: null,
+      reasoning: null,
+    });
+    expect(extractOpenAiEvent('not-json')).toEqual({ content: null, reasoning: null });
+  });
+
+  it('message.content 兜底（非流式形态）', () => {
+    expect(extractOpenAiEvent('{"choices":[{"message":{"content":"done"}}]}')).toEqual({
+      content: 'done',
+      reasoning: null,
+    });
   });
 });
 
