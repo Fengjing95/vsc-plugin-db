@@ -504,8 +504,12 @@ export class AiAssistService {
     if (!item || !item.error) {
       throw new DriverError('E_VALIDATION', '该执行项不是错误或已不存在');
     }
-    const uri = this.console.documentUriForConsole(consoleId);
-    if (!uri) {
+    // 定位主路径（实机反馈 #3 日志定因）：有快照时**直接用快照里的 uri 打开文档**——
+    // 反查重建的 Uri.file(fsPath) 与执行时 doc.uri.toString() 在含空格/特殊字符路径上
+    // 存在编码往返差异，uriString 比对会假失配；快照 uri 即执行时文档本身，无此问题
+    const origin = this.console.itemOriginFor(consoleId, seq);
+    const fallbackUri = origin ? undefined : this.console.documentUriForConsole(consoleId);
+    if (!origin && !fallbackUri) {
       throw new DriverError('E_VALIDATION', '该错误无文档来源，无法生成修复建议');
     }
     if (!(await this.settings.isConfigured())) {
@@ -514,10 +518,10 @@ export class AiAssistService {
     if (this.connections.getDriver(info.connId)?.capabilities.supportsSQL === false) {
       throw new DriverError('E_UNSUPPORTED', 'AI 修复仅支持 SQL 数据源');
     }
-    const doc = await vscode.workspace.openTextDocument(uri);
-    // 定位（实机反馈 #3）：主路径 = 执行时的语句范围快照（偏移处原文仍一致即命中），
+    const doc = await vscode.workspace.openTextDocument(
+      origin ? vscode.Uri.parse(origin.uriString) : (fallbackUri as vscode.Uri),
+    );
     // 回退 = 全文语句文本匹配（文档其他位置被编辑导致偏移漂移时仍可命中）
-    const origin = this.console.itemOriginFor(consoleId, seq);
     const stmt = this.locateByOrigin(doc, origin, item.sql) ?? this.locateStatement(doc, item.sql);
     if (!stmt) {
       this.logger.error(
@@ -564,7 +568,7 @@ export class AiAssistService {
       this.fixes.delete(oldest);
     }
     this.fixes.set(fixId, {
-      uriString: uri.toString(),
+      uriString: doc.uri.toString(),
       start: stmt.start,
       end: stmt.end,
       originalSql: stmt.text,
@@ -575,17 +579,16 @@ export class AiAssistService {
   }
 
   /**
-   * 主路径：执行时的语句范围快照。
+   * 主路径：执行时的语句范围快照（doc 即按快照 uri 打开的执行时文档）。
    * 版本一致（文档自执行以来一个字符都没动过）→ 快照必然有效，直通命中——绕开任何
-   * 文本归一化死角（实机反馈三修：「文件没改动」仍报定位失败的根治）；版本不同（确实
-   * 编辑过）→ 再按偏移处文本与原语句（空白归一化）一致校验。
+   * 文本归一化死角；版本不同（确实编辑过）→ 再按偏移处文本与原语句（空白归一化）一致校验。
    */
   private locateByOrigin(
     doc: vscode.TextDocument,
     origin: { uriString: string; start: number; end: number; version: number } | undefined,
     sql: string,
   ): { start: number; end: number; text: string } | undefined {
-    if (!origin || origin.uriString !== doc.uri.toString()) {
+    if (!origin) {
       return undefined;
     }
     if (origin.version === doc.version) {
