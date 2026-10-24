@@ -7,7 +7,7 @@ type WebviewPage =
   | 'tableDesign'
   | 'databaseDesign'
   | 'erDiagram'
-  | 'aiSettings';
+  | 'settings';
 
 declare global {
   interface BootstrapData {

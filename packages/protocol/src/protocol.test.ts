@@ -33,6 +33,12 @@ import {
   RevertChangesParamsSchema,
   RpcRequestSchema,
   RpcResponseSchema,
+  SETTINGS_ALLOWED_KEYS,
+  SETTINGS_KEY_TYPES,
+  SettingsGetResultSchema,
+  SettingsHubActionParamsSchema,
+  SettingsOpenInVscodeParamsSchema,
+  SettingsUpdateParamsSchema,
 } from './index';
 
 describe('RPC 帧校验', () => {
@@ -311,6 +317,33 @@ describe('方法参数校验', () => {
 
   it('协议版本常量为 1', () => {
     expect(RPC_PROTOCOL_VERSION).toBe(1);
+  });
+});
+
+describe('settings.* 方法校验（设置中心）', () => {
+  it('settings.get：返回版本与配置值映射', () => {
+    const parsed = SettingsGetResultSchema.parse({ version: '0.4.0', values: { 'dbExplorer.query.maxRows': 500 } });
+    expect(parsed.version).toBe('0.4.0');
+    expect(parsed.values['dbExplorer.query.maxRows']).toBe(500);
+  });
+
+  it('settings.update：key 只接受白名单内配置键', () => {
+    expect(() => SettingsUpdateParamsSchema.parse({ key: 'dbExplorer.query.maxRows', value: 500 })).not.toThrow();
+    expect(() => SettingsUpdateParamsSchema.parse({ key: 'editor.fontSize', value: 14 })).toThrow();
+    expect(() => SettingsUpdateParamsSchema.parse({ key: 'dbExplorer.ai.endpoint', value: 'x' })).toThrow();
+  });
+
+  it('settings.openInVscodeSettings / hubAction：key 与 action 均为枚举', () => {
+    expect(SettingsOpenInVscodeParamsSchema.parse({ key: 'dbExplorer.export.defaultFormat' }).key).toBe(
+      'dbExplorer.export.defaultFormat',
+    );
+    expect(() => SettingsOpenInVscodeParamsSchema.parse({ key: 'other.key' })).toThrow();
+    expect(SettingsHubActionParamsSchema.parse({ action: 'openLog' }).action).toBe('openLog');
+    expect(() => SettingsHubActionParamsSchema.parse({ action: 'deleteAll' })).toThrow();
+  });
+
+  it('白名单键的类型清单完整对齐', () => {
+    expect(Object.keys(SETTINGS_KEY_TYPES)).toEqual([...SETTINGS_ALLOWED_KEYS]);
   });
 });
 

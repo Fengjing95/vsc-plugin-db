@@ -48,6 +48,8 @@ export interface AppServices {
   er: import('./services/erService').ErService;
   /** M9-AI AI 辅助（概要 §5.12 / D-24）：生成（NL→SQL）/ 解释 / 错误修复三能力 + 设置守卫 */
   ai: import('./services/aiAssistService').AiAssistService;
+  /** 设置中心（交互稿 §16）：打开总设置面板（深链分类） */
+  openSettings: (category?: 'ai' | 'queryExport' | 'about') => void;
 }
 
 function copy(text: string, hint: string): void {
@@ -72,10 +74,12 @@ export function registerCommands(
       services.logger.show();
     }),
 
-    // M9-AI（D-24）：设置页 / 生成（CodeLens 传 [uri, position] 语句前插入；快捷键光标处）/
-    // 解释（活动编辑器选区或光标语句 → Console「AI 解释」Tab 流式）
+    // 设置中心（交互稿 §16）：总入口 + AI 分类深链（命令面板「AI 设置」仍可达）
+    vscode.commands.registerCommand('dbExplorer.settings', () => {
+      services.openSettings();
+    }),
     vscode.commands.registerCommand('dbExplorer.ai.settings', () => {
-      services.ai.openSettings();
+      services.openSettings('ai');
     }),
     vscode.commands.registerCommand('dbExplorer.ai.generateSql', (uri?: vscode.Uri, position?: vscode.Position) => {
       void services.ai.generateSql(uri, position);

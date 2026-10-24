@@ -276,10 +276,15 @@
         "icon": "$(graph-scatter)"
       },
       {
+        "command": "dbExplorer.settings",
+        "title": "设置",
+        "category": "数据库",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "dbExplorer.ai.settings",
         "title": "AI 设置",
-        "category": "数据库",
-        "icon": "$(sparkle)"
+        "category": "数据库"
       },
       {
         "command": "dbExplorer.ai.generateSql",
@@ -339,7 +344,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "dbExplorer.ai.settings",
+          "command": "dbExplorer.settings",
           "group": "navigation@2"
         },
         {

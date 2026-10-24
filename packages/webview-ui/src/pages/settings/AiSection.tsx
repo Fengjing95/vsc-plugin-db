@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { AiSettingsResult } from '@db-explorer/protocol';
-import { Button } from '../components/ui/button';
-import { rpcErrorText } from '../lib/errors';
-import { RpcError, request } from '../rpc/client';
+import { Button } from '../../components/ui/button';
+import { rpcErrorText } from '../../lib/errors';
+import { RpcError, request } from '../../rpc/client';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
 
@@ -13,7 +13,7 @@ type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
  * - 测试连接按表单当前值（含未保存的密钥）发最小请求，成功显示模型与耗时
  * - 底部固定隐私说明（表结构将发送给你配置的服务；表数据不会发送）
  */
-export function AiSettingsPage() {
+export function AiSection() {
   const [endpoint, setEndpoint] = useState('');
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -92,8 +92,8 @@ export function AiSettingsPage() {
   const canSubmit = endpoint.trim() !== '' && model.trim() !== '' && !loading;
 
   return (
-    <div className="min-h-screen overflow-auto px-4 py-4">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+    <div className="flex w-full max-w-xl flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-[15px] font-semibold">AI 设置</h2>
           <p className="mt-1 text-[12px] text-muted-foreground">

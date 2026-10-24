@@ -50,6 +50,12 @@ export const RpcMethods = {
   aiOpenSettings: 'ai.openSettings',
   /** 解释 Tab 错误态「重试」：复跑该 Console 最近一次 AI 解释（入参 Host 侧缓存） */
   aiRetryExplain: 'ai.retryExplain',
+  /** @since 设置中心（交互稿 §16）：代理编辑 VSCode settings（key 白名单 fail-closed，
+   *  仅允许 dbExplorer.* 自有配置键）+ VSCode 设置定位 + 关于页动作（枚举分发） */
+  settingsGet: 'settings.get',
+  settingsUpdate: 'settings.update',
+  settingsOpenInVscode: 'settings.openInVscodeSettings',
+  settingsHubAction: 'settings.hubAction',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
 } as const;
@@ -1095,3 +1101,60 @@ export const AiRetryExplainParamsSchema = z.object({
   consoleId: z.string().min(1),
 });
 export type AiRetryExplainParams = z.infer<typeof AiRetryExplainParamsSchema>;
+
+// ── settings.*（设置中心，交互稿 §16）────────────────────────────────────
+// 代理编辑 VSCode settings：读 getConfiguration / 写 update（User 作用域），与 VSCode
+// 设置双向同步、不另立存储。key 白名单 fail-closed——只允许本插件自有配置键（防 webview
+// 写任意配置）；值按键分型校验。AI 密钥不在此（只进 SecretStorage，走 ai.* RPC）。
+
+export const SETTINGS_ALLOWED_KEYS = [
+  'dbExplorer.query.maxRows',
+  'dbExplorer.query.timeoutMs',
+  'dbExplorer.connection.connectTimeoutMs',
+  'dbExplorer.queries.directory',
+  'dbExplorer.export.defaultFormat',
+  'dbExplorer.export.chunkRows',
+  'dbExplorer.transaction.idleTimeoutMs',
+  'dbExplorer.edit.allowNoPrimaryKey',
+] as const;
+
+export type SettingsAllowedKey = (typeof SETTINGS_ALLOWED_KEYS)[number];
+
+/** 各键的值形状约束（settings.update 校验；number 均须 > 0） */
+export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'string' | 'enum' | 'boolean'> = {
+  'dbExplorer.query.maxRows': 'number',
+  'dbExplorer.query.timeoutMs': 'number',
+  'dbExplorer.connection.connectTimeoutMs': 'number',
+  'dbExplorer.queries.directory': 'string',
+  'dbExplorer.export.defaultFormat': 'enum',
+  'dbExplorer.export.chunkRows': 'number',
+  'dbExplorer.transaction.idleTimeoutMs': 'number',
+  'dbExplorer.edit.allowNoPrimaryKey': 'boolean',
+};
+
+export const SettingsGetResultSchema = z.object({
+  /** 扩展版本（关于页展示；Host 取 context.extension.packageJSON.version） */
+  version: z.string(),
+  values: z.record(z.string(), z.unknown()),
+});
+export type SettingsGetResult = z.infer<typeof SettingsGetResultSchema>;
+
+export const SettingsUpdateParamsSchema = z.object({
+  key: z.enum(SETTINGS_ALLOWED_KEYS),
+  value: z.unknown(),
+});
+export type SettingsUpdateParams = z.infer<typeof SettingsUpdateParamsSchema>;
+
+export const SettingsUpdateResultSchema = z.object({});
+export type SettingsUpdateResult = z.infer<typeof SettingsUpdateResultSchema>;
+
+export const SettingsOpenInVscodeParamsSchema = z.object({
+  key: z.enum(SETTINGS_ALLOWED_KEYS),
+});
+export type SettingsOpenInVscodeParams = z.infer<typeof SettingsOpenInVscodeParamsSchema>;
+
+/** 关于页动作（枚举分发，不接收任意 uri/command——fail-closed） */
+export const SettingsHubActionParamsSchema = z.object({
+  action: z.enum(['openLog', 'openGitHub', 'openIssues', 'openWebsite']),
+});
+export type SettingsHubActionParams = z.infer<typeof SettingsHubActionParamsSchema>;

@@ -27,8 +27,9 @@ import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
-import { openAiSettingsPanel } from './views/aiSettingsPanel';
+import { openSettingsPanel } from './views/settingsPanel';
 import { AiSettingsStore } from './services/aiSettings';
+import { SettingsHub } from './services/settingsHub';
 import { AiAssistService } from './services/aiAssistService';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
@@ -141,10 +142,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 元数据自省经缓存（§7.5），不经 DriverHost（无查询语句）
   const erService = new ErService({ connections, cache, logger });
   // M9-AI AI 辅助（概要 §5.12 / D-24）：BYOK 设置（endpoint/model 落 settings、key 进
-  // SecretStorage）+ 三能力（生成直插 / 解释流式 Tab / 错误修复 diff 确认）；护栏零改动
+  // SecretStorage）+ 三能力（生成直插 / 解释流式 Tab / 错误修复内联 diff 预览）；护栏零改动
   const aiSettings = new AiSettingsStore(context.secrets, logger);
+  // 设置中心（交互稿 §16）：分类侧栏总面板（AI 辅助 / 查询与导出 / 关于），深链分类
+  const settingsHub = new SettingsHub(context.extension.packageJSON.version as string);
+  const openSettings = (category?: 'ai' | 'queryExport' | 'about'): void =>
+    openSettingsPanel(context, { settings: aiSettings, hub: settingsHub, logger }, category);
   const aiAssist = new AiAssistService(connections, consoleService, aiSettings, logger, () =>
-    openAiSettingsPanel(context, { settings: aiSettings, logger }),
+    openSettings('ai'),
   );
 
   context.subscriptions.push(
@@ -189,6 +194,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         dbddl: dbDdlService,
         er: erService,
         ai: aiAssist,
+        openSettings,
       },
       tree,
     ),

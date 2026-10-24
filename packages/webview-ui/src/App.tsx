@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { ConnectionFormPage } from './pages/ConnectionFormPage';
-import { AiSettingsPage } from './pages/AiSettingsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { DatabaseDesignPage } from './pages/DatabaseDesignPage';
 import { ConsolePage } from './pages/ConsolePage';
 import { ErDiagramPage } from './pages/ErDiagramPage';
@@ -32,9 +32,9 @@ export default function App() {
   } else if (boot.page === 'erDiagram') {
     // ER 图（M8-ER / D-22）：scope 由打开引导决定（all / selection JSON）
     page = <ErDiagramPage />;
-  } else if (boot.page === 'aiSettings') {
-    // AI 设置（M9-AI / D-24）：BYOK 配置单例面板
-    page = <AiSettingsPage />;
+  } else if (boot.page === 'settings') {
+    // 设置中心（交互稿 §16）：分类侧栏 + 内容区（AI 辅助 / 查询与导出 / 关于）
+    page = <SettingsPage />;
   } else if (boot.params.db && boot.params.obj && boot.params.connId) {
     const rowEstimate = boot.params.rowEstimate !== '' ? Number(boot.params.rowEstimate) : undefined;
     page = (
