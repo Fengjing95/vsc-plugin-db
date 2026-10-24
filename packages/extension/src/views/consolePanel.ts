@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import { type DriverHost } from '@db-explorer/core';
+import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ConsoleService } from '../services/consoleService';
-import type { Logger } from '../services/logger';
+import type { AiAssistService } from '../services/aiAssistService';
+import { describeError, type Logger } from '../services/logger';
 
 /**
  * Console 结果视图（M5 试点：底部面板形态，D-02 备选位置）：
@@ -21,6 +23,8 @@ export interface ConsolePanelDeps {
   /** 查询统一入口（LoggingDriverHost，extension 组装注入） */
   host: DriverHost;
   console: ConsoleService;
+  /** M9-AI（D-24）：错误修复建议（ai.fixError / ai.applyFix）与「去配置」引导 */
+  ai?: AiAssistService;
 }
 
 let resultView: vscode.WebviewView | undefined;
@@ -45,6 +49,7 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         const id = (params as { consoleId?: unknown } | undefined)?.consoleId;
         return typeof id === 'string' && id ? id : '';
       };
+      const ai = deps.ai;
       attachRpcHost(view.webview, {
         viewId: CONSOLE_RESULT_VIEW_ID,
         params: {},
@@ -81,6 +86,34 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
             return Promise.resolve({});
           },
         },
+        handlers: ai
+          ? {
+              // C 方案：fixError 生成后 Host 直接进入编辑器内联预览（保留/放弃在编辑器 CodeLens
+              // 与通知上）；webview 仅作触发入口，不渲染 Modal
+              [RpcMethods.aiFixError]: async (raw) => {
+                const p = raw as { consoleId?: string; seq?: number };
+                try {
+                  return await ai.fixError(String(p.consoleId ?? ''), Number(p.seq ?? 0));
+                } catch (err) {
+                  deps.logger.error('ai', `AI 修复建议失败：${describeError(err)}`);
+                  throw err;
+                }
+              },
+              [RpcMethods.aiOpenSettings]: () => {
+                ai.openSettings();
+                return Promise.resolve({});
+              },
+              [RpcMethods.aiRetryExplain]: async (raw) => {
+                const p = raw as { consoleId?: string };
+                try {
+                  return await ai.retryExplain(String(p.consoleId ?? ''));
+                } catch (err) {
+                  deps.logger.error('ai', `AI 解释重试失败：${describeError(err)}`);
+                  throw err;
+                }
+              },
+            }
+          : undefined,
       });
 
       view.onDidDispose(() => {

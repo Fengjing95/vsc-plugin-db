@@ -16,3 +16,5 @@ export * from './services/completionContext';
 export * from './services/tableSpec';
 export * from './services/erModel';
 export * from './services/erLayout';
+export * from './services/aiPrompt';
+export * from './services/aiProvider';

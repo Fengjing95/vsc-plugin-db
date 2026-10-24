@@ -8,9 +8,9 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 
 export const site = {
   name: 'DB Kit',
-  version: 'v0.4.0',
+  version: 'v0.5.0',
   tagline: '在 VSCode 里，搞定数据库的一切',
-  subTagline: '浏览 · 查询 · 编辑 · 导出 —— 六类数据源统一入口，开箱即连、零遥测。',
+  subTagline: '浏览 · 查询 · 编辑 · 导出 —— 六类数据源统一入口，AI 助手自带钥匙、开箱即连、零遥测。',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
@@ -65,7 +65,7 @@ export const matrixFootnote =
 
 export type Feature = { icon: string; title: string; desc: string };
 
-// 五大亮点文案逐字取自 packages/extension/README.md §亮点
+// 六大亮点文案逐字取自 packages/extension/README.md §亮点
 export const features: Feature[] = [
   {
     icon: '📊',
@@ -81,6 +81,11 @@ export const features: Feature[] = [
     icon: '🧱',
     title: '结构管理不写 DDL',
     desc: '表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库。',
+  },
+  {
+    icon: '🤖',
+    title: 'AI 助手，自带钥匙（BYOK）',
+    desc: '自然语言生成 SQL（CodeLens / Alt+\\ 直插编辑器）、选中即解释、报错一键生成修复建议（编辑器内联 diff，确认后才落地）——接入你自己的 OpenAI 兼容服务（DeepSeek / Moonshot / ollama 等均可）；密钥只存系统密钥链，默认只发表结构、不发数据行，AI 产物照常过危险语句拦截。',
   },
   {
     icon: '📤',

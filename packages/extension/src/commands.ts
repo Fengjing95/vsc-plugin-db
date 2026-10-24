@@ -46,6 +46,10 @@ export interface AppServices {
   dbddl: import('./services/dbDdlService').DbDdlService;
   /** M8-ER ER 图（概要 §5.11 / D-22）：关系收集 + 分层布局（er.getGraph）+ 打开引导 */
   er: import('./services/erService').ErService;
+  /** M9-AI AI 辅助（概要 §5.12 / D-24）：生成（NL→SQL）/ 解释 / 错误修复三能力 + 设置守卫 */
+  ai: import('./services/aiAssistService').AiAssistService;
+  /** 设置中心（交互稿 §16）：打开总设置面板（深链分类） */
+  openSettings: (category?: 'ai' | 'queryExport' | 'about') => void;
 }
 
 function copy(text: string, hint: string): void {
@@ -68,6 +72,33 @@ export function registerCommands(
     // 打开日志（M8 优化）：聚焦输出面板 Database Explorer 频道（不自动弹出，仅显式入口）
     vscode.commands.registerCommand('dbExplorer.showLog', () => {
       services.logger.show();
+    }),
+
+    // 设置中心（交互稿 §16）：总入口 + AI 分类深链（命令面板「AI 设置」仍可达）
+    vscode.commands.registerCommand('dbExplorer.settings', () => {
+      services.openSettings();
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.settings', () => {
+      services.openSettings('ai');
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.generateSql', (uri?: vscode.Uri, position?: vscode.Position) => {
+      void services.ai.generateSql(uri, position);
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.explainSql', () => {
+      void services.ai.explainActiveSql();
+    }),
+    // 失败语句行 CodeLens「✨ 修复建议」入口（编辑器内，实机反馈 #4）
+    vscode.commands.registerCommand('dbExplorer.ai.fixErrorAt', (uri?: vscode.Uri, position?: vscode.Position) => {
+      if (uri && position) {
+        void services.ai.fixErrorAt(uri, position);
+      }
+    }),
+    // C 方案内联预览的确认动作（CodeLens「保留更改 / 放弃」+ 通知按钮同源）
+    vscode.commands.registerCommand('dbExplorer.ai.acceptFix', () => {
+      void services.ai.acceptInlineFix();
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.discardFix', () => {
+      void services.ai.discardInlineFix();
     }),
 
     vscode.commands.registerCommand('dbExplorer.newConnection', () => {

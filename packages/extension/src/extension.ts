@@ -27,6 +27,10 @@ import { QueryFilesService } from './services/queryFiles';
 import { GlobalStateFingerprintStore } from './services/sshTunnel';
 import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
+import { openSettingsPanel } from './views/settingsPanel';
+import { AiSettingsStore } from './services/aiSettings';
+import { SettingsHub } from './services/settingsHub';
+import { AiAssistService } from './services/aiAssistService';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -137,6 +141,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // M8-ER ER 图（概要 §5.11 / D-22）：关系收集 + 分层布局（Host 计算）+ 打开引导；
   // 元数据自省经缓存（§7.5），不经 DriverHost（无查询语句）
   const erService = new ErService({ connections, cache, logger });
+  // M9-AI AI 辅助（概要 §5.12 / D-24）：BYOK 设置（endpoint/model 落 settings、key 进
+  // SecretStorage）+ 三能力（生成直插 / 解释流式 Tab / 错误修复内联 diff 预览）；护栏零改动
+  const aiSettings = new AiSettingsStore(context.secrets, logger);
+  // 设置中心（交互稿 §16）：分类侧栏总面板（AI 辅助 / 查询与导出 / 关于），深链分类
+  const settingsHub = new SettingsHub(context.extension.packageJSON.version as string);
+  const openSettings = (category?: 'ai' | 'queryExport' | 'about'): void =>
+    openSettingsPanel(context, { settings: aiSettings, hub: settingsHub, logger }, category);
+  const aiAssist = new AiAssistService(connections, consoleService, aiSettings, logger, () =>
+    openSettings('ai'),
+  );
 
   context.subscriptions.push(
     registry,
@@ -146,10 +160,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeView,
     consoleService,
     executionAnnotations,
-    registerConsoleResultView(context, { connections, logger, host: queryHost, console: consoleService }),
+    registerConsoleResultView(context, {
+      connections,
+      logger,
+      host: queryHost,
+      console: consoleService,
+      ai: aiAssist,
+    }),
     registerConsoleCompletion(consoleService),
-    // SQL CodeLens「▶ 执行」：每条语句上方执行动作（与 Ctrl+Enter 同一执行链，M8 优化）
-    registerSqlCodeLens(),
+    // SQL CodeLens「▶ 执行」+「✨ 生成 SQL」（光标跟随）+「✨ 修复建议」（失败语句）+「保留/放弃」（内联预览）
+    registerSqlCodeLens(executionAnnotations, aiAssist),
     store.onDidChange(() => tree.refresh()),
     // 连接状态变化（建连/断开）→ 树刷新连接节点徽标（概要 §8.1）
     connections.onDidChangeStatus(() => tree.refresh()),
@@ -173,6 +193,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ddl: ddlService,
         dbddl: dbDdlService,
         er: erService,
+        ai: aiAssist,
+        openSettings,
       },
       tree,
     ),

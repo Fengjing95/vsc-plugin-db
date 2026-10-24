@@ -1,15 +1,71 @@
 import { useEffect } from 'react';
+import type { ConsoleRunItem } from '@db-explorer/protocol';
 import { Button } from '../components/ui/button';
-import { messageLines, resultStatusLine, runStatusText, isExplainResultSet, explainIndentLevels } from '../lib/consoleView';
+import {
+  isExplainResultSet,
+  explainIndentLevels,
+  oneLineSql,
+  resultStatusLine,
+  runItemSummary,
+  runStatusText,
+} from '../lib/consoleView';
+import { parseAiMarkdown } from '../lib/aiMarkdown';
+import { rpcErrorText } from '../lib/errors';
 import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
 import { ConsoleGrid } from './console/ConsoleGrid';
 
+/** AI 解释 Tab 内容（交互稿 §15.3）：Markdown 流式渲染 + 错误态（重试 / 去配置） */
+function AiMarkdownView({ content }: { content: string }) {
+  const blocks = parseAiMarkdown(content);
+  return (
+    <div className="text-[13px] leading-6">
+      {blocks.map((block, i) => {
+        if (block.type === 'heading') {
+          return (
+            <div key={i} className={`mt-3 font-semibold first:mt-0 ${block.level === 1 ? 'text-[14px]' : 'text-[13px]'}`}>
+              {block.inlines.map((seg, k) => (seg.bold ? <strong key={k}>{seg.text}</strong> : <span key={k}>{seg.text}</span>))}
+            </div>
+          );
+        }
+        if (block.type === 'code') {
+          return (
+            <pre key={i} className="my-2 overflow-auto rounded-sm bg-input px-2 py-1 font-mono text-[12px] leading-5 whitespace-pre-wrap break-all">
+              {block.text}
+            </pre>
+          );
+        }
+        if (block.type === 'list') {
+          const Tag = block.ordered ? 'ol' : 'ul';
+          return (
+            <Tag key={i} className={`my-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+              {block.items.map((item, k) => (
+                <li key={k}>
+                  {item.map((seg, s) =>
+                    seg.bold ? <strong key={s}>{seg.text}</strong> : seg.code ? <code key={s} className="rounded-sm bg-input px-1">{seg.text}</code> : <span key={s}>{seg.text}</span>,
+                  )}
+                </li>
+              ))}
+            </Tag>
+          );
+        }
+        return (
+          <div key={i} className="my-1">
+            {block.inlines.map((seg, s) =>
+              seg.bold ? <strong key={s}>{seg.text}</strong> : seg.code ? <code key={s} className="rounded-sm bg-input px-1">{seg.text}</code> : <span key={s}>{seg.text}</span>,
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * SQL Console 结果面板（交互稿 §7.3/§7.4）：
- * [结果 1][结果 2][消息] … [导出][关闭]；顶部危险横幅；底部状态行 + truncated 黄字。
- * 数据流：console.getState 引导 → evt:console.updated/running/banner 增量推送。
+ * [结果 1][结果 2][消息][AI 解释] … [导出][关闭]；顶部危险横幅；底部状态行 + truncated 黄字。
+ * 数据流：console.getState 引导 → evt:console.updated/running/banner/ai 增量推送。
  */
 export function ConsolePage({ consoleId }: { consoleId: string }) {
   const phase = useConsoleStore((s) => s.phase);
@@ -20,6 +76,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const run = useConsoleStore((s) => s.run);
   const banner = useConsoleStore((s) => s.banner);
   const running = useConsoleStore((s) => s.running);
+  const ai = useConsoleStore((s) => s.ai);
   const activeTab = useConsoleStore((s) => s.activeTab);
   const setActiveTab = useConsoleStore((s) => s.setActiveTab);
   const resolveBanner = useConsoleStore((s) => s.resolveBanner);
@@ -27,6 +84,9 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const rerun = useConsoleStore((s) => s.rerun);
   const exportItem = useConsoleStore((s) => s.exportItem);
   const exporting = useConsoleStore((s) => s.exporting);
+  const openFix = useConsoleStore((s) => s.openFix);
+  const retryExplain = useConsoleStore((s) => s.retryExplain);
+  const openAiSettings = useConsoleStore((s) => s.openAiSettings);
   const closePanel = useConsoleStore((s) => s.closePanel);
   const dismissToast = useConsoleStore((s) => s.dismissToast);
   const toast = useConsoleStore((s) => s.toast);
@@ -50,10 +110,12 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
     );
   }
 
-  const tabs = deriveTabs(run);
+  const tabs = deriveTabs(run, ai);
   const active = tabs.find((t) => t.id === activeTab) ?? tabs[0] ?? null;
   const activeItem = active?.kind === 'result' ? active.item : undefined;
   const activeResultSet = activeItem?.resultSet;
+
+  const messageItems: ConsoleRunItem[] = run ? run.items.filter((i) => !i.resultSet) : [];
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -148,9 +210,38 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         </button>
       </div>
 
-      {/* 内容区：结果网格 / 消息 Tab */}
+      {/* 内容区：结果网格 / 消息 Tab / AI 解释 Tab */}
       {/* D-13：EXPLAIN 结果按 id 列推导层级，首列树形缩进（其余形状退化为普通表格） */}
-      {activeResultSet ? (
+      {active?.kind === 'ai' && ai ? (
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+          {ai.status === 'error' ? (
+            <div className="flex flex-col gap-2" role="alert">
+              <div className="rounded-sm border border-destructive/40 px-3 py-2 text-[12px] text-destructive">
+                {rpcErrorText({ code: ai.errorCode, message: ai.errorMessage ?? '' }) || 'AI 解释失败'}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => void retryExplain()}>
+                  重试
+                </Button>
+                {(ai.errorCode === 'E_AI_NOT_CONFIGURED' || ai.errorCode === undefined) && (
+                  <Button variant="secondary" onClick={() => void openAiSettings()}>
+                    去配置
+                  </Button>
+                )}
+              </div>
+              {ai.content && <AiMarkdownView content={ai.content} />}
+            </div>
+          ) : (
+            <>
+              {ai.status === 'running' && <div className="mb-2 text-[12px] text-muted-foreground">AI 正在解释…</div>}
+              <AiMarkdownView content={ai.content} />
+              {ai.status === 'done' && (
+                <div className="mt-3 text-[11px] text-muted-foreground">由 AI 生成，仅供参考</div>
+              )}
+            </>
+          )}
+        </div>
+      ) : activeResultSet ? (
         <ConsoleGrid
           resultSet={activeResultSet}
           planLevels={
@@ -167,11 +258,33 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </div>
           ) : (
             <div className="font-mono whitespace-pre-wrap break-all text-panel-foreground">
-              {messageLines(run).map((line, i) => (
-                <div key={i} className={line.startsWith('  ⚠') ? 'text-warning' : ''}>
-                  {line}
+              {messageItems.map((item) => (
+                <div key={item.seq} className="mb-2">
+                  <div>
+                    [{item.seq}] {oneLineSql(item.sql)}
+                  </div>
+                  <div className={`pl-4 ${item.error ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    → {runItemSummary(item)}
+                  </div>
+                  {(item.messages ?? []).map((w, wi) => (
+                    <div key={wi} className="pl-4 text-warning">
+                      ⚠ {w}
+                    </div>
+                  ))}
+                  {/* M9-AI（§15.4）：修复建议仅对「有文档来源的执行」的错误 item 显示 */}
+                  {item.error && run?.documentBound && (
+                    <button
+                      type="button"
+                      className="ml-4 mt-1 rounded-sm border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => void openFix(item.seq)}
+                    >
+                      ✨ 修复建议
+                    </button>
+                  )}
                 </div>
               ))}
+              {run.status === 'canceled' && <div>⊘ 已取消</div>}
+              {run.status === 'running' && <div className="text-muted-foreground">执行中…</div>}
             </div>
           )}
         </div>

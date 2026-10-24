@@ -1,10 +1,12 @@
 import type {
+  ConsoleAi,
   ConsoleBanner,
   ConsoleRun,
   ConsoleStateResult,
 } from '@db-explorer/protocol';
 import {
   ConsoleActivatedEventSchema,
+  ConsoleAiEventSchema,
   ConsoleBannerEventSchema,
   ConsoleRunningEventSchema,
   ConsoleStateResultSchema,
@@ -13,8 +15,9 @@ import {
   type RpcEvent,
 } from '@db-explorer/protocol';
 import { create } from 'zustand';
-import { request } from '../rpc/client';
+import { request, RpcError } from '../rpc/client';
 import { deriveTabs } from '../lib/consoleView';
+import { rpcErrorText } from '../lib/errors';
 
 /**
  * Console 结果面板状态（交互稿 §7.3/§7.4）：
@@ -40,6 +43,8 @@ interface ConsoleStoreState {
   run: ConsoleRun | null;
   banner: ConsoleBanner | null;
   running: { runId: string; total: number } | null;
+  /** M9-AI：最近一次 AI 解释（交互稿 §15.3） */
+  ai: ConsoleAi | null;
 
   activeTab: string;
   /** 用户在运行期间手动点过 Tab → 停止自动跟随 */
@@ -55,6 +60,9 @@ interface ConsoleStoreState {
   cancelRun(): Promise<void>;
   rerun(sql: string): Promise<void>;
   exportItem(seq: number, format: 'csv' | 'json' | 'xlsx'): Promise<void>;
+  openFix(seq: number): Promise<void>;
+  retryExplain(): Promise<void>;
+  openAiSettings(): Promise<void>;
   closePanel(): Promise<void>;
   showToast(t: ToastState, autoDismissMs?: number): void;
   dismissToast(): void;
@@ -73,6 +81,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
   run: null,
   banner: null,
   running: null,
+  ai: null,
 
   activeTab: 'msg',
   manualTab: false,
@@ -97,8 +106,11 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
 
   applyState(state: ConsoleStateResult): void {
     const run = state.run ?? null;
-    const tabs = deriveTabs(run);
+    const ai = state.ai ?? null;
+    const tabs = deriveTabs(run, ai);
     const lastResult = [...tabs].reverse().find((t) => t.kind === 'result');
+    // AI 解释进行中（bootstrap 恢复/引导路径）跟随 AI Tab
+    const followAi = ai?.status === 'running';
     set({
       // 底部面板单例视图：consoleId 以 Host 解析结果为准（引导传空串时在此回填）
       consoleId: state.consoleId || get().consoleId,
@@ -108,7 +120,8 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       banner: state.banner ?? null,
       run,
       running: state.running ?? null,
-      activeTab: run ? (lastResult ? lastResult.id : 'msg') : get().activeTab,
+      ai,
+          activeTab: followAi ? 'ai' : run ? (lastResult ? lastResult.id : 'msg') : get().activeTab,
       manualTab: false,
     });
   },
@@ -150,6 +163,17 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       if (parsed.success && parsed.data.consoleId === get().consoleId) {
         set({ banner: parsed.data.banner });
       }
+      return;
+    }
+    if (evt.event === RpcEvents.consoleAi) {
+      const parsed = ConsoleAiEventSchema.safeParse(evt.payload);
+      if (!parsed.success || parsed.data.consoleId !== get().consoleId) {
+        return; // 其它 Console 的推送
+      }
+      const ai = parsed.data.ai;
+      // 解释开始/进行中自动跟随 AI Tab（用户手动切 Tab 后不抢）
+      const followAi = ai !== null && ai.status === 'running' && !get().manualTab;
+      set({ ai, activeTab: followAi ? 'ai' : get().activeTab });
       return;
     }
     if (evt.event === RpcEvents.consoleRunning) {
@@ -216,6 +240,42 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       get().showToast({ kind: 'error', text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
     } finally {
       set({ exporting: false });
+    }
+  },
+
+  /** M9-AI（C 方案）：消息 Tab「✨ 修复建议」——触发 Host 生成并进入编辑器内联预览；
+   *  保留/放弃确认在编辑器 CodeLens 与通知上，webview 不渲染 Modal */
+  async openFix(seq: number): Promise<void> {
+    try {
+      const { consoleId } = get();
+      await request('ai.fixError', { consoleId, seq }, 120_000);
+      get().showToast({ kind: 'info', text: '已生成修复建议，请在编辑器中选择保留或放弃' }, 6000);
+    } catch (err) {
+      get().showToast({
+        kind: 'error',
+        text: `修复建议失败：${rpcErrorText(
+          err instanceof RpcError ? err : { message: err instanceof Error ? err.message : String(err) },
+        )}`,
+      });
+    }
+  },
+
+  /** M9-AI：解释 Tab 错误态「重试」——复跑该 Console 最近一次 AI 解释（流式经 evt 推送） */
+  async retryExplain() {
+    try {
+      await request('ai.retryExplain', { consoleId: get().consoleId }, 0);
+    } catch (err) {
+      // 失败由 evt:console.ai 的 error 态呈现（Host 侧推送）；此处仅兜底 Toast
+      get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  /** M9-AI：webview 侧「去配置」引导 → 打开 AI 设置页 */
+  async openAiSettings() {
+    try {
+      await request('ai.openSettings', {});
+    } catch {
+      // 引导失败静默（面板可能尚未就绪）
     }
   },
 

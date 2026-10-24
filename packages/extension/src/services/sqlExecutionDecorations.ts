@@ -24,6 +24,10 @@ export interface ExecutionAnnotations {
   clear(uri: vscode.Uri): void;
   /** 追加一条语句结果并渲染（文档在执行期间被编辑过 → 版本不符丢弃） */
   report(uri: vscode.Uri, docVersion: number, outcome: StatementOutcome): void;
+  /** M9-AI：该文档当前一轮的失败语句结果（编辑器内「✨ 修复建议」CodeLens 数据源） */
+  failedOutcomes(uri: vscode.Uri): StatementOutcome[];
+  /** 注记变化（report/clear）——CodeLens 据此重渲染（P-34：箭头包装保 this） */
+  readonly onDidChange: vscode.Event<void>;
 }
 
 const GREEN = '#3fb950';
@@ -65,6 +69,7 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
 
   /** uri → 当前一轮各语句的结果（新一轮 clear 后重建；文档编辑即丢弃） */
   const entries = new Map<string, StatementOutcome[]>();
+  const changeEmitter = new vscode.EventEmitter<void>();
 
   const findDoc = (uri: vscode.Uri): vscode.TextDocument | undefined =>
     vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
@@ -117,6 +122,7 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
       return;
     }
     apply(uri); // entries 已空 → 全部装饰清零
+    changeEmitter.fire();
   };
 
   const report = (uri: vscode.Uri, docVersion: number, outcome: StatementOutcome): void => {
@@ -129,6 +135,7 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
     list.push(outcome);
     entries.set(uri.toString(), list);
     apply(uri);
+    changeEmitter.fire();
   };
 
   const disposables = [
@@ -154,10 +161,14 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
   return {
     clear,
     report,
+    failedOutcomes: (uri: vscode.Uri): StatementOutcome[] =>
+      (entries.get(uri.toString()) ?? []).filter((o) => !o.ok && o.message !== '已取消'),
+    onDidChange: (fn) => changeEmitter.event(fn),
     dispose: () => {
       for (const d of disposables) {
         d.dispose();
       }
+      changeEmitter.dispose();
       entries.clear();
     },
   };
