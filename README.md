@@ -7,6 +7,12 @@
 
 在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖「看结构 → 查数据 → 改数据 → 写 SQL」的完整链路。支持 MySQL、PostgreSQL、SQL Server、SQLite、MongoDB、Redis 六类外部数据源 + 内置 Mock 演示源，单文件 VSIX 分发、零原生依赖。
 
+## 架构总览
+
+![DB Kit 架构总览：表现层 → protocol 契约 → Extension Host 服务层 → 可插拔驱动层](docs/images/architecture.svg)
+
+表现层（原生视图 + Webview）经 `protocol` 的 zod RPC 契约调用 Extension Host 服务层，服务层统一经 `DriverHost` 中转（日志 / 超时 / 取消）访问可插拔驱动——驱动按「内置 / 配置扩展 / 扩展点」三级接入，内置清单之外可继续扩展（图中「…」），契约由 `driver-conformance` 套件全量把守。图源 [architecture.excalidraw](docs/images/architecture.excalidraw)（Excalidraw 可编辑），分层详设见[概要设计 §3](docs/概要设计.md)。
+
 ## 功能总览
 
 | 能力 | MySQL | PostgreSQL | SQL Server | SQLite | MongoDB | Redis | Mock（内置） |

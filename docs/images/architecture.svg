@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1264" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC','Source Han Sans SC',system-ui,sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#1e1e1e" stroke-width="1.6"/></marker></defs>
+<rect width="1600" height="1264" fill="#ffffff"/>
+<rect x="40" y="40" width="1480" height="190" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="40" y="400" width="1480" height="270" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="40" y="810" width="1480" height="200" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="40" y="1080" width="1480" height="130" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="70" y="110" width="310" height="64" rx="10" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="410" y="110" width="340" height="64" rx="10" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="780" y="110" width="340" height="64" rx="10" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1150" y="110" width="340" height="64" rx="10" fill="#a5d8ff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="800" y="290" width="660" height="64" rx="10" fill="#ffec99" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="70" y="450" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="430" y="450" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="790" y="450" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1150" y="450" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="70" y="540" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="430" y="540" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="790" y="540" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1150" y="540" width="340" height="64" rx="10" fill="#b2f2bb" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1160" y="718" width="360" height="60" rx="10" fill="#e9ecef" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="70" y="850" width="1420" height="48" rx="10" fill="#ffd8a8" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="70" y="920" width="140" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="220" y="920" width="160" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="390" y="920" width="130" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="530" y="920" width="130" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="670" y="920" width="130" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="810" y="920" width="140" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="960" y="920" width="120" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1090" y="920" width="110" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1210" y="920" width="50" height="52" rx="10" fill="#ffe8cc" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1270" y="920" width="220" height="52" rx="10" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="70" y="1120" width="120" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="200" y="1120" width="150" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="360" y="1120" width="140" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="510" y="1120" width="110" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="630" y="1120" width="110" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="750" y="1120" width="130" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="890" y="1120" width="100" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1000" y="1120" width="130" height="56" rx="10" fill="#d0bfff" stroke="#1e1e1e" stroke-width="2"/>
+<rect x="1160" y="1120" width="160" height="56" rx="10" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="1330" y="1120" width="180" height="56" rx="10" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6"/>
+<polyline points="225,174 225,400" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="580,174 580,400" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="950,174 950,290" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="1320,174 1320,290" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="1130,354 1130,400" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="780,670 780,810" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="780,1010 780,1080" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#ah)"/>
+<polyline points="1340,778 1340,810" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#ah)"/>
+<polyline points="1490,572 1560,572 1560,1100 1350,1100 1350,1120" fill="none" stroke="#1e1e1e" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#ah)"/>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="137.725"><tspan x="225" dy="0">资源树（TreeView）</tspan><tspan x="225" dy="18.75">库 · 表 · 列 · 键 · 索引 懒加载</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="137.725"><tspan x="580" dy="0">SQL Console（原生编辑器）</tspan><tspan x="580" dy="18.75">CodeLens · 行内注记 · 补全</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="137.725"><tspan x="950" dy="0">表格视图 · 结果面板</tspan><tspan x="950" dy="18.75">Webview：React + zustand</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="137.725"><tspan x="1320" dy="0">连接表单 · 设置中心</tspan><tspan x="1320" dy="18.75">Webview：React + Base UI</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="318.01"><tspan x="1130" dy="0">protocol：Webview ↔ Host RPC 消息</tspan><tspan x="1130" dy="17.5">zod schema 单一来源 · 双端运行时校验</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="477.725"><tspan x="240" dy="0">ConnectionManager</tspan><tspan x="240" dy="18.75">连接生命周期 · SecretStorage</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="477.725"><tspan x="600" dy="0">MetadataCache</tspan><tspan x="600" dy="18.75">元数据缓存 · 补全源</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="477.725"><tspan x="960" dy="0">Console 执行链</tspan><tspan x="960" dy="18.75">绑定 · 取消 · USE 拦截</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="477.725"><tspan x="1320" dy="0">DangerGuard</tspan><tspan x="1320" dy="18.75">危险语句分级拦截</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="567.725"><tspan x="240" dy="0">ChangeSetService</tspan><tspan x="240" dy="18.75">变更集权威副本（可恢复）</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="567.725"><tspan x="600" dy="0">SessionManager</tspan><tspan x="600" dy="18.75">交互式事务 · 空闲回滚</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="567.725"><tspan x="960" dy="0">ResultExporter</tspan><tspan x="960" dy="18.75">后台导出任务引擎</tspan></text>
+<text text-anchor="middle" font-size="15" fill="#1e1e1e" y="567.725"><tspan x="1320" dy="0">AI 辅助服务</tspan><tspan x="1320" dy="18.75">生成 · 解释 · 修复建议</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="744.01"><tspan x="1340" dy="0">driver-conformance 契约测试</tspan><tspan x="1340" dy="17.5">CI 实跑 · 全驱动绿基线</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="878.76"><tspan x="780" dy="0">DriverHost：统一日志 · 超时 · 取消 · 错误码映射（进程内，D-05 隔离预案）</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="140" dy="0">MySQL</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="300" dy="0">PostgreSQL</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="455" dy="0">SQL Server</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="595" dy="0">Oracle</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="735" dy="0">SQLite</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="880" dy="0">MongoDB</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="1020" dy="0">Redis</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="1145" dy="0">Mock</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="1235" dy="0">…</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="950.76"><tspan x="1380" dy="0">第三方驱动（扩展点）…</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="130" dy="0">MySQL</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="275" dy="0">PostgreSQL</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="430" dy="0">SQL Server</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="565" dy="0">Oracle</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="685" dy="0">SQLite</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="815" dy="0">MongoDB</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="940" dy="0">Redis</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="1065" dy="0">…（更多数据源）</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="1240" dy="0">SSH / TLS 通道</tspan></text>
+<text text-anchor="middle" font-size="14" fill="#1e1e1e" y="1152.76"><tspan x="1420" dy="0">OpenAI 兼容 AI 服务</tspan></text>
+<text font-size="18" fill="#1e1e1e" y="56"><tspan x="60" dy="18">表现层 · VSCode 桌面端</tspan></text>
+<text font-size="18" fill="#1e1e1e" y="416"><tspan x="60" dy="18">核心服务层 · Extension Host</tspan></text>
+<text font-size="18" fill="#1e1e1e" y="826"><tspan x="60" dy="18">驱动层 · DriverRegistry 三级接入（内置 / 配置扩展 / 扩展点）</tspan></text>
+<text font-size="18" fill="#1e1e1e" y="1096"><tspan x="60" dy="18">数据源 / 外部服务</tspan></text>
+<text font-size="13" fill="#495057" y="248"><tspan x="330" dy="13">命令 / 编辑器 API</tspan></text>
+<text font-size="13" fill="#495057" y="362"><tspan x="1148" dy="13">RPC（zod 校验）</tspan></text>
+<text font-size="13" fill="#495057" y="722"><tspan x="800" dy="13">IDatabaseDriver（apiVersion=1）</tspan></text>
+<text font-size="13" fill="#495057" y="1030"><tspan x="800" dy="13">参数化 SQL / 命令 · 元数据自省</tspan></text>
+<text font-size="13" fill="#868e96" y="1236"><tspan x="40" dy="13">统一值编码 / 错误码契约贯穿全链路（驱动规范 §5/§6） · 架构详设：docs/概要设计.md §3 · 图源：docs/images/architecture.excalidraw</tspan></text>
+</svg>
