@@ -52,9 +52,9 @@ CSV / JSON / XLSX 流式导出转入后台执行：通知中心看进度、随�
 |---|---|
 | <img alt="SQL Console" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/console.png" width="100%"> | <img alt="表结构编辑器" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/schema-editor.png" width="100%"> |
 
-| 库级操作 | 后台导出 |
+| 库级操作 | AI 修复建议 |
 |---|---|
-| <img alt="库级操作" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/database-ddl.png" width="100%"> | <img alt="后台导出" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/export.png" width="100%"> |
+| <img alt="库级操作" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/database-ddl.png" width="100%"> | <img alt="AI 修复建议" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/ai-fix-error.png" width="100%"> |
 
 ## 🗺️ 支持矩阵
 

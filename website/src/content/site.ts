@@ -22,11 +22,9 @@ export const site = {
     docs: `${REPO}/tree/main/docs`,
     /** 在线 Playground：内嵌在首页 Hero 图位（#playground 锚点），浏览器内跑真实 webview 界面 + mock 驱动 */
     playground: '#playground',
-    /**
-     * TODO(上线前)：建好「路线图征集」单一 roadmap issue 后，把此链接替换为该 issue 地址。
-     * 当前用 Issues 列表占位（用户已选定单一 roadmap 策略，三卡共用）。
-     */
-    roadmapIssue: `${REPO}/issues`,
+    /** 带模板直达 issue 表单（模板见 .github/ISSUE_TEMPLATE/）：Coming Soon 卡走需求、页脚「Bug 反馈」走 Bug */
+    newFeatureIssue: `${REPO}/issues/new?template=feature_request.yml`,
+    newBugIssue: `${REPO}/issues/new?template=bug_report.yml`,
   },
 };
 
@@ -118,9 +116,9 @@ export const screenshots: Screenshot[] = [
     desc: '驱动动态表单建库，预览确认后才执行',
   },
   {
-    file: 'export.png',
-    title: '后台导出',
-    desc: '通知中心看进度、随时取消，导完一键定位文件',
+    file: 'ai-fix-error.png',
+    title: 'AI 修复建议',
+    desc: 'SQL 报错一键生成修复建议，编辑器内联 diff 对照、确认后才落地',
   },
 ];
 
@@ -135,7 +133,7 @@ export type ComingItem = { name: string; desc: string; tags?: string[] };
 export const comingSoon: ComingItem[] = [
   {
     name: '国产数据库（信创）',
-    desc: '国产数据库阵营合一张卡，优先级听你的',
+    desc: '三家均已纳入规划、尚未开始适配——呼声越高，排期越早。',
     tags: ['达梦', '人大金仓', 'openGauss'],
   },
 ];

@@ -10,7 +10,8 @@
 | `console.png` | SQL Console（补全 / EXPLAIN 树形结果） | 扩展 README「更多界面」 |
 | `schema-editor.png` | 表结构编辑器（改列 + SQL 预览） | 扩展 README「更多界面」 |
 | `database-ddl.png` | 新建库弹窗（驱动动态表单 + 预览） | 扩展 README「更多界面」 |
-| `export.png` | 后台导出进度（通知中心） | 扩展 README「更多界面」 |
+| `ai-fix-error.png` | AI 修复建议（SQL 报错 + 编辑器内联 diff + 保留/放弃） | 扩展 README「更多界面」 / 官网「界面一览」 |
+| `export.png` | 后台导出进度（通知中心） | （备用，当前两处展示位已换 AI 修复建议） |
 
 建议统一尺寸约 1600×1000、同一主题（深色）。Marketplace 引用走
 `https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/<文件名>`。

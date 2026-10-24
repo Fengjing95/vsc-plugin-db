@@ -1,0 +1,47 @@
+name: 功能需求
+description: 建议 DB Kit 新增或改进某个能力
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提需求！把「想解决什么问题」讲清楚，比「想要什么按钮」更能帮到排期。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 需求描述
+      description: 想要什么能力？当前遇到了什么问题或不便？
+      placeholder: 例如：希望 Oracle 的表结构编辑器支持……
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 什么场景下会用到？现在你用什么方式替代（其他工具 / 手写 SQL）？
+    validations:
+      required: false
+  - type: dropdown
+    id: engine
+    attributes:
+      label: 相关数据源
+      description: 与哪个数据库相关？界面 / 导出等通用能力选「通用（不限数据源）」。
+      multiple: true
+      options:
+        - 通用（不限数据源）
+        - MySQL
+        - PostgreSQL
+        - SQL Server
+        - Oracle
+        - SQLite
+        - MongoDB
+        - Redis
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 截图、草图，或参考工具（DataGrip / Navicat / TablePlus 等）里的对应功能。
+    validations:
+      required: false

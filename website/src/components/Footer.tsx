@@ -18,6 +18,9 @@ export function Footer() {
           <a href={site.urls.issues} target="_blank" rel="noreferrer">
             Issues
           </a>
+          <a href={site.urls.newBugIssue} target="_blank" rel="noreferrer">
+            Bug 反馈
+          </a>
           <a href={`${site.urls.repo}/blob/main/LICENSE`} target="_blank" rel="noreferrer">
             License Apache-2.0
           </a>

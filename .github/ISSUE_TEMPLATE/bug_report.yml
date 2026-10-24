@@ -1,0 +1,62 @@
+name: Bug 反馈
+description: 报告一个可复现的错误或异常行为
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        反馈前请确认：扩展已升级到最新版本，且问题可以复现。
+        ⚠️ 日志与截图请先脱敏——不要包含密码、连接串与真实业务数据。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你期望发生什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从新建连接开始，逐步描述如何复现（涉及的 SQL 请一并提供）。
+      placeholder: |
+        1. 新建 MySQL 连接 …
+        2. 打开表 …
+        3. 双击单元格 …
+        4. 出现报错：…
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: 数据源类型
+      options:
+        - MySQL
+        - PostgreSQL
+        - SQL Server
+        - Oracle
+        - SQLite
+        - MongoDB
+        - Redis
+        - Mock（内置演示数据源）
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境信息
+      description: VSCode 版本（帮助 → 关于）、DB Kit 版本（扩展面板可见）、操作系统。
+      placeholder: |
+        - VSCode：1.9x
+        - DB Kit：v0.5.0
+        - 系统：macOS / Windows / Linux …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: 「输出」面板选择「DB Kit」复制的日志（请先脱敏），或错误截图。
+    validations:
+      required: false

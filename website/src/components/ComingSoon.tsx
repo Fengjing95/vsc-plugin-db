@@ -30,7 +30,7 @@ export function ComingSoon() {
                 ) : null}
                 <a
                   className="coming__link"
-                  href={site.urls.roadmapIssue}
+                  href={site.urls.newFeatureIssue}
                   target="_blank"
                   rel="noreferrer"
                   aria-label={`期待 ${c.name}？去 issue 说一句`}
