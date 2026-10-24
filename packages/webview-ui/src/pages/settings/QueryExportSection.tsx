@@ -6,7 +6,7 @@ import { request } from '../../rpc/client';
 /**
  * 查询与导出分类（设置中心，交互稿 §16）：插件常用 VSCode settings 的代理编辑——
  * 即改即存（onChange 直写 User 作用域配置，与 VSCode 设置双向同步、不另立存储）。
- * 每项附「VSCode 设置」次级链接定位到对应配置项。
+ * 顶部统一入口定位到 VSCode 设置的本扩展区域（逐项定位过于突兀，实机反馈撤除）。
  */
 
 interface NumberField {
@@ -97,6 +97,17 @@ export function QueryExportSection(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 顶部统一入口：定位到 VSCode 设置的本扩展区域（实机反馈：逐项链接突兀） */}
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] text-muted-foreground">以下配置与 VSCode 设置（DB Kit 区域）双向同步。</div>
+        <button
+          type="button"
+          className="shrink-0 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          onClick={() => void request('settings.openInVscodeSettings', {})}
+        >
+          在 VSCode 设置中打开
+        </button>
+      </div>
       {NUMBER_FIELDS.map((f) => (
         <div key={f.key} className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -112,15 +123,6 @@ export function QueryExportSection(): React.JSX.Element {
               className="h-7 w-24 rounded-sm border border-border bg-input px-2 text-right text-[12px] outline-none focus:border-primary"
             />
             {f.unit && <span className="text-[11px] text-muted-foreground">{f.unit}</span>}
-            <button
-              type="button"
-              title="在 VSCode 设置中打开"
-              aria-label={`在 VSCode 设置中打开 ${f.label}`}
-              className="ml-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              onClick={() => void request('settings.openInVscodeSettings', { key: f.key })}
-            >
-              VSCode
-            </button>
           </div>
         </div>
       ))}

@@ -74,9 +74,10 @@ export class SettingsHub {
     return raw;
   }
 
-  /** 定位到 VSCode 设置页的指定配置项（@id 过滤） */
-  async openInVscodeSettings(key: SettingsAllowedKey): Promise<void> {
-    await vscode.commands.executeCommand('workbench.action.openSettings', `@id:${key}`);
+  /** 定位到 VSCode 设置页：缺省打开本扩展的设置区域（@ext），提供 key 时定位到具体配置项（@id） */
+  async openInVscodeSettings(key?: SettingsAllowedKey): Promise<void> {
+    const query = key ? `@id:${key}` : '@ext:db-explorer-dev.db-kit';
+    await vscode.commands.executeCommand('workbench.action.openSettings', query);
   }
 
   /** 关于页动作（枚举分发，不接收任意 uri/command） */

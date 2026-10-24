@@ -4,6 +4,7 @@ import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { AiSettingsStore } from '../services/aiSettings';
 import type { SettingsHub } from '../services/settingsHub';
+
 import type { Logger } from '../services/logger';
 
 /**
@@ -68,7 +69,10 @@ export function openSettingsPanel(
       },
       [RpcMethods.settingsOpenInVscode]: (raw) => {
         const p = raw as { key?: string };
-        return deps.hub.openInVscodeSettings(p.key as never).then(() => ({}));
+        // key 可缺省（缺省 = @ext: 扩展设置区域）
+        return deps.hub
+          .openInVscodeSettings(p.key === undefined ? undefined : (p.key as Parameters<SettingsHub['openInVscodeSettings']>[0]))
+          .then(() => ({}));
       },
       [RpcMethods.settingsHubAction]: (raw) => {
         const p = raw as { action?: 'openLog' | 'openGitHub' | 'openIssues' | 'openWebsite' };

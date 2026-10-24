@@ -1149,7 +1149,8 @@ export const SettingsUpdateResultSchema = z.object({});
 export type SettingsUpdateResult = z.infer<typeof SettingsUpdateResultSchema>;
 
 export const SettingsOpenInVscodeParamsSchema = z.object({
-  key: z.enum(SETTINGS_ALLOWED_KEYS),
+  /** 缺省 = 打开本扩展的设置区域（@ext:publisher.name）；提供 = 定位到具体配置项（@id:） */
+  key: z.enum(SETTINGS_ALLOWED_KEYS).optional(),
 });
 export type SettingsOpenInVscodeParams = z.infer<typeof SettingsOpenInVscodeParamsSchema>;
 
