@@ -1,5 +1,4 @@
 import type {
-  AiFixErrorResult,
   ConsoleAi,
   ConsoleBanner,
   ConsoleRun,
@@ -9,7 +8,6 @@ import {
   ConsoleActivatedEventSchema,
   ConsoleAiEventSchema,
   ConsoleBannerEventSchema,
-  ConsoleFixRequestEventSchema,
   ConsoleRunningEventSchema,
   ConsoleStateResultSchema,
   ConsoleUpdatedEventSchema,
@@ -34,16 +32,6 @@ interface ToastState {
   kind: 'info' | 'error';
 }
 
-/** M9-AI 修复 Modal 状态（交互稿 §15.4；入 store 以支持 evt:console.fixRequest 事件驱动打开） */
-export interface FixModalState {
-  open: boolean;
-  loading: boolean;
-  error: string;
-  errorCode?: string;
-  result: AiFixErrorResult | null;
-  applying: boolean;
-}
-
 interface ConsoleStoreState {
   consoleId: string;
   phase: 'loading' | 'ready' | 'error';
@@ -57,7 +45,6 @@ interface ConsoleStoreState {
   running: { runId: string; total: number } | null;
   /** M9-AI：最近一次 AI 解释（交互稿 §15.3） */
   ai: ConsoleAi | null;
-  fixModal: FixModalState;
 
   activeTab: string;
   /** 用户在运行期间手动点过 Tab → 停止自动跟随 */
@@ -74,8 +61,6 @@ interface ConsoleStoreState {
   rerun(sql: string): Promise<void>;
   exportItem(seq: number, format: 'csv' | 'json' | 'xlsx'): Promise<void>;
   openFix(seq: number): Promise<void>;
-  applyFix(mode: 'replace' | 'insert'): Promise<void>;
-  dismissFix(): void;
   retryExplain(): Promise<void>;
   openAiSettings(): Promise<void>;
   closePanel(): Promise<void>;
@@ -97,7 +82,6 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
   banner: null,
   running: null,
   ai: null,
-  fixModal: { open: false, loading: false, error: '', result: null, applying: false },
 
   activeTab: 'msg',
   manualTab: false,
@@ -137,8 +121,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       run,
       running: state.running ?? null,
       ai,
-      fixModal: { open: false, loading: false, error: '', result: null, applying: false },
-      activeTab: followAi ? 'ai' : run ? (lastResult ? lastResult.id : 'msg') : get().activeTab,
+          activeTab: followAi ? 'ai' : run ? (lastResult ? lastResult.id : 'msg') : get().activeTab,
       manualTab: false,
     });
   },
@@ -179,14 +162,6 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       const parsed = ConsoleBannerEventSchema.safeParse(evt.payload);
       if (parsed.success && parsed.data.consoleId === get().consoleId) {
         set({ banner: parsed.data.banner });
-      }
-      return;
-    }
-    if (evt.event === RpcEvents.consoleFixRequest) {
-      const parsed = ConsoleFixRequestEventSchema.safeParse(evt.payload);
-      // 编辑器内「✨ 修复建议」入口：直接打开修复 Modal（Host 已切换面板跟随）
-      if (parsed.success && parsed.data.consoleId === get().consoleId) {
-        void get().openFix(parsed.data.seq);
       }
       return;
     }
@@ -268,59 +243,19 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     }
   },
 
-  /** M9-AI：消息 Tab「✨ 修复建议」/ 编辑器内入口（evt:console.fixRequest）——打开 Modal 并取建议 */
+  /** M9-AI（C 方案）：消息 Tab「✨ 修复建议」——触发 Host 生成并进入编辑器内联预览；
+   *  保留/放弃确认在编辑器 CodeLens 与通知上，webview 不渲染 Modal */
   async openFix(seq: number): Promise<void> {
-    set({ fixModal: { open: true, loading: true, error: '', result: null, applying: false } });
     try {
       const { consoleId } = get();
-      const result = await request<AiFixErrorResult>('ai.fixError', { consoleId, seq }, 120_000);
-      set({ fixModal: { open: true, loading: false, error: '', result, applying: false } });
+      await request('ai.fixError', { consoleId, seq }, 120_000);
+      get().showToast({ kind: 'info', text: '已生成修复建议，请在编辑器中选择保留或放弃' }, 6000);
     } catch (err) {
-      set({
-        fixModal: {
-          open: true,
-          loading: false,
-          error: rpcErrorText(
-            err instanceof RpcError
-              ? err
-              : { message: err instanceof Error ? err.message : String(err) },
-          ),
-          errorCode: err instanceof RpcError ? err.code : undefined,
-          result: null,
-          applying: false,
-        },
-      });
-    }
-  },
-
-  dismissFix() {
-    set({ fixModal: { open: false, loading: false, error: '', result: null, applying: false } });
-  },
-
-  /** M9-AI：应用修复建议（replace/insert；文档状态失配抛 E_STATE_LOST）——应用即生效 + Host 侧提供「放弃」出口 */
-  async applyFix(mode: 'replace' | 'insert'): Promise<void> {
-    const fixId = get().fixModal.result?.fixId;
-    if (!fixId) {
-      return;
-    }
-    set({ fixModal: { ...get().fixModal, applying: true } });
-    try {
-      await request('ai.applyFix', { fixId, mode }, 30_000);
-      get().showToast({ kind: 'info', text: '已应用到编辑器（不会自动执行，可点通知「放弃」还原）' }, 6000);
-      get().dismissFix();
-    } catch (err) {
-      set({
-        fixModal: {
-          ...get().fixModal,
-          applying: false,
-          error: rpcErrorText(
-            err instanceof RpcError
-              ? err
-              : { message: err instanceof Error ? err.message : String(err) },
-          ),
-          errorCode: err instanceof RpcError ? err.code : undefined,
-          result: get().fixModal.result,
-        },
+      get().showToast({
+        kind: 'error',
+        text: `修复建议失败：${rpcErrorText(
+          err instanceof RpcError ? err : { message: err instanceof Error ? err.message : String(err) },
+        )}`,
       });
     }
   },

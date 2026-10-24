@@ -15,7 +15,6 @@ import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
 import { ConsoleGrid } from './console/ConsoleGrid';
-import { AiFixModal } from './console/AiFixModal';
 
 /** AI 解释 Tab 内容（交互稿 §15.3）：Markdown 流式渲染 + 错误态（重试 / 去配置） */
 function AiMarkdownView({ content }: { content: string }) {
@@ -85,10 +84,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const rerun = useConsoleStore((s) => s.rerun);
   const exportItem = useConsoleStore((s) => s.exportItem);
   const exporting = useConsoleStore((s) => s.exporting);
-  const fixModal = useConsoleStore((s) => s.fixModal);
   const openFix = useConsoleStore((s) => s.openFix);
-  const applyFix = useConsoleStore((s) => s.applyFix);
-  const dismissFix = useConsoleStore((s) => s.dismissFix);
   const retryExplain = useConsoleStore((s) => s.retryExplain);
   const openAiSettings = useConsoleStore((s) => s.openAiSettings);
   const closePanel = useConsoleStore((s) => s.closePanel);
@@ -323,18 +319,6 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
           </Button>
         </div>
       )}
-
-      {/* M9-AI 修复建议 Modal（§15.4）：diff 确认后替换/插入，不自动执行；store 驱动（支持编辑器入口事件） */}
-      <AiFixModal
-        loading={fixModal.loading}
-        error={fixModal.error}
-        errorCode={fixModal.errorCode}
-        result={fixModal.result}
-        applying={fixModal.applying}
-        onApply={(mode) => void applyFix(mode)}
-        onOpenSettings={() => void openAiSettings()}
-        onClose={dismissFix}
-      />
 
       {toast && (
         <div

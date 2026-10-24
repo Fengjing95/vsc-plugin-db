@@ -88,21 +88,14 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
         },
         handlers: ai
           ? {
+              // C 方案：fixError 生成后 Host 直接进入编辑器内联预览（保留/放弃在编辑器 CodeLens
+              // 与通知上）；webview 仅作触发入口，不渲染 Modal
               [RpcMethods.aiFixError]: async (raw) => {
                 const p = raw as { consoleId?: string; seq?: number };
                 try {
                   return await ai.fixError(String(p.consoleId ?? ''), Number(p.seq ?? 0));
                 } catch (err) {
                   deps.logger.error('ai', `AI 修复建议失败：${describeError(err)}`);
-                  throw err;
-                }
-              },
-              [RpcMethods.aiApplyFix]: async (raw) => {
-                const p = raw as { fixId?: string; mode?: 'replace' | 'insert' };
-                try {
-                  return await ai.applyFix(String(p.fixId ?? ''), p.mode === 'insert' ? 'insert' : 'replace');
-                } catch (err) {
-                  deps.logger.error('ai', `AI 修复应用失败：${describeError(err)}`);
                   throw err;
                 }
               },

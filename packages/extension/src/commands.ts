@@ -89,6 +89,13 @@ export function registerCommands(
         void services.ai.fixErrorAt(uri, position);
       }
     }),
+    // C 方案内联预览的确认动作（CodeLens「保留更改 / 放弃」+ 通知按钮同源）
+    vscode.commands.registerCommand('dbExplorer.ai.acceptFix', () => {
+      void services.ai.acceptInlineFix();
+    }),
+    vscode.commands.registerCommand('dbExplorer.ai.discardFix', () => {
+      void services.ai.discardInlineFix();
+    }),
 
     vscode.commands.registerCommand('dbExplorer.newConnection', () => {
       openConnectionForm(context, services, undefined);

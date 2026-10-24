@@ -163,8 +163,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ai: aiAssist,
     }),
     registerConsoleCompletion(consoleService),
-    // SQL CodeLens「▶ 执行」+「✨ 生成 SQL」（光标跟随）+「✨ 修复建议」（失败语句，M9-AI）
-    registerSqlCodeLens(executionAnnotations),
+    // SQL CodeLens「▶ 执行」+「✨ 生成 SQL」（光标跟随）+「✨ 修复建议」（失败语句）+「保留/放弃」（内联预览）
+    registerSqlCodeLens(executionAnnotations, aiAssist),
     store.onDidChange(() => tree.refresh()),
     // 连接状态变化（建连/断开）→ 树刷新连接节点徽标（概要 §8.1）
     connections.onDidChangeStatus(() => tree.refresh()),

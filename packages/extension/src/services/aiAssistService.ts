@@ -37,17 +37,29 @@ interface LoadedContext {
   label: string;
 }
 
-interface FixEntry {
-  uriString: string;
-  /** 定位快照：偏移 + 原文——applyFix 时按「偏移处文本仍与原文一致」校验（版本号对逐步编辑太脆） */
+/**
+ * C 方案内联 diff 预览态（实机反馈二修：行尾小字不直观 → 预览即真实插入建议文本，
+ * 红块（旧语句，删除线）+ 绿块（新语句，多行语法高亮）真实对照）：
+ * - 生成后把建议 SQL 真实插入到原语句尾分号之后（另起两行），文档此时包含新旧两份
+ * - 「保留更改」= 删除 [原语句起, 插入段止) 整段并替换为建议 SQL（建议顶替原位置）
+ * - 「放弃」= 删除插入段，文档还原
+ * - 预览期间编辑文档 → 自动放弃并还原插入段（按内容定位，偏移漂移不依赖）
+ */
+interface PendingInlineFix {
+  fixId: string;
+  uri: vscode.Uri;
+  /** 原语句裸范围（不含尾分号） */
   start: number;
   end: number;
   originalSql: string;
   suggestedSql: string;
+  /** 插入段：插入点（原语句尾分号之后）与完整插入文本（前导两换行 + 建议 SQL） */
+  insertOffset: number;
+  insertedText: string;
+  consoleId: string;
 }
 
 const MAX_STREAM_PUSH_INTERVAL_MS = 120;
-const MAX_FIX_ENTRIES = 20;
 
 export class AiAssistService {
   /** 圈选记忆（会话级）：key = connId/db（交互稿 §15.2「记住上次选择」仅内存） */
@@ -56,11 +68,29 @@ export class AiAssistService {
   private readonly explainControllers = new Map<string, AbortController>();
   /** 最近一次解释的入参（Tab 错误态「重试」按钮复跑，交互稿 §15.5） */
   private readonly lastExplains = new Map<string, { info: ConsoleBindingInfo; sql: string }>();
-  private readonly fixes = new Map<string, FixEntry>();
   private aiSeq = 0;
   private fixSeq = 0;
   /** 锚点行内 loading 装饰（行尾 `$(sync~spin) AI 正在生成…`，随进度清除）——复用单例 DecorationType 防泄漏 */
   private aiStatusDecoration?: vscode.TextEditorDecorationType;
+  /** C 方案内联 diff 预览态（单例：一次一条，新建议顶掉旧建议） */
+  private pendingFix?: PendingInlineFix;
+  private guardRegistered = false;
+  private readonly pendingFixChangeEmitter = new vscode.EventEmitter<void>();
+  /** CodeLens 据此重渲染（箭头包装保 this，P-34） */
+  readonly onPendingFixChanged = (fn: () => void): vscode.Disposable => this.pendingFixChangeEmitter.event(fn);
+  private readonly delDecoration = vscode.window.createTextEditorDecorationType({
+    backgroundColor: new vscode.ThemeColor('diffEditor.removedTextBackground'),
+    textDecoration: 'line-through; opacity:0.75',
+  });
+  /** 插入段（新语句）绿色块——diff 编辑器「新增行」主题色 */
+  private readonly addDecoration = vscode.window.createTextEditorDecorationType({
+    backgroundColor: new vscode.ThemeColor('diffEditor.insertedTextBackground'),
+  });
+  private readonly disposables: vscode.Disposable[] = [
+    this.pendingFixChangeEmitter,
+    this.delDecoration,
+    this.addDecoration,
+  ];
 
   constructor(
     private readonly connections: ConnectionManager,
@@ -102,6 +132,155 @@ export class AiAssistService {
     if (this.aiStatusDecoration) {
       editor.setDecorations(this.aiStatusDecoration, []);
     }
+  }
+
+  dispose(): void {
+    for (const d of this.disposables) {
+      d.dispose();
+    }
+    this.pendingFix = undefined;
+  }
+
+  // ── C 方案：编辑器内联 diff 预览（实机反馈：Modal 面积小 → decorations 就地呈现）──
+
+  /** 当前内联预览（CodeLens「保留/放弃」数据源） */
+  get currentInlineFix(): PendingInlineFix | undefined {
+    return this.pendingFix;
+  }
+
+  private renderInlineFix(): void {
+    const fix = this.pendingFix;
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (!fix || editor.document.uri.toString() !== fix.uri.toString()) {
+        // 非目标文档（或已清空）一律清残留——旧文档不留色块
+        editor.setDecorations(this.delDecoration, []);
+        editor.setDecorations(this.addDecoration, []);
+        continue;
+      }
+      const doc = editor.document;
+      // 红块：原语句（含尾分号，渲染到分号更有「整句被替换」的语义）
+      const delEnd = Math.min(fix.insertOffset, doc.getText().length);
+      editor.setDecorations(this.delDecoration, [
+        { range: new vscode.Range(doc.positionAt(fix.start), doc.positionAt(delEnd)) },
+      ]);
+      // 绿块：插入的建议段（不含前导换行）
+      const addStart = fix.insertOffset + 2; // 跳过前导 \n\n
+      editor.setDecorations(this.addDecoration, [
+        {
+          range: new vscode.Range(doc.positionAt(addStart), doc.positionAt(addStart + fix.suggestedSql.length)),
+          hoverMessage: 'AI 修复建议（绿色段）——行首选择「保留更改 / 放弃」',
+        },
+      ]);
+    }
+  }
+
+  private clearInlineFix(): void {
+    this.pendingFix = undefined;
+    this.renderInlineFix();
+    this.pendingFixChangeEmitter.fire();
+  }
+
+  /** 文档编辑/关闭 → 预览失效：编辑场景自动放弃并还原插入段（按内容定位，不依赖偏移） */
+  private registerInlineFixGuards(): void {
+    if (this.guardRegistered) {
+      return;
+    }
+    this.guardRegistered = true;
+    this.disposables.push(
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (
+          e.contentChanges.length > 0 &&
+          this.pendingFix &&
+          e.document.uri.toString() === this.pendingFix.uri.toString()
+        ) {
+          void this.revertInsertedText();
+          this.clearInlineFix();
+        }
+      }),
+      vscode.workspace.onDidCloseTextDocument((doc) => {
+        if (this.pendingFix && doc.uri.toString() === this.pendingFix.uri.toString()) {
+          this.clearInlineFix();
+        }
+      }),
+    );
+  }
+
+  /** 按内容定位并删除插入段（编辑导致偏移漂移时仍可靠）；找不到则交给用户 Ctrl+Z */
+  private async revertInsertedText(): Promise<void> {
+    const fix = this.pendingFix;
+    if (!fix) {
+      return;
+    }
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === fix.uri.toString());
+    if (!doc) {
+      return; // 文档已关闭：untitled 丢弃即消失；file 文档未保存关闭时 VSCode 自会确认
+    }
+    const idx = doc.getText().indexOf(fix.insertedText, Math.max(0, fix.insertOffset - 32));
+    if (idx >= 0) {
+      const editor = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.toString() === fix.uri.toString(),
+      );
+      const range = new vscode.Range(doc.positionAt(idx), doc.positionAt(idx + fix.insertedText.length));
+      if (editor) {
+        await editor.edit((builder) => builder.delete(range));
+      } else {
+        const we = new vscode.WorkspaceEdit();
+        we.delete(fix.uri, range);
+        await vscode.workspace.applyEdit(we);
+      }
+    }
+  }
+
+  /** 「保留更改」：建议 SQL 顶替原语句（删除 [原语句起, 插入段止) 整段并替换为建议） */
+  async acceptInlineFix(): Promise<void> {
+    const fix = this.pendingFix;
+    if (!fix) {
+      return;
+    }
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === fix.uri.toString());
+    if (!doc) {
+      this.clearInlineFix();
+      return;
+    }
+    const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === fix.uri.toString());
+    const range = new vscode.Range(
+      doc.positionAt(fix.start),
+      doc.positionAt(fix.insertOffset + fix.insertedText.length),
+    );
+    // 最终校验：段内文本应仍为「原语句 + 插入段」形状（竞态防御；失配则按失效处理）
+    const current = doc.getText(range);
+    if (!current.startsWith(fix.originalSql) || !current.endsWith(fix.suggestedSql)) {
+      this.clearInlineFix();
+      void vscode.window.showInformationMessage('文档已修改，修复建议已失效——请重新执行后再试。');
+      return;
+    }
+    const applied = editor
+      ? await editor.edit((builder) => builder.replace(range, fix.suggestedSql))
+      : await vscode.workspace.applyEdit(
+          (() => {
+            const we = new vscode.WorkspaceEdit();
+            we.replace(fix.uri, range, fix.suggestedSql);
+            return we;
+          })(),
+        );
+    this.clearInlineFix();
+    if (applied && editor) {
+      editor.selection = new vscode.Selection(
+        range.start,
+        editor.document.positionAt(fix.start + fix.suggestedSql.length),
+      );
+    }
+    this.logger.info('ai', `AI 修复建议已保留（内联确认）：${fix.uri.fsPath}`);
+  }
+
+  /** 「放弃更改」：删除插入段还原文档，清预览 */
+  async discardInlineFix(): Promise<void> {
+    if (!this.pendingFix) {
+      return;
+    }
+    await this.revertInsertedText();
+    this.clearInlineFix();
+    this.logger.info('ai', 'AI 修复建议已放弃（内联确认）');
   }
 
   /**
@@ -558,23 +737,47 @@ export class AiAssistService {
       this.logger.error('ai', `AI 修复失败：模型未返回 SQL（响应 ${response.length} 字符）`);
       throw new DriverError('E_AI_REQUEST_FAILED', 'AI 未返回可用的 SQL，可重试');
     }
-    const fixId = `fix-${Date.now()}-${++this.fixSeq}`;
-    // 上限裁剪：只保留最近 20 条（一次性凭据，Modal 确认后即消费）
-    while (this.fixes.size >= MAX_FIX_ENTRIES) {
-      const oldest = this.fixes.keys().next().value;
-      if (oldest === undefined) {
-        break;
-      }
-      this.fixes.delete(oldest);
+    // 进入内联预览（C 方案二修）：建议 SQL **真实插入**到原语句尾分号之后（另起两行）——
+    // 红块（原语句，删除线）+ 绿块（新语句，多行语法高亮）真实对照；「保留更改」= 建议
+    // 顶替原语句位置，「放弃」= 删除插入段还原。行首 CodeLens「保留/放弃」+ 通知双入口。
+    this.registerInlineFixGuards();
+    const editor = await vscode.window.showTextDocument(doc, { preserveFocus: true, preview: false });
+    const fullText = doc.getText();
+    // 插入点：越过尾分号（快照裸终点即语句文本末尾；stmt.end 可能停分号前）
+    let insertOffset = stmt.end;
+    if (fullText.charCodeAt(insertOffset) === 59 /* ';' */) {
+      insertOffset += 1;
     }
-    this.fixes.set(fixId, {
-      uriString: doc.uri.toString(),
+    const insertedText = `\n\n${suggestedSql}`;
+    const appliedInsert = await editor.edit((builder) => builder.insert(doc.positionAt(insertOffset), insertedText));
+    if (!appliedInsert) {
+      throw new DriverError('E_INTERNAL', '编辑器插入失败，请重试');
+    }
+    const fixId = `fix-${Date.now()}-${++this.fixSeq}`;
+    this.pendingFix = {
+      fixId,
+      uri: doc.uri,
       start: stmt.start,
       end: stmt.end,
       originalSql: stmt.text,
       suggestedSql,
-    });
-    this.logger.info('ai', `AI 修复建议生成：${consoleId} #${seq} → ${doc.uri.fsPath}（原 ${item.sql.length} 字符 / 建议 ${suggestedSql.length} 字符）`);
+      insertOffset,
+      insertedText,
+      consoleId,
+    };
+    this.renderInlineFix();
+    this.pendingFixChangeEmitter.fire();
+    this.logger.info('ai', `AI 修复建议生成（内联预览）：${consoleId} #${seq} → ${doc.uri.fsPath}（原 ${item.sql.length} 字符 / 建议 ${suggestedSql.length} 字符）`);
+    // 通知冗余入口（编辑器标签被盖住时也可操作；不 await——预览态持续到用户操作，P-37 无 finally 依赖）
+    void vscode.window
+      .showInformationMessage('已生成修复建议，请在编辑器中选择保留或放弃', '保留更改', '放弃')
+      .then((pick) => {
+        if (pick === '保留更改') {
+          void this.acceptInlineFix();
+        } else if (pick === '放弃') {
+          void this.discardInlineFix();
+        }
+      });
     return { fixId, originalSql: item.sql, suggestedSql };
   }
 
@@ -611,7 +814,7 @@ export class AiAssistService {
 
   /**
    * 编辑器内修复入口（实机反馈 #4）：失败语句行 CodeLens「✨ 修复建议」→ 定位 Console
-   * 错误 item → 推送 evt:console.fixRequest 让结果面板直接打开修复 Modal（走既有 RPC）。
+   * 错误 item → 直接走 fixError（内联预览在编辑器呈现，不再经结果面板）。
    */
   async fixErrorAt(uri: vscode.Uri, position: vscode.Position): Promise<void> {
     const doc = await vscode.workspace.openTextDocument(uri);
@@ -632,55 +835,14 @@ export class AiAssistService {
       void vscode.window.showInformationMessage('该语句最近的执行没有错误记录——编辑后请重新执行再试。');
       return;
     }
-    this.console.requestFix(state.consoleId, item.seq);
+    try {
+      await this.fixError(state.consoleId, item.seq);
+    } catch (err) {
+      if (DriverError.is(err) && err.code === 'E_AI_ABORTED') {
+        return;
+      }
+      void vscode.window.showErrorMessage(`AI 修复建议失败：${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
-  async applyFix(fixId: string, mode: 'replace' | 'insert'): Promise<Record<string, never>> {
-    const entry = this.fixes.get(fixId);
-    if (!entry) {
-      throw new DriverError('E_STATE_LOST', '修复建议已过期或已应用，请重新生成');
-    }
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(entry.uriString));
-    const start = doc.positionAt(entry.start);
-    const end = doc.positionAt(entry.end);
-    const current = doc.getText(new vscode.Range(start, end));
-    // 状态校验（D-24 决议 3）：偏移处文本仍与原语句一致才应用——比严格版本号更能容忍无关编辑
-    if (current.replace(/\s+/g, ' ').trim() !== entry.originalSql.replace(/\s+/g, ' ').trim()) {
-      this.fixes.delete(fixId);
-      throw new DriverError('E_STATE_LOST', '文档已修改，建议基于最新内容重新生成');
-    }
-    const editor = await vscode.window.showTextDocument(doc, { preserveFocus: true });
-    const edit = new vscode.WorkspaceEdit();
-    let selection: vscode.Selection;
-    if (mode === 'replace') {
-      edit.replace(doc.uri, new vscode.Range(start, end), entry.suggestedSql);
-      selection = new vscode.Selection(start, doc.positionAt(entry.start + entry.suggestedSql.length));
-    } else {
-      // 插入为新语句：越过尾分号，另起两行插入
-      let insertOffset = entry.end;
-      if (doc.getText().charCodeAt(insertOffset) === 59 /* ';' */) {
-        insertOffset += 1;
-      }
-      const text = `\n\n${entry.suggestedSql}`;
-      edit.insert(doc.uri, doc.positionAt(insertOffset), text);
-      selection = new vscode.Selection(
-        doc.positionAt(insertOffset + 2),
-        doc.positionAt(insertOffset + text.length),
-      );
-    }
-    const applied = await vscode.workspace.applyEdit(edit);
-    if (!applied) {
-      throw new DriverError('E_INTERNAL', '文档编辑失败，请重试');
-    }
-    editor.selection = selection;
-    this.fixes.delete(fixId);
-    this.logger.info('ai', `AI 修复建议已应用（${mode === 'replace' ? '替换原语句' : '插入为新语句'}）→ ${doc.uri.fsPath}`);
-    if (mode === 'replace') {
-      this.offerDiscard(editor, start, entry.originalSql, entry.suggestedSql, '已替换原语句');
-    } else {
-      const insertOffset = doc.offsetAt(selection.anchor) - 2;
-      this.offerDiscard(editor, doc.positionAt(insertOffset), '', `\n\n${entry.suggestedSql}`, '已插入修复语句');
-    }
-    return {};
-  }
 }

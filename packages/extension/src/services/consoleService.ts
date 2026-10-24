@@ -881,8 +881,11 @@ export class ConsoleService implements vscode.Disposable {
               }
               if (origin?.ranges[i]) {
                 const r = origin.ranges[i];
+                // 裸语句终点 = start + 语句文本长度（r.end 是注记渲染终点、多含一个分号——
+                // AI 修复的替换范围必须不含分号，否则应用校验必现假失配）
+                const bareEnd = r.start + sqlText.length;
                 for (let s = seqBefore + 1; s <= run.items.length; s++) {
-                  state.itemOrigin?.set(s, { uriString: origin.uri.toString(), start: r.start, end: r.end, version: origin.version });
+                  state.itemOrigin?.set(s, { uriString: origin.uri.toString(), start: r.start, end: bareEnd, version: origin.version });
                 }
               }
               if (commandMode && db && !this.isProvablyReadCommand(commandFlavor, sqlText)) {
@@ -912,7 +915,7 @@ export class ConsoleService implements vscode.Disposable {
                 state.itemOrigin?.set(run.items.length, {
                   uriString: origin.uri.toString(),
                   start: r.start,
-                  end: r.end,
+                  end: r.start + sqlText.length,
                   version: origin.version,
                 });
               }

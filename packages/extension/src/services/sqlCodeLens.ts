@@ -12,8 +12,12 @@
 import * as vscode from 'vscode';
 import { splitSqlStatements } from '@db-explorer/core';
 import type { ExecutionAnnotations } from './sqlExecutionDecorations';
+import type { AiAssistService } from './aiAssistService';
 
-export function registerSqlCodeLens(annotations: ExecutionAnnotations): vscode.Disposable {
+export function registerSqlCodeLens(
+  annotations: ExecutionAnnotations,
+  ai?: AiAssistService,
+): vscode.Disposable {
   // 光标跟随：行号变化才触发 lens 重渲染（避免每次移动光标全量刷新）
   let cursorLine = -1;
   const changeEmitter = new vscode.EventEmitter<void>();
@@ -84,6 +88,24 @@ export function registerSqlCodeLens(annotations: ExecutionAnnotations): vscode.D
           }),
         );
       }
+      // C 方案：内联 diff 预览进行中——原语句行首出现「保留更改 / 放弃」确认动作
+      const fix = ai?.currentInlineFix;
+      if (fix && fix.uri.toString() === doc.uri.toString()) {
+        const pos = doc.positionAt(fix.start);
+        const range = new vscode.Range(pos, pos);
+        lenses.push(
+          new vscode.CodeLens(range, {
+            command: 'dbExplorer.ai.acceptFix',
+            title: '✓ 保留更改',
+            arguments: [],
+          }),
+          new vscode.CodeLens(range, {
+            command: 'dbExplorer.ai.discardFix',
+            title: '✕ 放弃',
+            arguments: [],
+          }),
+        );
+      }
       return lenses;
     },
   };
@@ -98,6 +120,7 @@ export function registerSqlCodeLens(annotations: ExecutionAnnotations): vscode.D
       }
     }),
     annotations.onDidChange(() => changeEmitter.fire()),
+    ...(ai ? [ai.onPendingFixChanged(() => changeEmitter.fire())] : []),
     vscode.languages.registerCodeLensProvider({ language: 'sql' }, provider),
   );
 }

@@ -295,6 +295,16 @@
         "command": "dbExplorer.ai.fixErrorAt",
         "title": "AI 修复建议（CodeLens 入口）",
         "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.ai.acceptFix",
+        "title": "AI 修复建议：保留更改",
+        "category": "数据库"
+      },
+      {
+        "command": "dbExplorer.ai.discardFix",
+        "title": "AI 修复建议：放弃",
+        "category": "数据库"
       }
     ],
     "menus": {
