@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { useState } from 'react';
+import { t, type MessageKey } from '../lib/i18n';
 import { AiSection } from './settings/AiSection';
 import { QueryExportSection } from './settings/QueryExportSection';
 import { AboutSection } from './settings/AboutSection';
@@ -12,10 +13,10 @@ import { AboutSection } from './settings/AboutSection';
 
 type Category = 'ai' | 'queryExport' | 'about';
 
-const CATEGORIES: Array<{ id: Category; icon: string; label: string }> = [
-  { id: 'ai', icon: '✦', label: 'AI 辅助' },
-  { id: 'queryExport', icon: '⚙', label: '查询与导出' },
-  { id: 'about', icon: 'ⓘ', label: '关于' },
+const CATEGORIES: Array<{ id: Category; icon: string; label: MessageKey }> = [
+  { id: 'ai', icon: '✦', label: 'settings.category.ai' },
+  { id: 'queryExport', icon: '⚙', label: 'settings.category.queryExport' },
+  { id: 'about', icon: 'ⓘ', label: 'settings.category.about' },
 ];
 
 export function SettingsPage(): ReactElement {
@@ -31,7 +32,7 @@ export function SettingsPage(): ReactElement {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* 分类导航（窄侧栏） */}
-      <nav className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-panel p-2" aria-label="设置分类">
+      <nav className="flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-panel p-2" aria-label={t('settings.aria.categories')}>
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
@@ -45,13 +46,13 @@ export function SettingsPage(): ReactElement {
             onClick={() => setCategory(c.id)}
           >
             <span aria-hidden="true">{c.icon}</span>
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </nav>
       {/* 内容区 */}
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        <h2 className="mb-4 text-[15px] font-semibold">{active?.label}</h2>
+        <h2 className="mb-4 text-[15px] font-semibold">{active ? t(active.label) : ''}</h2>
         {content}
       </div>
     </div>

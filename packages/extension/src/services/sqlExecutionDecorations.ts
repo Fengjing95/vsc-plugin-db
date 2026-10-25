@@ -5,6 +5,7 @@
  * 含 vscode 依赖，不进单测。
  */
 import * as vscode from 'vscode';
+import { t } from './i18n';
 
 /** 单条语句的执行结果（runStatements 逐语句上报） */
 export interface StatementOutcome {
@@ -89,17 +90,18 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
         if (o.ok) {
           success.push({
             range,
-            hoverMessage: `执行成功 · ${o.durationMs}ms`,
+            hoverMessage: t('执行成功 · {0}ms', [o.durationMs]),
             renderOptions: { after: { contentText: `  ${o.durationMs}ms` } },
           });
         } else if (o.message === '已取消') {
+          // core 消息原文比对，非 UI 文案，勿 t()
           canceled.push({
             range,
-            hoverMessage: '执行已取消',
-            renderOptions: { after: { contentText: '  已取消' } },
+            hoverMessage: t('执行已取消'),
+            renderOptions: { after: { contentText: `  ${t('已取消')}` } },
           });
         } else {
-          const text = o.message ?? '未知错误';
+          const text = o.message ?? t('未知错误');
           errors.push({
             range,
             hoverMessage: `${o.code ? `${o.code}: ` : ''}${text}`,
@@ -162,6 +164,7 @@ export function createExecutionAnnotations(): ExecutionAnnotations & vscode.Disp
     clear,
     report,
     failedOutcomes: (uri: vscode.Uri): StatementOutcome[] =>
+      // core 消息原文比对，非 UI 文案，勿 t()
       (entries.get(uri.toString()) ?? []).filter((o) => !o.ok && o.message !== '已取消'),
     onDidChange: (fn) => changeEmitter.event(fn),
     dispose: () => {

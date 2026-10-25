@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { Select } from '../../components/ui/select';
+import { t } from '../../lib/i18n';
 import { PAGE_SIZES, paginationLabel } from '../../lib/queryState';
 import { useTableStore } from '../../store/tableStore';
 
@@ -56,39 +57,39 @@ export function PaginationBar() {
   return (
     <div className="flex items-center gap-2 border-t border-border bg-panel px-2 py-1.5 text-[12px] text-muted-foreground">
       <span>{paginationLabel({ page, pageSize, loadedRows: rows.length, totalCount, rowEstimate })}</span>
-      {fetching && <span>加载中…</span>}
-      {rows.length === 0 && knownTotal === undefined && <span>已是末页</span>}
+      {fetching && <span>{t('common.loading')}</span>}
+      {rows.length === 0 && knownTotal === undefined && <span>{t('table.page.lastPage')}</span>}
 
       <span className="flex-1" />
-      {endHint && <span className="text-warning">已是末页</span>}
+      {endHint && <span className="text-warning">{t('table.page.lastPage')}</span>}
 
       <Select
-        aria-label="每页行数"
+        aria-label={t('table.page.rowsPerPageAria')}
         value={String(pageSize)}
-        options={PAGE_SIZES.map((n) => ({ value: String(n), label: `每页 ${n}` }))}
+        options={PAGE_SIZES.map((n) => ({ value: String(n), label: t('table.page.perPage', [n]) }))}
         className="w-28 h-6 text-[12px]"
         onValueChange={(v) => void setPageSize(Number(v))}
       />
 
-      <Button variant="ghost" size="icon" aria-label="上一页" disabled={!hasPrev || fetching} onClick={goPrev}>
+      <Button variant="ghost" size="icon" aria-label={t('table.page.prev')} disabled={!hasPrev || fetching} onClick={goPrev}>
         ◀
       </Button>
       {totalPages !== undefined ? (
         <span className="whitespace-nowrap">
-          第 {page + 1} / {totalPages} 页
+          {t('table.page.pageOf', [page + 1, totalPages])}
         </span>
       ) : (
-        <span className="whitespace-nowrap">第 {page + 1} 页</span>
+        <span className="whitespace-nowrap">{t('table.page.pageNum', [page + 1])}</span>
       )}
-      <Button variant="ghost" size="icon" aria-label="下一页" disabled={!hasNext || fetching} onClick={goNext}>
+      <Button variant="ghost" size="icon" aria-label={t('table.page.next')} disabled={!hasNext || fetching} onClick={goNext}>
         ▶
       </Button>
 
       {totalPages !== undefined && (
         <span className="flex items-center gap-1">
-          跳至
+          {t('table.page.goTo')}
           <input
-            aria-label="页码跳转"
+            aria-label={t('table.page.jumpAria')}
             className="h-6 w-12 rounded-sm border border-input-border bg-input-bg px-1 text-center text-[12px] text-input-fg outline-none focus-visible:border-ring"
             value={jump}
             onChange={(e) => setJump(e.target.value)}
@@ -99,7 +100,7 @@ export function PaginationBar() {
             }}
             placeholder={String(page + 1)}
           />
-          页
+          {t('table.page.pageUnit')}
         </span>
       )}
     </div>

@@ -200,6 +200,23 @@ a {
   color: var(--text);
 }
 
+/* 语言切换器（i18n 批次 B1 骨架）：与 GitHub 链接同排的轻量文字按钮 */
+.nav__lang {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.nav__lang:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 @media (max-width: 900px) {
   .nav__links {
     display: none;

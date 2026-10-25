@@ -1,5 +1,7 @@
 # DB Kit — 数据库浏览器（VSCode 插件）
 
+> 🌐 English: [README.en.md](README.en.md)
+
 > [!TIP]
 > 已上架 VSCode Marketplace：扩展面板搜索 **DB Kit** 安装，或 [扩展详情页](https://marketplace.visualstudio.com/items?itemName=db-explorer-dev.db-kit) / `ext install db-explorer-dev.db-kit`
 >
@@ -48,14 +50,14 @@ code --install-extension db-explorer-0.1.0.vsix
 4. 写 SQL：树查询目录「新增查询」或任意 `.sql` 文件 → `Ctrl+Enter` 执行（`Ctrl+Shift+Enter` 全部），结果面板多结果集 Tab + EXPLAIN 树形缩进；无 WHERE 的 UPDATE/DELETE 与生产库危险操作有分级确认护栏；
 5. 导出：表格工具栏「导出」→ 选格式与范围 → 后台执行（通知中心进度、可取消、多任务并发）。
 
-## 已知限制（0.1.0）
+## 已知限制
 
-- UI 文案仅中文（i18n 未落地）
+- 界面语言跟随 VSCode 显示语言（中文为源语言、英文为首版辅助翻译）；Issue 模板等社区面暂为中文
 - Web 版 VSCode（github.dev）不支持；桌面版（`^1.85`）限定
 - SQLite 驱动限中小库（建议 ≤ 100MB，整库内存 + 写批次原子落盘）；同步执行不可取消
 - MongoDB 编辑为字段级 `$set` 乐观锁、逐条失败即停（无事务语义）；结构类 mongosh 命令（建索引/改集合等）不支持
 - Redis 为只读浏览 + 命令控制台（无可回滚事务，未开编辑）
-- 导出格式为 CSV/JSON/XLSX（NDJSON/Markdown/SQL INSERT 为后续批次）；e2e 与独立 perf 基准未建（契约套件 + 四道门禁覆盖）
+- e2e 与独立 perf 基准未建（契约套件 + 四道门禁覆盖）
 - 无遥测；密码只存 VSCode SecretStorage，不落盘、不入日志
 
 完整口径见 [概要设计 §14 遗留问题](docs/概要设计.md) 与 [CHANGELOG.md](CHANGELOG.md)。

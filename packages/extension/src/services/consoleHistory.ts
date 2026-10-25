@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ConnectionManager } from './connectionManager';
+import { t } from './i18n';
 
 /**
  * Console 执行历史（概要设计 5.5.2 P1：workspaceState 持久化，上限 500 条，可搜索可重跑）：
@@ -63,18 +64,19 @@ export class ConsoleHistory {
 /** QuickPick 展示（可搜索可重跑）；返回选中项，Esc 返回 undefined */
 export async function pickHistoryItem(items: ConsoleHistoryItem[]): Promise<ConsoleHistoryItem | undefined> {
   if (items.length === 0) {
-    void vscode.window.showInformationMessage('还没有执行历史。');
+    void vscode.window.showInformationMessage(t('还没有执行历史。'));
     return undefined;
   }
   const picks = items.map((item) => ({
     item,
     label: item.sql.replace(/\s+/g, ' ').slice(0, 80),
     description: `${item.connName}${item.db ? ` · ${item.db}` : ''} · ${new Date(item.ts).toLocaleString()}`,
-    detail: `${item.status === 'ok' ? '✓' : item.status === 'canceled' ? '⊘ 已取消' : '✗'} ${item.summary} · ${item.durationMs}ms`,
+    // 状态符号（✓/⊘/✗）留在键外（规则 5）：只有文案进 t()
+    detail: `${item.status === 'ok' ? '✓' : item.status === 'canceled' ? `⊘ ${t('已取消')}` : '✗'} ${item.summary} · ${item.durationMs}ms`,
   }));
   const picked = await vscode.window.showQuickPick(picks, {
-    title: 'SQL 执行历史（输入过滤，Enter 重跑）',
-    placeHolder: '搜索历史语句…',
+    title: t('SQL 执行历史（输入过滤，Enter 重跑）'),
+    placeHolder: t('搜索历史语句…'),
     matchOnDescription: true,
     matchOnDetail: true,
   });

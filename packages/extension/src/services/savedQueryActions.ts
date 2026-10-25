@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { ConsoleService } from './consoleService';
 import type { QueryFilesService } from './queryFiles';
 import { defaultQueryName, queryPathSegment, querySummary, sanitizeQueryFileName, timestampQueryName } from './savedQueries';
+import { t } from './i18n';
 
 /**
  * 保存活动 SQL 编辑器内容为查询文件。源文档（untitled Console）已有连接绑定时，
@@ -16,12 +17,12 @@ export async function saveActiveQuery(consoleService: ConsoleService, queries: Q
   const editor = vscode.window.activeTextEditor;
   const doc = editor?.document;
   if (!doc || doc.languageId !== 'sql') {
-    void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+    void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
     return;
   }
   const text = doc.getText();
   if (!text.trim()) {
-    void vscode.window.showInformationMessage('没有可保存的内容。');
+    void vscode.window.showInformationMessage(t('没有可保存的内容。'));
     return;
   }
   // 源文档已有绑定（connId+db）时保存到对应「查询」目录子目录（与树查询目录同构）；未绑定落根目录
@@ -32,9 +33,9 @@ export async function saveActiveQuery(consoleService: ConsoleService, queries: Q
       : queries.rootUri();
 
   const name = await vscode.window.showInputBox({
-    title: '保存查询',
-    prompt: '保存到查询目录 …/<名称>.sql（dbExplorer.queries.directory 可自定义位置）',
-    placeHolder: '查询名称',
+    title: t('保存查询'),
+    prompt: t('保存到查询目录 …/<名称>.sql（dbExplorer.queries.directory 可自定义位置）'),
+    placeHolder: t('查询名称'),
     value: defaultQueryName(text),
   });
   if (name === undefined) {
@@ -45,12 +46,14 @@ export async function saveActiveQuery(consoleService: ConsoleService, queries: Q
 
   try {
     await vscode.workspace.fs.stat(target);
+    // 覆盖按钮（规则：构造与比较同源翻译，禁止一处 t() 一处裸字面量）
+    const overwriteLabel = t('覆盖');
     const overwrite = await vscode.window.showWarningMessage(
-      `查询 "${safe}.sql" 已存在，覆盖？`,
+      t('查询 "{0}" 已存在，覆盖？', [`${safe}.sql`]),
       { modal: true },
-      '覆盖',
+      overwriteLabel,
     );
-    if (overwrite !== '覆盖') {
+    if (overwrite !== overwriteLabel) {
       return;
     }
   } catch {
@@ -66,7 +69,7 @@ export async function saveActiveQuery(consoleService: ConsoleService, queries: Q
   if (sourceBinding && !consoleService.bindingForDocument(newDoc)) {
     await consoleService.ensureBinding(newDoc, { connId: sourceBinding.connId, db: sourceBinding.db ?? undefined });
   }
-  void vscode.window.setStatusBarMessage(`已保存查询：${safe}.sql`, 3000);
+  void vscode.window.setStatusBarMessage(t('已保存查询：{0}', [`${safe}.sql`]), 3000);
 }
 
 /** 打开保存的查询：QuickPick 列出（查询根目录 + 兼容旧版工作区 .vscode/db-queries 遗留文件），按修改时间倒序 */
@@ -76,7 +79,7 @@ export async function pickSavedQuery(queries: QueryFilesService): Promise<void> 
     vscode.workspace.findFiles('.vscode/db-queries/**/*.sql', '**/node_modules/**', 200),
   ]);
   if (entries.length === 0 && legacy.length === 0) {
-    void vscode.window.showInformationMessage('还没有保存的查询（树「查询」目录或 Console 中「保存查询」）。');
+    void vscode.window.showInformationMessage(t('还没有保存的查询（树「查询」目录或 Console 中「保存查询」）。'));
     return;
   }
   const stat = async (uri: vscode.Uri) => {
@@ -116,8 +119,8 @@ export async function pickSavedQuery(queries: QueryFilesService): Promise<void> 
   ]);
   items.sort((a, b) => (a.description < b.description ? 1 : -1));
   const picked = await vscode.window.showQuickPick(items, {
-    title: '打开保存的查询',
-    placeHolder: '查询目录（默认扩展全局存储，dbExplorer.queries.directory 可自定义）·按修改时间排序',
+    title: t('打开保存的查询'),
+    placeHolder: t('查询目录（默认扩展全局存储，dbExplorer.queries.directory 可自定义）·按修改时间排序'),
   });
   if (!picked) {
     return;

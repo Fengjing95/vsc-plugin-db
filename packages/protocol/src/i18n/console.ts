@@ -1,0 +1,111 @@
+/** console 域词表（D-25/C-17）：SQL Console 页（结果面板/横幅/消息/状态行/导出）。
+ * zh 值=webview 原文逐字节（含全角标点/省略号）；en 同步对译（专业数据库工具语气，按钮/标签无句号）。
+ * 注：console.requestFailed / console.requestTimeout 为 webview RPC 层（rpc/client.ts）通用兜底，
+ * 因 rpc 无独立域文件且该两键由 console 批次引入，暂寄本域。 */
+export const zhConsole = {
+  // App 引导（App.tsx）
+  'console.bootstrapMissing': '缺少引导数据（bootstrap）',
+  'console.tableParamsMissing': '缺少表格视图参数',
+  // RPC 层兜底（rpc/client.ts）
+  'console.requestFailed': '请求失败',
+  'console.requestTimeout': '请求超时：{0}',
+  // 版本不一致（consoleStore.bootstrap）
+  'console.versionMismatch': '插件与视图版本不一致，请重载窗口',
+  // 危险横幅（§7.4）
+  'console.bannerDetected': '检测到可能影响全表的语句：{0}',
+  'console.runAnyway': '仍要执行',
+  // Tab 栏 / 导出（§7.3）
+  'console.resultTab': '结果 {0}',
+  'console.messagesTab': '消息',
+  'console.rerunStatement': '重跑该语句',
+  'console.exportCsv': '导出 CSV',
+  'console.exportJson': '导出 JSON',
+  'console.exportExcel': '导出 Excel',
+  'console.exportExcelTitle': '导出 Excel (xlsx)',
+  'console.exportNdjson': '导出 NDJSON',
+  'console.exportNdjsonTitle': '导出 NDJSON（换行分隔 JSON）',
+  'console.exportMarkdown': '导出 Markdown',
+  'console.closePanel': '关闭结果面板',
+  // 消息 Tab
+  'console.emptyBound': '暂无执行记录。在 SQL 编辑器中按 Ctrl+Enter 执行。',
+  'console.emptyUnbound': '未绑定连接（可在状态栏选择）。',
+  'console.itemLine': '[{0}] {1}',
+  'console.itemSummaryLine': '  → {0}',
+  'console.warnLine': '  ⚠ {0}',
+  'console.canceledLine': '⊘ 已取消',
+  'console.running': '执行中…',
+  'console.fixSuggestion': '✨ 修复建议',
+  // 摘要 / 状态文案（runItemSummary / messageLines / runStatusText）
+  'console.errorSummary': '错误 {0}: {1}',
+  'console.rowsAffected': '{0} rows affected · {1}ms',
+  'console.rowCountMs': '{0} 行 · {1}ms',
+  'console.lastStatement': '最后一条语句：{0}',
+  'console.canceled': '已取消',
+  'console.done': '完成（{0}ms）',
+  'console.failed': '出错（{0}ms）',
+  // 状态行
+  'console.ready': '就绪',
+  'console.noConnection': '未绑定连接',
+  'console.resultStatusLine': '{0} · {1}ms · {2} 行',
+  'console.truncatedRows': '结果已截断至 {0} 行（可在设置中调整行数上限）',
+  'console.runningProgress': '执行中（{0}/{1}）…',
+  'console.cancelRun': '取消执行',
+  // 网格右键菜单（ConsoleGrid）
+  'console.copyValue': '复制值',
+  'console.copyRowJson': '复制行 JSON',
+  // Toast（consoleStore）
+  'console.exportCanceled': '已取消导出',
+  'console.exported': '已导出 {0} 行 → {1}',
+  'console.exportFailed': '导出失败：{0}',
+  'console.dismissToast': '关闭提示',
+} as const;
+
+export type ConsoleKey = keyof typeof zhConsole;
+
+export const enConsole: Partial<Record<ConsoleKey, string>> = {
+  'console.bootstrapMissing': 'Missing bootstrap data',
+  'console.tableParamsMissing': 'Missing table view parameters',
+  'console.requestFailed': 'Request failed',
+  'console.requestTimeout': 'Request timed out: {0}',
+  'console.versionMismatch': 'Extension and view versions mismatch; reload the window',
+  'console.bannerDetected': 'A statement that may affect the whole table was detected: {0}',
+  'console.runAnyway': 'Run Anyway',
+  'console.resultTab': 'Result {0}',
+  'console.messagesTab': 'Messages',
+  'console.rerunStatement': 'Rerun this statement',
+  'console.exportCsv': 'Export CSV',
+  'console.exportJson': 'Export JSON',
+  'console.exportExcel': 'Export Excel',
+  'console.exportExcelTitle': 'Export Excel (xlsx)',
+  'console.exportNdjson': 'Export NDJSON',
+  'console.exportNdjsonTitle': 'Export NDJSON (newline-delimited JSON)',
+  'console.exportMarkdown': 'Export Markdown',
+  'console.closePanel': 'Close results panel',
+  'console.emptyBound': 'No runs yet. Press Ctrl+Enter in the SQL editor to run.',
+  'console.emptyUnbound': 'No connection bound (select one in the status bar).',
+  'console.itemLine': '[{0}] {1}',
+  'console.itemSummaryLine': '  → {0}',
+  'console.warnLine': '  ⚠ {0}',
+  'console.canceledLine': '⊘ Canceled',
+  'console.running': 'Running…',
+  'console.fixSuggestion': '✨ Fix suggestion',
+  'console.errorSummary': 'Error {0}: {1}',
+  'console.rowsAffected': '{0} rows affected · {1}ms',
+  'console.rowCountMs': '{0} rows · {1}ms',
+  'console.lastStatement': 'Last statement: {0}',
+  'console.canceled': 'Canceled',
+  'console.done': 'Done ({0}ms)',
+  'console.failed': 'Failed ({0}ms)',
+  'console.ready': 'Ready',
+  'console.noConnection': 'No connection bound',
+  'console.resultStatusLine': '{0} · {1}ms · {2} rows',
+  'console.truncatedRows': 'Result truncated to {0} rows (adjust the row limit in Settings)',
+  'console.runningProgress': 'Running ({0}/{1})…',
+  'console.cancelRun': 'Cancel Run',
+  'console.copyValue': 'Copy Value',
+  'console.copyRowJson': 'Copy Row JSON',
+  'console.exportCanceled': 'Export canceled',
+  'console.exported': 'Exported {0} rows → {1}',
+  'console.exportFailed': 'Export failed: {0}',
+  'console.dismissToast': 'Close notification',
+};

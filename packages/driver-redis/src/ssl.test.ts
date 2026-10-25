@@ -30,8 +30,9 @@ describe('redis formSchema ssl 字段（公共 API）', () => {
     const f = fields.find((x) => x.key === 'sslInsecure');
     expect(f).toBeDefined();
     expect(f!.type).toBe('boolean');
-    expect(f!.group).toBe('高级');
-    expect(f!.hint).toContain('风险');
+    // B3 文案键化（C-17/D-25）：FormSchema 文案为域键，zh 词条（含「风险」标注）见 protocol i18n form 域
+    expect(f!.group).toBe('form.group.advanced');
+    expect(f!.hint).toBe('form.redis.sslInsecureHint');
   });
 });
 

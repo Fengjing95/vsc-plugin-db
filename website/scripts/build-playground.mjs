@@ -3,7 +3,8 @@
  * Playground 构建前置（dev / build 均先跑本脚本）：
  * 1. 确保 packages/webview-ui/dist 存在（缺失则自动构建）；
  * 2. 拷贝产物到 website/public/playground/webview/（vite 静态托管，iframe 同源加载）；
- * 3. 向 index.html 注入 Playground glue：Dark Modern 主题变量 + __BOOTSTRAP__（取 URL 参数）
+ * 3. 向 index.html 注入 Playground glue：Dark Modern 主题变量 + __BOOTSTRAP__（取 URL 参数，
+ *    含 lang → webview 词典，词典经父文档 host.ts 暴露的 messagesFor 按语言现取）
  *    + acquireVsCodeApi 桩（请求转发给 window.parent.__DBX_HOST__，见 src/playground/host.ts）。
  *
  * 机制与 .agents/skills/webview-visual-test 的 make-stub.mjs 同源（P-20），
@@ -78,11 +79,19 @@ const GLUE = `
   'use strict';
   var q = new URLSearchParams(location.search);
   var page = q.get('page') || 'table';
+  // 站点语言透传（B4）：外壳把当前站点语言拼进 iframe src（?lang=），缺省 zh 与旧行为一致
+  var lang = q.get('lang') || 'zh';
   var params = {};
-  q.forEach(function (v, k) { if (k !== 'page') params[k] = v; });
+  q.forEach(function (v, k) { if (k !== 'page' && k !== 'lang') params[k] = v; });
   var viewId = q.get('viewId') || page;
+  // webview 词典（D-25：嵌入界面随站点语言，extension buildWebviewHtml 注入 lang+messages 的同构）：
+  // 词典按 lang 现取现用——来源 = 父文档 host.ts 注入的 __DBX_MESSAGES_FOR__（protocol messagesFor，
+  // zh 全量 + en 覆盖）；父页不可用（如脱离外壳独立打开）时缺省，t() 回落 zh 词典。语言切换时
+  // 外壳改 iframe src 触发重载，本 glue 以新 lang 重建 bootstrap。
+  var toMessages = window.parent && window.parent.__DBX_MESSAGES_FOR__;
+  var messages = typeof toMessages === 'function' ? toMessages(lang) : undefined;
   // 与 webviewHtmlInject.ts 同口径：对象字面量（App 与各 store 均按对象读取，不是 JSON 字符串）
-  window.__BOOTSTRAP__ = { page: page, viewId: viewId, params: params };
+  window.__BOOTSTRAP__ = { page: page, viewId: viewId, params: params, lang: lang, messages: messages };
   function dispatch(frame) { window.dispatchEvent(new MessageEvent('message', { data: frame })); }
   window.acquireVsCodeApi = function () {
     return {
@@ -90,7 +99,9 @@ const GLUE = `
         if (!msg || msg.kind !== 'req') return;
         var host = window.parent && window.parent.__DBX_HOST__;
         if (!host || typeof host.handle !== 'function') {
-          dispatch({ kind: 'res', id: msg.id, ok: false, error: { code: 'E_INTERNAL', message: 'Playground host 未就绪，请刷新页面' } });
+          // glue 是内联脚本拿不到 site 词典，host 未就绪提示按 lang 内联双语（D-25）
+          var notReady = lang === 'en' ? 'Playground host not ready, please reload the page' : 'Playground host 未就绪，请刷新页面';
+          dispatch({ kind: 'res', id: msg.id, ok: false, error: { code: 'E_INTERNAL', message: notReady } });
           return;
         }
         host.handle(msg.method, msg.params, {

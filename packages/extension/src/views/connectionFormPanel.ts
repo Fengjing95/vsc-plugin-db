@@ -12,10 +12,11 @@ import {
   type HandshakeResult,
 } from '@db-explorer/protocol';
 import { secretRefOf, type ConnectionStore } from '../services/connectionStore';
+import { t } from '../services/i18n';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { describeError, describeTarget, type Logger } from '../services/logger';
 import {
-  SSH_FORM_FIELDS,
+  getSshFormFields,
   optionsFromSshConfig,
   resolveSshTarget,
   sshConfigFromOptions,
@@ -47,7 +48,7 @@ export function openConnectionForm(
 
   const panel = vscode.window.createWebviewPanel(
     'dbExplorer.connectionForm',
-    connId ? '编辑连接' : '新建连接',
+    connId ? t('编辑连接') : t('新建连接'),
     vscode.ViewColumn.Active,
     {
       enableScripts: true,
@@ -96,7 +97,7 @@ function formHandlers(
         ? deps.registry.require(driverId).getConnectionFormSchema()
         : { fields: [] };
       // SSH 隧道为驱动无关的标准字段组（扩展层统一注入，驱动不感知）
-      const schema = { fields: [...driverSchema.fields, ...SSH_FORM_FIELDS] };
+      const schema = { fields: [...driverSchema.fields, ...getSshFormFields()] };
       const meta = config
         ? {
             connId: config.id,
@@ -116,7 +117,7 @@ function formHandlers(
     [RpcMethods.connSchema]: async (raw) => {
       const p = ConnSchemaParamsSchema.parse(raw);
       const schema = deps.registry.require(p.driverId).getConnectionFormSchema();
-      return { schema: { fields: [...schema.fields, ...SSH_FORM_FIELDS] } };
+      return { schema: { fields: [...schema.fields, ...getSshFormFields()] } };
     },
 
     [RpcMethods.connTest]: async (raw) => {
@@ -160,7 +161,7 @@ function formHandlers(
         return {
           ok: false,
           errorCode: result.error?.code ?? 'E_INTERNAL',
-          errorMessage: result.error?.message ?? '连接失败',
+          errorMessage: result.error?.message ?? t('连接失败'),
         };
       } catch (err) {
         const e = DriverError.is(err) ? err : new DriverError('E_INTERNAL', String(err));
@@ -220,7 +221,7 @@ function formHandlers(
       const driver = deps.registry.require(p.driverId);
       // 驱动规范 §3.1 + SSH 标准组：type=password 字段不入 options，密码走 SecretStorage
       const secretKeys = new Set(
-        [...driver.getConnectionFormSchema().fields, ...SSH_FORM_FIELDS]
+        [...driver.getConnectionFormSchema().fields, ...getSshFormFields()]
           .filter((f) => f.type === 'password')
           .map((f) => f.key),
       );
@@ -276,7 +277,7 @@ function formHandlers(
         viewId: 'form',
         params: {},
         changeSet: { inserts: [], updates: [], deletes: [] },
-        edit: { enabled: false, reason: '连接表单视图' },
+        edit: { enabled: false, reason: t('连接表单视图') },
         capabilities: { supportsSQL: false, supportsDdl: false },
       };
       return result;

@@ -7,6 +7,7 @@ import {
   type IDatabaseDriver,
 } from '@db-explorer/core';
 import type { ConnectionStore } from './connectionStore';
+import { t } from './i18n';
 import { describeError, describeTarget, type Logger } from './logger';
 import { resolveSshTarget, sshConfigOf, type FingerprintStore, type SshTunnel } from './sshTunnel';
 
@@ -75,7 +76,7 @@ export class ConnectionManager implements vscode.Disposable {
     }
     const cfg = this.store.get(connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', `连接 "${connId}" 不存在`);
+      throw new DriverError('E_NOT_FOUND', t('连接 "{0}" 不存在', [connId]));
     }
     const driver = this.registry.require(cfg.driverId);
     const secret = (await this.store.getSecret(connId)) ?? '';

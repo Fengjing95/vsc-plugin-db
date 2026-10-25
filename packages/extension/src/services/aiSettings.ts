@@ -6,6 +6,7 @@ import {
   AiTestSettingsParamsSchema,
   type AiSettingsResult,
 } from '@db-explorer/protocol';
+import { t } from './i18n';
 import { describeError, type Logger } from './logger';
 
 /**
@@ -77,16 +78,16 @@ export class AiSettingsStore {
       overrides?.apiKey?.length ? overrides.apiKey : (await this.secrets.get(AI_SECRET_KEY)) ?? '';
     const missing: string[] = [];
     if (!endpoint) {
-      missing.push('API 地址');
+      missing.push(t('API 地址'));
     }
     if (!model) {
-      missing.push('模型');
+      missing.push(t('模型'));
     }
     if (!apiKey) {
-      missing.push('API 密钥');
+      missing.push(t('API 密钥'));
     }
     if (missing.length > 0) {
-      throw new DriverError('E_AI_NOT_CONFIGURED', `AI 功能需要先配置模型服务（缺 ${missing.join(' / ')}）`);
+      throw new DriverError('E_AI_NOT_CONFIGURED', t('AI 功能需要先配置模型服务（缺 {0}）', [missing.join(' / ')]));
     }
     return new OpenAICompatProvider({ endpoint, model, apiKey });
   }

@@ -3,6 +3,7 @@
  * 分类、图片嗅探、hex 视图与 JSON 编辑校验。纯函数便于单测；
  * 保存写回 ChangeSet 复用 editValues.parseCellInput + tableStore.confirmParsed 管线。
  */
+import { t } from './i18n';
 
 /** 超长文本进入查看器的阈值（§4.2：截断 + ▤ 角标；与 cellDisplay 的 JS 截断上限独立） */
 export const VIEWER_MIN_TEXT = 200;
@@ -92,12 +93,12 @@ export function hexDump(base64: string, maxBytes: number = HEX_VIEW_MAX_BYTES): 
 export function parseJsonText(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
   const trimmed = text.trim();
   if (trimmed === '') {
-    return { ok: false, error: 'JSON 不能为空（置 NULL 请用右键菜单）' };
+    return { ok: false, error: t('table.viewer.jsonEmpty') };
   }
   try {
     return { ok: true, value: JSON.parse(trimmed) as unknown };
   } catch {
-    return { ok: false, error: 'JSON 语法错误' };
+    return { ok: false, error: t('table.viewer.jsonSyntax') };
   }
 }
 

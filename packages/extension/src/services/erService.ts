@@ -11,6 +11,7 @@ import {
 import { ErGraphParamsSchema, type ErGraphResult } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import type { Logger } from './logger';
+import { t } from './i18n';
 
 /**
  * ER 图服务（M8-ER，概要 §5.11 / ADR D-22）：
@@ -91,7 +92,7 @@ export class ErService {
   /** erCapable 双检（树菜单已裁剪，命令面板直呼时防御性兜底） */
   assertCapable(connId: string): void {
     if (this.deps.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
-      throw new DriverError('E_UNSUPPORTED', '当前数据库类型不支持 ER 图');
+      throw new DriverError('E_UNSUPPORTED', t('当前数据库类型不支持 ER 图'));
     }
   }
 }
@@ -99,11 +100,11 @@ export class ErService {
 /** QuickPick 多选（默认全选、输入过滤反选）；Esc/关闭 = null */
 async function pickTables(tables: string[]): Promise<string[] | null> {
   const qp = vscode.window.createQuickPick();
-  qp.title = `库内共 ${tables.length} 张表，超出单图上限：请选择要绘制的表`;
+  qp.title = t('库内共 {0} 张表，超出单图上限：请选择要绘制的表', [tables.length]);
   qp.canSelectMany = true;
-  qp.items = tables.map((t) => ({ label: t }));
+  qp.items = tables.map((name) => ({ label: name }));
   qp.selectedItems = qp.items;
-  qp.placeholder = '输入过滤表名，回车确认';
+  qp.placeholder = t('输入过滤表名，回车确认');
   return new Promise<string[] | null>((resolve) => {
     qp.onDidAccept(() => {
       resolve(qp.selectedItems.map((i) => i.label));

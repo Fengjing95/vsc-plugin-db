@@ -18,6 +18,7 @@ import {
 } from '../../components/ui/icons';
 import { request } from '../../rpc/client';
 import { rowKeyOfRow, rowKeyString } from '../../lib/editOverlay';
+import { t } from '../../lib/i18n';
 import { useTableStore } from '../../store/tableStore';
 import {
   rowsToInList,
@@ -146,7 +147,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
       text = rowsToInsert(obj, colNames, selected.map((row) => colNames.map((n) => row[idxOf(n)])));
     }
     await request('sys.copyText', { text });
-    setCopyHint(`已复制 ${selected.length} 行`);
+    setCopyHint(t('table.toolbar.copiedRows', [selected.length]));
     if (copyHintTimer.current !== undefined) {
       clearTimeout(copyHintTimer.current);
     }
@@ -181,22 +182,22 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[11px] ${
             env === 'prod' ? 'border-destructive/40 text-destructive' : 'border-border text-muted-foreground'
           }`}
-          title={env === 'prod' ? '生产环境：提交需输入表名确认（DangerGuard）' : `环境：${env}`}
+          title={env === 'prod' ? t('table.env.prodTitle') : t('table.env.title', [env])}
         >
-          {env === 'prod' ? '生产' : env === 'test' ? '测试' : '开发'}
+          {env === 'prod' ? t('table.env.prod') : env === 'test' ? t('table.env.test') : t('table.env.dev')}
         </span>
       )}
       {(readOnly || !editEnabled) && (
         <span
           className="shrink-0 rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground"
-          title={editReason ?? '连接已开启只读保护（ConnectionManager 层拦截写操作）'}
+          title={editReason ?? t('table.edit.readOnlyReason')}
         >
-          只读
+          {t('table.env.readOnly')}
         </span>
       )}
       {editEnabled && counts.total > 0 && (
-        <span className="shrink-0 text-[11px] text-warning" title="存在未提交变更">
-          ● 有未提交变更
+        <span className="shrink-0 text-[11px] text-warning" title={t('table.edit.unsavedTitle')}>
+          {t('table.edit.unsavedBadge')}
         </span>
       )}
 
@@ -205,8 +206,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
         variant="secondary"
         size="md"
         className="w-8 px-0"
-        aria-label="刷新"
-        title="刷新当前页"
+        aria-label={t('table.toolbar.refresh')}
+        title={t('table.toolbar.refreshPage')}
         disabled={fetching}
         onClick={() => void refresh()}
       >
@@ -221,8 +222,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             className={iconBtn}
             disabled={editBusy}
             onClick={addInsertRow}
-            aria-label="新增行"
-            title="新增行"
+            aria-label={t('table.toolbar.addRow')}
+            title={t('table.toolbar.addRow')}
           >
             <IconPlus size={15} />
           </Button>
@@ -233,8 +234,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             className={iconBtn}
             disabled={selectedCount === 0 || editBusy}
             onClick={markDeleteSelected}
-            title={selectedCount > 0 ? `删除选中行（${selectedCount}）：进入变更集，提交时落库` : '删除选中行（先点击行选中）'}
-            aria-label={`删除选中行（${selectedCount}）`}
+            title={selectedCount > 0 ? t('table.toolbar.deleteSelectedHint', [selectedCount]) : t('table.toolbar.deleteSelectedNoSel')}
+            aria-label={t('table.toolbar.deleteSelected', [selectedCount])}
           >
             <IconMinus size={15} />
           </Button>
@@ -244,8 +245,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             className={iconBtn}
             disabled={counts.total === 0 || editBusy}
             onClick={() => void openPreview()}
-            aria-label="预览提交 SQL"
-            title={`预览提交 SQL（${counts.total} 条语句）`}
+            aria-label={t('table.toolbar.previewSql')}
+            title={t('table.toolbar.previewSqlHint', [counts.total])}
           >
             <IconEye size={15} />
           </Button>
@@ -255,8 +256,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             disabled={counts.total === 0 || editBusy}
             onClick={() => void submitChanges()}
             className={counts.total > 0 ? `${iconBtn} animate-pulse` : iconBtn}
-            aria-label={`提交变更（${counts.total}）`}
-            title={`提交变更（${counts.total}）：单事务直接落库，可用 ◉ 预览语句`}
+            aria-label={t('table.toolbar.commitCount', [counts.total])}
+            title={t('table.toolbar.commitHint', [counts.total])}
           >
             <IconCheck size={15} />
           </Button>
@@ -266,11 +267,11 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             className={iconBtn}
             disabled={selectedDirtyCount === 0 || editBusy}
             onClick={() => void revertSelected()}
-            aria-label={selectedDirtyCount > 0 ? `撤销选中行的变更（${selectedDirtyCount} 行）` : '撤销选中行的变更'}
+            aria-label={selectedDirtyCount > 0 ? t('table.toolbar.revertSelectedCount', [selectedDirtyCount]) : t('table.toolbar.revertSelected')}
             title={
               selectedDirtyCount > 0
-                ? `撤销选中行的变更（${selectedDirtyCount} 行）`
-                : '撤销选中行的变更（先选中行，且选中行需有未提交变更；撤销全部见行号右键菜单）'
+                ? t('table.toolbar.revertSelectedCount', [selectedDirtyCount])
+                : t('table.toolbar.revertSelectedHint')
             }
           >
             <IconUndo size={15} />
@@ -284,11 +285,11 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
         )}
         {exportProgress && (
           <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
-            导出中… {exportProgress.rows} 行
+            {t('table.export.progress', [exportProgress.rows])}
             <button
               type="button"
-              aria-label="取消导出"
-              title="取消导出"
+              aria-label={t('table.export.cancel')}
+              title={t('table.export.cancel')}
               className="rounded-sm px-1 hover:bg-accent hover:text-accent-foreground"
               onClick={() => void cancelExport()}
             >
@@ -301,7 +302,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             🔍
           </span>
           <Input
-            aria-label="全局搜索"
+            aria-label={t('table.toolbar.search')}
             value={searchText}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -312,7 +313,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
                 void applySearch(searchText.trim());
               }
             }}
-            placeholder="全局搜索"
+            placeholder={t('table.toolbar.search')}
             className="pl-6"
           />
         </div>
@@ -327,13 +328,13 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
               size="md"
               className={`${iconBtn} gap-0.5`}
               disabled={selectedCount === 0}
-              aria-label="复制选中行"
+              aria-label={t('table.toolbar.copySelected')}
               title={
                 selectedCount > 0
                   ? supportsSQL
-                    ? `复制选中行（${selectedCount}）：IN 列表 / JSON / Markdown / TS 类型 / INSERT`
-                    : `复制选中行（${selectedCount}）：JSON / Markdown（键值源无 SQL 语义，SQL 类格式不可用）`
-                  : '复制为多种格式（先选中行）'
+                    ? t('table.toolbar.copySelectedSqlHint', [selectedCount])
+                    : t('table.toolbar.copySelectedKvHint', [selectedCount])
+                  : t('table.toolbar.copyNoSel')
               }
             >
               <IconCopy size={14} />
@@ -343,13 +344,13 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           items={[
             ...(supportsSQL
               ? [
-                  { key: 'inList', label: `IN 列表（${primaryKey.length > 0 ? primaryKey[0] : '首列'}）`, onSelect: () => void onCopyAs('inList') },
-                  { key: 'tsType', label: 'TS 类型定义', onSelect: () => void onCopyAs('tsType') },
-                  { key: 'insert', label: 'INSERT 语句', onSelect: () => void onCopyAs('insert') },
+                  { key: 'inList', label: t('table.copy.inList', [primaryKey.length > 0 ? primaryKey[0] : t('table.copy.firstColumn')]), onSelect: () => void onCopyAs('inList') },
+                  { key: 'tsType', label: t('table.copy.tsType'), onSelect: () => void onCopyAs('tsType') },
+                  { key: 'insert', label: t('table.copy.insert'), onSelect: () => void onCopyAs('insert') },
                 ]
               : []),
             { key: 'json', label: 'JSON', onSelect: () => void onCopyAs('json') },
-            { key: 'markdown', label: 'Markdown 表格', onSelect: () => void onCopyAs('markdown') },
+            { key: 'markdown', label: t('table.copy.markdownTable'), onSelect: () => void onCopyAs('markdown') },
           ]}
         />
 
@@ -359,8 +360,8 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             variant="secondary"
             size="md"
             className={iconBtn}
-            aria-label="查看表 DDL"
-            title="查看当前表 DDL"
+            aria-label={t('table.toolbar.viewDdl')}
+            title={t('table.toolbar.viewDdlTitle')}
             onClick={() => void openDdl()}
           >
             <span className="text-[11px] font-medium tracking-tight">DDL</span>
@@ -368,7 +369,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
         )}
         <Popover
           trigger={
-            <Button variant="secondary" size="md" className={`${iconBtn} gap-0.5`} aria-label="列设置" title="列设置（显示/隐藏列）">
+            <Button variant="secondary" size="md" className={`${iconBtn} gap-0.5`} aria-label={t('table.toolbar.columnSettings')} title={t('table.toolbar.columnSettingsTitle')}>
               <IconColumns size={14} />
               <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
             </Button>
@@ -377,7 +378,7 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
           onOpenChange={setColumnSettingsOpen}
           contentClassName="p-1 min-w-44 max-h-72 overflow-y-auto"
         >
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">显示/隐藏列（服务端投影）</div>
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">{t('table.toolbar.showHideColumns')}</div>
           {allColumns.map((c) => (
             <Checkbox
               key={c.name}
@@ -398,26 +399,26 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
               variant="secondary"
               size="md"
               className={`${iconBtn} gap-0.5`}
-              aria-label="导出"
-              title="导出（后台任务，可并发）"
+              aria-label={t('table.toolbar.export')}
+              title={t('table.toolbar.exportTitle')}
             >
               <IconDownload size={14} />
               <span aria-hidden className="text-[9px] leading-none text-muted-foreground">▾</span>
             </Button>
           }
           items={[
-            { key: 'csv-page', label: 'CSV · 当前页', onSelect: () => onExport('csv', 'page') },
-            { key: 'csv-result', label: 'CSV · 全部结果', onSelect: () => onExport('csv', 'result') },
-            { key: 'json-page', label: 'JSON · 当前页', onSelect: () => onExport('json', 'page') },
-            { key: 'json-result', label: 'JSON · 全部结果', onSelect: () => onExport('json', 'result') },
-            { key: 'xlsx-page', label: 'Excel (xlsx) · 当前页', onSelect: () => onExport('xlsx', 'page') },
-            { key: 'xlsx-result', label: 'Excel (xlsx) · 全部结果', onSelect: () => onExport('xlsx', 'result') },
-            { key: 'ndjson-page', label: 'NDJSON · 当前页', onSelect: () => onExport('ndjson', 'page') },
-            { key: 'ndjson-result', label: 'NDJSON · 全部结果', onSelect: () => onExport('ndjson', 'result') },
-            { key: 'markdown-page', label: 'Markdown · 当前页', onSelect: () => onExport('markdown', 'page') },
-            { key: 'markdown-result', label: 'Markdown · 全部结果', onSelect: () => onExport('markdown', 'result') },
-            { key: 'insert-page', label: 'SQL (INSERT) · 当前页', onSelect: () => onExport('insert', 'page') },
-            { key: 'insert-result', label: 'SQL (INSERT) · 全部结果', onSelect: () => onExport('insert', 'result') },
+            { key: 'csv-page', label: t('table.export.currentPage', ['CSV']), onSelect: () => onExport('csv', 'page') },
+            { key: 'csv-result', label: t('table.export.allResults', ['CSV']), onSelect: () => onExport('csv', 'result') },
+            { key: 'json-page', label: t('table.export.currentPage', ['JSON']), onSelect: () => onExport('json', 'page') },
+            { key: 'json-result', label: t('table.export.allResults', ['JSON']), onSelect: () => onExport('json', 'result') },
+            { key: 'xlsx-page', label: t('table.export.currentPage', ['Excel (xlsx)']), onSelect: () => onExport('xlsx', 'page') },
+            { key: 'xlsx-result', label: t('table.export.allResults', ['Excel (xlsx)']), onSelect: () => onExport('xlsx', 'result') },
+            { key: 'ndjson-page', label: t('table.export.currentPage', ['NDJSON']), onSelect: () => onExport('ndjson', 'page') },
+            { key: 'ndjson-result', label: t('table.export.allResults', ['NDJSON']), onSelect: () => onExport('ndjson', 'result') },
+            { key: 'markdown-page', label: t('table.export.currentPage', ['Markdown']), onSelect: () => onExport('markdown', 'page') },
+            { key: 'markdown-result', label: t('table.export.allResults', ['Markdown']), onSelect: () => onExport('markdown', 'result') },
+            { key: 'insert-page', label: t('table.export.currentPage', ['SQL (INSERT)']), onSelect: () => onExport('insert', 'page') },
+            { key: 'insert-result', label: t('table.export.allResults', ['SQL (INSERT)']), onSelect: () => onExport('insert', 'result') },
           ]}
         />
       </div>

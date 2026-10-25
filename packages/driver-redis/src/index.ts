@@ -63,37 +63,38 @@ const capabilities: DriverCapabilities = {
   pagination: 'cursor',
 };
 
+/** FormSchema 文案 = 域键（C-17/D-25 B3）：webview 渲染时经 formText 解析，未登记文本原样展示 */
 const formSchema: FormSchema = {
   fields: [
-    { key: 'host', label: '主机', type: 'string', required: true, placeholder: '127.0.0.1' },
-    { key: 'port', label: '端口', type: 'number', required: true, default: 6379, validator: 'port' },
-    { key: 'username', label: '用户名（ACL，可选）', type: 'string' },
-    { key: 'password', label: '密码', type: 'password' },
-    { key: 'database', label: '默认库编号', type: 'number', default: 0 },
+    { key: 'host', label: 'form.host', type: 'string', required: true, placeholder: '127.0.0.1' },
+    { key: 'port', label: 'form.port', type: 'number', required: true, default: 6379, validator: 'port' },
+    { key: 'username', label: 'form.redis.usernameAcl', type: 'string' },
+    { key: 'password', label: 'form.password', type: 'password' },
+    { key: 'database', label: 'form.redis.dbIndex', type: 'number', default: 0 },
     {
       key: 'ssl',
-      label: 'SSL/TLS 加密连接',
+      label: 'form.redis.sslEnable',
       type: 'boolean',
       default: false,
-      hint: '云托管 Redis（Upstash / Redis Cloud / Aiven 等）强制 TLS，须开启',
+      hint: 'form.redis.sslEnableHint',
     },
     {
       key: 'sslInsecure',
-      label: '跳过证书校验',
+      label: 'form.ssl.insecure',
       type: 'boolean',
       default: false,
-      group: '高级',
-      section: 'SSL/TLS',
+      group: 'form.group.advanced',
+      section: 'form.section.sslTls',
       toggle: 'ssl', // 依赖 base 组的 ssl 开关：关闭时本项隐藏
-      hint: '⚠ 风险：不校验服务器证书，连接可被中间人窃听/篡改。仅限自签证书的受信内网环境使用',
+      hint: 'form.redis.sslInsecureHint',
     },
     {
       key: 'connectTimeout',
-      label: '连接超时（ms）',
+      label: 'form.connectTimeout',
       type: 'number',
       default: 10000,
-      group: '高级',
-      section: '超时',
+      group: 'form.group.advanced',
+      section: 'form.section.timeout',
     },
   ],
 };

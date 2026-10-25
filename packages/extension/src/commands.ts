@@ -9,7 +9,8 @@ import { formatSql } from '@db-explorer/core';
 import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
 import { newQueryDefaultName, sanitizeQueryFileName } from './services/savedQueries';
 import type { QueryFilesService } from './services/queryFiles';
-import { CODEGEN_LANGUAGES, codegenLanguageId, generateCode, type CodegenLanguage } from './services/codegen';
+import { codegenLanguageId, generateCode, getCodegenLanguages, type CodegenLanguage } from './services/codegen';
+import { t } from './services/i18n';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
 import type { DdlService } from './services/ddlService';
@@ -54,7 +55,7 @@ export interface AppServices {
 
 function copy(text: string, hint: string): void {
   void vscode.env.clipboard.writeText(text);
-  void vscode.window.setStatusBarMessage(`已复制 ${hint}`, 2000);
+  void vscode.window.setStatusBarMessage(t('已复制 {0}', [hint]), 2000);
 }
 
 export function registerCommands(
@@ -63,6 +64,8 @@ export function registerCommands(
   tree: ConnectionsTreeProvider,
 ): vscode.Disposable[] {
   const { store, connections } = services;
+  // 删除确认按钮（规则：构造与比较同源翻译，禁止一处 t() 一处裸字面量）
+  const delLabel = t('删除');
 
   return [
     vscode.commands.registerCommand('dbExplorer.focus', async () => {
@@ -122,7 +125,7 @@ export function registerCommands(
         return;
       }
       const newId = randomUUID();
-      await store.save({ ...cfg, id: newId, name: `${cfg.name} 副本`, secretRef: secretRefOf(newId) });
+      await store.save({ ...cfg, id: newId, name: t('{0} 副本', [cfg.name]), secretRef: secretRefOf(newId) });
       await store.copySecret(connId, newId);
     }),
 
@@ -136,14 +139,14 @@ export function registerCommands(
         return;
       }
       const confirmed = await vscode.window.showWarningMessage(
-        `删除连接 "${cfg.name}"？`,
+        t('删除连接 "{0}"？', [cfg.name]),
         {
           modal: true,
-          detail: '将同时清除该连接保存的密码（SecretStorage），不影响数据库本身。',
+          detail: t('将同时清除该连接保存的密码（SecretStorage），不影响数据库本身。'),
         },
-        '删除',
+        delLabel,
       );
-      if (confirmed !== '删除') {
+      if (confirmed !== delLabel) {
         return;
       }
       connections.invalidate(connId);
@@ -166,7 +169,7 @@ export function registerCommands(
       // 断开 = 回到空闲态：自动收起该连接节点（内容已失效，展开即重连）
       tree.collapseConnection(connId);
       // 无破坏性（懒连接 D-10：下次操作自动重连），不弹确认，状态栏轻提示即可
-      void vscode.window.setStatusBarMessage(`已断开 ${cfg.name}（下次操作自动重连）`, 3000);
+      void vscode.window.setStatusBarMessage(t('已断开 {0}（下次操作自动重连）', [cfg.name]), 3000);
     }),
 
     vscode.commands.registerCommand('dbExplorer.refresh', () => {
@@ -225,20 +228,20 @@ export function registerCommands(
         return;
       }
       const name = await vscode.window.showInputBox({
-        title: '新增查询',
-        prompt: '查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）',
-        placeHolder: '查询名称',
+        title: t('新增查询'),
+        prompt: t('查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）'),
+        placeHolder: t('查询名称'),
         value: newQueryDefaultName(),
         validateInput: async (v) => {
           const safe = sanitizeQueryFileName(v.replace(/\.sql$/i, ''));
           if (!safe) {
-            return '名称无效';
+            return t('名称无效');
           }
           try {
             await vscode.workspace.fs.stat(
               vscode.Uri.joinPath(services.queries.dirUri(connId, db), `${safe}.sql`),
             );
-            return '同名查询已存在';
+            return t('同名查询已存在');
           } catch {
             return undefined;
           }
@@ -277,11 +280,11 @@ export function registerCommands(
         node.payload.file,
       );
       const confirmed = await vscode.window.showWarningMessage(
-        `删除查询 "${node.label}"？（${uri.fsPath}）`,
+        t('删除查询 "{0}"？（{1}）', [node.label, uri.fsPath]),
         { modal: true },
-        '删除',
+        delLabel,
       );
-      if (confirmed !== '删除') {
+      if (confirmed !== delLabel) {
         return;
       }
       await services.queries.delete(uri);
@@ -326,21 +329,21 @@ export function registerCommands(
       const oldUri = vscode.Uri.joinPath(dir, file);
       const current = file.replace(/\.sql$/i, '');
       const name = await vscode.window.showInputBox({
-        title: '重命名查询',
-        prompt: '新的查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）',
+        title: t('重命名查询'),
+        prompt: t('新的查询名称（保存到查询目录 …/<名称>.sql，dbExplorer.queries.directory 可自定义位置）'),
         value: current,
         valueSelection: [0, current.length],
         validateInput: async (v) => {
           const safe = sanitizeQueryFileName(v.replace(/\.sql$/i, ''));
           if (!safe) {
-            return '名称无效';
+            return t('名称无效');
           }
           if (safe === current) {
             return undefined;
           }
           try {
             await vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, `${safe}.sql`));
-            return '同名查询已存在';
+            return t('同名查询已存在');
           } catch {
             return undefined;
           }
@@ -362,7 +365,7 @@ export function registerCommands(
           await vscode.workspace.fs.rename(oldUri, newUri, { overwrite: false });
         } catch (err) {
           void vscode.window.showErrorMessage(
-            `重命名失败：${err instanceof Error ? err.message : String(err)}（同名查询已存在？）`,
+            t('重命名失败：{0}（同名查询已存在？）', [err instanceof Error ? err.message : String(err)]),
           );
           return;
         }
@@ -376,7 +379,7 @@ export function registerCommands(
       const editor = vscode.window.activeTextEditor;
       const doc = editor?.document;
       if (!doc || doc.languageId !== 'sql') {
-        void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+        void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
         return;
       }
       let dialectId: string | undefined;
@@ -384,7 +387,7 @@ export function registerCommands(
       if (binding) {
         const connDriver = services.connections.getDriver(binding.connId);
         if (connDriver && !connDriver.capabilities.supportsSQL) {
-          void vscode.window.showInformationMessage('命令控制台为命令模式，不适用 SQL 格式化。');
+          void vscode.window.showInformationMessage(t('命令控制台为命令模式，不适用 SQL 格式化。'));
           return;
         }
         try {
@@ -401,7 +404,7 @@ export function registerCommands(
         : selection;
       const text = doc.getText(range);
       if (!text.trim()) {
-        void vscode.window.showInformationMessage('没有可格式化的内容。');
+        void vscode.window.showInformationMessage(t('没有可格式化的内容。'));
         return;
       }
       const formatted = formatSql(text, dialectId);
@@ -410,7 +413,7 @@ export function registerCommands(
       }
       await editor.edit((builder) => builder.replace(range, formatted));
       void vscode.window.setStatusBarMessage(
-        dialectId ? `已按 ${dialectId} 方言格式化` : '已格式化（标准 SQL）',
+        dialectId ? t('已按 {0} 方言格式化', [dialectId]) : t('已格式化（标准 SQL）'),
         2500,
       );
     }),
@@ -452,7 +455,7 @@ export function registerCommands(
       }
       const conn = await connections.ensureConnected(connId);
       const q = conn.quoteIdentifier ?? ((n: string) => `\`${n.replace(/`/g, '``')}\``);
-      copy(`SELECT * FROM ${q(db)}.${q(obj)} LIMIT 100;`, 'SELECT 语句');
+      copy(`SELECT * FROM ${q(db)}.${q(obj)} LIMIT 100;`, t('SELECT 语句'));
     }),
 
     // 由表结构生成代码（概要 §6 #7）：树右键 table/view → 选语言 → 打开只读草稿文档
@@ -461,9 +464,9 @@ export function registerCommands(
       if (!connId || !db || !obj) {
         return;
       }
-      const picked = await vscode.window.showQuickPick(CODEGEN_LANGUAGES, {
-        title: `由表结构生成代码：${obj}`,
-        placeHolder: '选择目标语言',
+      const picked = await vscode.window.showQuickPick(getCodegenLanguages(), {
+        title: t('由表结构生成代码：{0}', [obj]),
+        placeHolder: t('选择目标语言'),
       });
       if (!picked) {
         return;
@@ -472,7 +475,7 @@ export function registerCommands(
         const conn = await connections.ensureConnected(connId);
         const columns = await conn.listColumns(db, obj);
         if (columns.length === 0) {
-          void vscode.window.showInformationMessage(`表 "${obj}" 没有可用的列元数据。`);
+          void vscode.window.showInformationMessage(t('表 "{0}" 没有可用的列元数据。', [obj]));
           return;
         }
         const code = generateCode(picked.value as CodegenLanguage, obj, columns);
@@ -484,7 +487,7 @@ export function registerCommands(
         copy(code, `${picked.label}`);
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `生成代码失败：${err instanceof Error ? err.message : String(err)}`,
+          t('生成代码失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),
@@ -496,7 +499,7 @@ export function registerCommands(
       }
       const conn = await connections.ensureConnected(connId);
       if (typeof conn.getDdl !== 'function') {
-        void vscode.window.showInformationMessage('当前驱动未实现 DDL 查看。');
+        void vscode.window.showInformationMessage(t('当前驱动未实现 DDL 查看。'));
         return;
       }
       try {
@@ -505,7 +508,7 @@ export function registerCommands(
         await vscode.window.showTextDocument(doc, { preview: true });
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `获取 DDL 失败：${err instanceof Error ? err.message : String(err)}`,
+          t('获取 DDL 失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),
@@ -515,7 +518,7 @@ export function registerCommands(
     vscode.commands.registerCommand('dbExplorer.createTable', (node?: DbTreeNode) => {
       const { connId, db } = node?.payload ?? {};
       if (!connId || !db) {
-        void vscode.window.showInformationMessage('请先连接并在具体库上新建表。');
+        void vscode.window.showInformationMessage(t('请先连接并在具体库上新建表。'));
         return;
       }
       openTableDesignPanel(context, services, { connId, db });
@@ -537,7 +540,7 @@ export function registerCommands(
         return;
       }
       if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
-        void vscode.window.showInformationMessage('当前数据库类型不支持 ER 图。');
+        void vscode.window.showInformationMessage(t('当前数据库类型不支持 ER 图。'));
         return;
       }
       try {
@@ -566,7 +569,7 @@ export function registerCommands(
         );
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `打开 ER 图失败：${err instanceof Error ? err.message : String(err)}`,
+          t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),
@@ -580,7 +583,7 @@ export function registerCommands(
       }
       const driver = connections.getDriver(connId);
       if (!driver || typeof driver.buildCreateDatabase !== 'function') {
-        void vscode.window.showInformationMessage('当前驱动不支持新建库。');
+        void vscode.window.showInformationMessage(t('当前驱动不支持新建库。'));
         return;
       }
       openDatabaseDesignPanel(context, services, { connId, kind: 'create' });
@@ -593,7 +596,7 @@ export function registerCommands(
       }
       const driver = connections.getDriver(connId);
       if (!driver || typeof driver.buildAlterDatabase !== 'function') {
-        void vscode.window.showInformationMessage('当前驱动不支持编辑库。');
+        void vscode.window.showInformationMessage(t('当前驱动不支持编辑库。'));
         return;
       }
       openDatabaseDesignPanel(context, services, { connId, db, kind: 'alter' });
@@ -608,7 +611,7 @@ export function registerCommands(
         await services.dbddl.dropDatabase(connId, db);
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `删除库失败：${err instanceof Error ? err.message : String(err)}`,
+          t('删除库失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),
@@ -622,7 +625,7 @@ export function registerCommands(
         await services.ddl.dropTable(connId, db, obj);
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `删除表失败：${err instanceof Error ? err.message : String(err)}`,
+          t('删除表失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),
@@ -631,7 +634,7 @@ export function registerCommands(
     vscode.commands.registerCommand('dbExplorer.addColumn', (node?: DbTreeNode) => {
       const { connId, db, obj } = node?.payload ?? {};
       if (!connId || !db || !obj) {
-        void vscode.window.showInformationMessage('请先在具体表上新增列。');
+        void vscode.window.showInformationMessage(t('请先在具体表上新增列。'));
         return;
       }
       // 表目录（obj 为表）或列节点（payload 同时带 obj 与 column）均可：都追加空列
@@ -655,7 +658,7 @@ export function registerCommands(
         await services.ddl.dropColumn(connId, db, obj, column);
       } catch (err) {
         void vscode.window.showErrorMessage(
-          `删除列失败：${err instanceof Error ? err.message : String(err)}`,
+          t('删除列失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),

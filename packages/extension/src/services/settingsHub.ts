@@ -5,6 +5,7 @@ import {
   SettingsGetResultSchema,
   type SettingsAllowedKey,
 } from '@db-explorer/protocol';
+import { t } from './i18n';
 
 /**
  * 设置中心（交互稿 §16）：代理编辑 VSCode settings——读 getConfiguration、写 update
@@ -51,25 +52,25 @@ export class SettingsHub {
     const type = SETTINGS_KEY_TYPES[key];
     if (type === 'boolean') {
       if (typeof raw !== 'boolean') {
-        throw new DriverError('E_VALIDATION', `${key} 需要布尔值`);
+        throw new DriverError('E_VALIDATION', t('{0} 需要布尔值', [key]));
       }
       return raw;
     }
     if (type === 'number') {
       const n = typeof raw === 'number' ? raw : Number(raw);
       if (!Number.isFinite(n) || n <= 0) {
-        throw new DriverError('E_VALIDATION', `${key} 需要正数`);
+        throw new DriverError('E_VALIDATION', t('{0} 需要正数', [key]));
       }
       return n;
     }
     if (type === 'enum') {
       if (typeof raw !== 'string' || !EXPORT_FORMATS.includes(raw as (typeof EXPORT_FORMATS)[number])) {
-        throw new DriverError('E_VALIDATION', `${key} 仅支持 csv / json / xlsx / ndjson / markdown / insert`);
+        throw new DriverError('E_VALIDATION', t('{0} 仅支持 csv / json / xlsx / ndjson / markdown / insert', [key]));
       }
       return raw;
     }
     if (typeof raw !== 'string') {
-      throw new DriverError('E_VALIDATION', `${key} 需要字符串`);
+      throw new DriverError('E_VALIDATION', t('{0} 需要字符串', [key]));
     }
     return raw;
   }

@@ -88,14 +88,15 @@ const capabilities: DriverCapabilities = {
   internal: true,
 };
 
+/** FormSchema 文案 = 域键（C-17/D-25 B3）：webview 渲染时经 formText 解析，未登记文本原样展示 */
 const formSchema: FormSchema = {
   fields: [
-    { key: 'host', label: '主机', type: 'string', required: true, placeholder: '127.0.0.1' },
-    { key: 'port', label: '端口', type: 'number', required: true, default: 3306, validator: 'port' },
-    { key: 'username', label: '用户名', type: 'string', required: true },
-    { key: 'password', label: '密码', type: 'password' },
-    { key: 'database', label: '默认库', type: 'string' },
-    { key: 'readonly', label: '只读打开', type: 'boolean', group: '高级' },
+    { key: 'host', label: 'form.host', type: 'string', required: true, placeholder: '127.0.0.1' },
+    { key: 'port', label: 'form.port', type: 'number', required: true, default: 3306, validator: 'port' },
+    { key: 'username', label: 'form.username', type: 'string', required: true },
+    { key: 'password', label: 'form.password', type: 'password' },
+    { key: 'database', label: 'form.database', type: 'string' },
+    { key: 'readonly', label: 'form.mock.readonly', type: 'boolean', group: 'form.group.advanced' },
   ],
 };
 
@@ -1316,10 +1317,10 @@ export function createMockDriver(): IDatabaseDriver {
     // ── 库级 DDL（M8-DBDDL / D-19：内存库列表变更，query() 拦截执行对应语句）──
     getDatabaseFormSchema: () => ({
       fields: [
-        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'newdb' },
+        { key: 'name', label: 'dbddl.name', type: 'string', required: true, placeholder: 'newdb' },
         {
           key: 'charset',
-          label: '字符集',
+          label: 'dbddl.charset',
           type: 'select',
           default: 'utf8mb4',
           options: [

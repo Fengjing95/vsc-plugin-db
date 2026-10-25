@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react';
-import { site, withBase } from '../content/site';
-
-const NAV_LINKS = [
-  { href: '#playground', label: '✨ 在线体验' },
-  { href: '#matrix', label: '支持矩阵' },
-  { href: '#features', label: '功能亮点' },
-  { href: '#screenshots', label: '界面' },
-  { href: '#roadmap', label: '路线图' },
-  { href: '#quickstart', label: '快速上手' },
-];
+import { setSiteLang, useSiteLang } from '../i18n/lang';
+import { getSiteContent, site, withBase } from '../content/site';
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const lang = useSiteLang();
+  const c = getSiteContent(lang);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -23,24 +17,32 @@ export function Nav() {
   return (
     <header className={`nav${scrolled ? ' nav--scrolled' : ''}`}>
       <div className="container nav__inner">
-        <a className="nav__brand" href="#top" aria-label="DB Kit 首页">
+        <a className="nav__brand" href="#top" aria-label={c.ui.nav.homeAria}>
           <img src={withBase('assets/favicon.svg')} alt="" width={26} height={26} />
           <span>DB Kit</span>
         </a>
-        <nav className="nav__links" aria-label="页面导航">
-          {NAV_LINKS.map((l) => (
+        <nav className="nav__links" aria-label={c.ui.nav.navAria}>
+          {c.ui.nav.links.map((l) => (
             <a key={l.href} href={l.href}>
               {l.label}
             </a>
           ))}
         </nav>
         <div className="nav__actions">
-          <a className="nav__github" href={site.urls.repo} target="_blank" rel="noreferrer" aria-label="GitHub 仓库">
+          <button
+            type="button"
+            className="nav__lang"
+            aria-label={c.ui.nav.langAriaOn}
+            onClick={() => setSiteLang(lang === 'zh' ? 'en' : 'zh')}
+          >
+            {lang === 'zh' ? 'EN' : '中文'}
+          </button>
+          <a className="nav__github" href={site.urls.repo} target="_blank" rel="noreferrer" aria-label={c.ui.nav.githubAria}>
             <GitHubIcon />
             <span>GitHub</span>
           </a>
           <a className="btn btn--primary btn--sm" href={site.urls.marketplace} target="_blank" rel="noreferrer">
-            免费安装
+            {c.ui.nav.install}
           </a>
         </div>
       </div>

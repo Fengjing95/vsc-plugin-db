@@ -18,6 +18,9 @@ export interface WebviewBootstrap {
   page: WebviewPage;
   viewId: string;
   params: Record<string, string>;
+  /** UI 语言与当前语言词典（D-25/C-17，buildWebviewHtml 集中注入；纯函数测试与 stub 场景可缺省） */
+  lang?: string;
+  messages?: Record<string, string>;
 }
 
 function getNonce(): string {

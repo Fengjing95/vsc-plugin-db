@@ -1,5 +1,6 @@
 import type { FilterOpPayload as FilterOp } from '@db-explorer/protocol';
 import type { FilterConditionPayload } from '@db-explorer/protocol';
+import { t } from './i18n';
 
 /**
  * 筛选构造器规则（交互稿 §4.4）：操作符按列类型过滤，值按类型编码
@@ -37,21 +38,24 @@ export function opsForType(type: ColumnType): FilterOp[] {
   return OPS_BY_TYPE[type] ?? OPS_BY_TYPE.unknown;
 }
 
-export const OP_LABELS: Record<FilterOp, string> = {
-  eq: '=',
-  ne: '≠',
-  gt: '>',
-  ge: '≥',
-  lt: '<',
-  le: '≤',
-  like: '含',
-  notLike: '不含',
-  in: '属于',
-  notIn: '不属于',
-  isNull: '为 NULL',
-  isNotNull: '非 NULL',
-  between: '介于',
-};
+/** 操作符标签（i18n：调用时经 t() 解析，随注入词典语言） */
+export function opLabels(): Record<FilterOp, string> {
+  return {
+    eq: '=',
+    ne: '≠',
+    gt: '>',
+    ge: '≥',
+    lt: '<',
+    le: '≤',
+    like: t('table.op.like'),
+    notLike: t('table.op.notLike'),
+    in: t('table.op.in'),
+    notIn: t('table.op.notIn'),
+    isNull: t('table.op.isNull'),
+    isNotNull: t('table.op.isNotNull'),
+    between: t('table.op.between'),
+  };
+}
 
 /** ops 是否需要单值输入 / 双值（between）/ 多值（in） */
 export function opValueShape(op: FilterOp): 'none' | 'single' | 'double' | 'multi' {

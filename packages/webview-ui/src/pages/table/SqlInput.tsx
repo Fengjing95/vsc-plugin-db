@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '../../lib/i18n';
 import { highlightSql } from '../../lib/sqlHighlight';
 
 /** WHERE / ORDER BY 上下文的补全关键字 */
@@ -186,8 +187,8 @@ export function SqlInput({
       {hasValue && (
         <button
           type="button"
-          aria-label={`清除${ariaLabel}内容`}
-          title="清除内容（Enter 重新应用）"
+          aria-label={t('table.sql.clearAria', [ariaLabel])}
+          title={t('table.sql.clearTitle')}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             onChange('');
@@ -204,7 +205,7 @@ export function SqlInput({
       {open && candidates.length > 0 && (
         <ul
           role="listbox"
-          aria-label={`${ariaLabel}补全`}
+          aria-label={t('table.sql.completionAria', [ariaLabel])}
           className="absolute left-0 top-full z-30 mt-0.5 max-h-56 w-full min-w-48 overflow-y-auto rounded-sm border border-border bg-panel py-1 shadow-lg"
         >
           {candidates.map((c, i) => (

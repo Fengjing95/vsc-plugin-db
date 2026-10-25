@@ -44,11 +44,14 @@ import {
   RPC_PROTOCOL_VERSION,
   RpcEvents,
   RpcMethods,
+  messagesFor,
   type ConsoleBanner,
   type ConsoleRun,
   type RpcError,
   type ViewUiState,
 } from '@db-explorer/protocol';
+import { getSiteContent } from '../content/site';
+import { getSiteLang } from '../i18n/lang';
 
 /**
  * Playground 浏览器侧 Host：在页面里跑真驱动（driver-mock）+ 真权威副本（core ChangeSetService），
@@ -79,6 +82,11 @@ const CONN_ID = 'mock';
 
 /** extension consoleService 的 USE 拦截同款正则（consoleService.ts parseUseStatement） */
 const USE_RE = /^\s*USE\s+`?([A-Za-z0-9_$]+)`?\s*;?\s*$/i;
+
+/** 面向用户的提示文案取站点词典（B4）：host 为非 React 模块，调用点经 getSiteLang() 即时取当前语言 */
+function pgText() {
+  return getSiteContent(getSiteLang()).playground;
+}
 
 /**
  * 浏览器 Buffer 垫片：driver-mock 的行生成器用 `Buffer.from(s).toString('base64')`
@@ -230,7 +238,7 @@ export class PlaygroundHost {
         const p = PreviewChangesParamsSchema.parse(params);
         const cs = this.changesets.snapshot(ctx.viewId);
         if (cs.inserts.length + cs.updates.length + cs.deletes.length === 0) {
-          throw new DriverError('E_VALIDATION', '没有可提交的变更');
+          throw new DriverError('E_VALIDATION', pgText().errNoChanges);
         }
         const conn = await this.conn();
         return { items: await conn.previewChanges(p.db, p.obj, cs) };
@@ -240,7 +248,7 @@ export class PlaygroundHost {
         const p = ApplyChangesParamsSchema.parse(params);
         const cs = this.changesets.snapshot(ctx.viewId);
         if (cs.inserts.length + cs.updates.length + cs.deletes.length === 0) {
-          throw new DriverError('E_VALIDATION', '没有可提交的变更');
+          throw new DriverError('E_VALIDATION', pgText().errNoChanges);
         }
         const conn = await this.conn();
         try {
@@ -278,7 +286,7 @@ export class PlaygroundHost {
         const p = GetDdlParamsSchema.parse(params);
         const conn = await this.conn();
         if (typeof conn.getDdl !== 'function') {
-          throw new DriverError('E_UNSUPPORTED', '当前驱动未实现 DDL 查看');
+          throw new DriverError('E_UNSUPPORTED', pgText().errDdlNotSupported);
         }
         return { ddl: await conn.getDdl(p.db, p.obj) };
       }
@@ -425,7 +433,7 @@ export class PlaygroundHost {
         // E_UNKNOWN_METHOD 属 RPC 层错误码（非 DriverErrorCode），按形状抛给 toRpcError
         throw {
           code: 'E_UNKNOWN_METHOD',
-          message: `Playground 暂不支持 "${method}"`,
+          message: pgText().errMethodNotSupported.replace('{0}', method),
         };
     }
   }
@@ -469,7 +477,7 @@ export class PlaygroundHost {
     return {
       consoleId,
       bound: true,
-      connLabel: 'Mock 数据源（演示）',
+      connLabel: pgText().connLabel,
       db: this.consoleDb,
       running,
       banner: this.consoleBanner,
@@ -539,7 +547,7 @@ export class PlaygroundHost {
             sql: text,
             executionMs: 0,
             affectedRows: 0,
-            messages: [`已切换到数据库 ${useTarget}（Console 绑定已更新）`],
+            messages: [pgText().useSwitched.replace('{0}', useTarget)],
           });
           push();
           continue;
@@ -601,10 +609,10 @@ export class PlaygroundHost {
     const item = this.consoleRun?.items.find((i) => i.seq === itemSeq);
     const rs = item?.resultSet;
     if (!rs) {
-      throw new DriverError('E_VALIDATION', '该结果不可导出');
+      throw new DriverError('E_VALIDATION', pgText().errNotExportable);
     }
     if (format === 'insert') {
-      throw new DriverError('E_VALIDATION', 'Console 结果无单一目标表，INSERT 导出请在表格视图使用');
+      throw new DriverError('E_VALIDATION', pgText().errInsertExport);
     }
     const names = rs.columns.map((c) => c.name);
     const objects = rs.rows.map((row) => Object.fromEntries(names.map((n, i) => [n, row[i] ?? null])));
@@ -647,7 +655,7 @@ export class PlaygroundHost {
       ext = 'csv';
     }
     const blob = new Blob([body], { type: mime });
-    const name = `结果-${itemSeq}.${ext}`;
+    const name = `${pgText().resultFilePrefix}${itemSeq}.${ext}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -677,12 +685,12 @@ export class PlaygroundHost {
   ): Promise<{ sql: string; destructive?: boolean }[]> {
     if (!obj) {
       if (typeof conn.buildCreateTable !== 'function') {
-        throw new DriverError('E_UNSUPPORTED', '当前驱动未实现建表语句生成');
+        throw new DriverError('E_UNSUPPORTED', pgText().errCreateDdlNotSupported);
       }
       return conn.buildCreateTable(db, spec);
     }
     if (typeof conn.buildAlterTable !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动未实现改表语句生成');
+      throw new DriverError('E_UNSUPPORTED', pgText().errAlterDdlNotSupported);
     }
     let comment: string | undefined;
     try {
@@ -700,9 +708,9 @@ export class PlaygroundHost {
     }
     if (err && typeof err === 'object' && 'code' in err) {
       const e = err as { code: string; message?: string; detail?: string };
-      return { code: e.code as RpcError['code'], message: e.message ?? '请求失败', detail: e.detail };
+      return { code: e.code as RpcError['code'], message: e.message ?? pgText().errRequestFailed, detail: e.detail };
     }
-    return { code: 'E_INTERNAL', message: 'Playground 内部错误', detail: String(err) };
+    return { code: 'E_INTERNAL', message: pgText().errInternal, detail: String(err) };
   }
 }
 
@@ -710,11 +718,14 @@ declare global {
   interface Window {
     /** iframe glue 经 window.parent 取用（同源静态托管） */
     __DBX_HOST__?: PlaygroundHost;
+    /** iframe glue 经 window.parent 调用：按站点语言取 webview 词典（D-25，嵌入界面随站点语言） */
+    __DBX_MESSAGES_FOR__?: typeof messagesFor;
   }
 }
 
 /** 必须先于任何 webview iframe 挂载调用（glue postMessage 依赖 window.parent.__DBX_HOST__） */
 export function installPlaygroundHost(): PlaygroundHost {
+  window.__DBX_MESSAGES_FOR__ ??= messagesFor;
   window.__DBX_HOST__ ??= new PlaygroundHost();
   return window.__DBX_HOST__;
 }

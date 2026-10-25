@@ -16,6 +16,7 @@ import {
 } from '@db-explorer/protocol';
 import { create } from 'zustand';
 import { request, RpcError } from '../rpc/client';
+import { t } from '../lib/i18n';
 import { deriveTabs } from '../lib/consoleView';
 import { rpcErrorText } from '../lib/errors';
 
@@ -64,7 +65,7 @@ interface ConsoleStoreState {
   retryExplain(): Promise<void>;
   openAiSettings(): Promise<void>;
   closePanel(): Promise<void>;
-  showToast(t: ToastState, autoDismissMs?: number): void;
+  showToast(toast: ToastState, autoDismissMs?: number): void;
   dismissToast(): void;
 }
 
@@ -94,7 +95,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
       const raw = await request<unknown>('console.getState', { consoleId }, 15_000);
       const parsed = ConsoleStateResultSchema.safeParse(raw);
       if (!parsed.success) {
-        set({ phase: 'error', errorMsg: '插件与视图版本不一致，请重载窗口' });
+        set({ phase: 'error', errorMsg: t('console.versionMismatch') });
         return;
       }
       get().applyState(parsed.data);
@@ -108,7 +109,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     const run = state.run ?? null;
     const ai = state.ai ?? null;
     const tabs = deriveTabs(run, ai);
-    const lastResult = [...tabs].reverse().find((t) => t.kind === 'result');
+    const lastResult = [...tabs].reverse().find((tb) => tb.kind === 'result');
     // AI 解释进行中（bootstrap 恢复/引导路径）跟随 AI Tab
     const followAi = ai?.status === 'running';
     set({
@@ -137,7 +138,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
         return; // 其它 Console 的推送
       }
       const tabs = deriveTabs(run);
-      const lastResult = [...tabs].reverse().find((t) => t.kind === 'result');
+      const lastResult = [...tabs].reverse().find((tb) => tb.kind === 'result');
       const manual = get().manualTab;
       let activeTab = get().activeTab;
       if (!manual) {
@@ -145,7 +146,7 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
         activeTab =
           run.status === 'running'
             ? (lastResult?.id ?? 'msg')
-            : (tabs.find((t) => t.kind === 'result')?.id ?? 'msg');
+            : (tabs.find((tb) => tb.kind === 'result')?.id ?? 'msg');
       }
       set({ run, running: run.status === 'running' ? get().running : null, activeTab });
       return;
@@ -232,12 +233,12 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
         120_000,
       );
       if (result.canceled) {
-        get().showToast({ kind: 'info', text: '已取消导出' });
+        get().showToast({ kind: 'info', text: t('console.exportCanceled') });
       } else {
-        get().showToast({ kind: 'info', text: `已导出 ${result.rows} 行 → ${result.filePath}` }, 6000);
+        get().showToast({ kind: 'info', text: t('console.exported', [result.rows, result.filePath]) }, 6000);
       }
     } catch (err) {
-      get().showToast({ kind: 'error', text: `导出失败：${err instanceof Error ? err.message : String(err)}` });
+      get().showToast({ kind: 'error', text: t('console.exportFailed', [err instanceof Error ? err.message : String(err)]) });
     } finally {
       set({ exporting: false });
     }
@@ -249,13 +250,15 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     try {
       const { consoleId } = get();
       await request('ai.fixError', { consoleId, seq }, 120_000);
-      get().showToast({ kind: 'info', text: '已生成修复建议，请在编辑器中选择保留或放弃' }, 6000);
+      get().showToast({ kind: 'info', text: t('ai.fixGenerated') }, 6000);
     } catch (err) {
       get().showToast({
         kind: 'error',
-        text: `修复建议失败：${rpcErrorText(
-          err instanceof RpcError ? err : { message: err instanceof Error ? err.message : String(err) },
-        )}`,
+        text: t('ai.fixFailed', [
+          rpcErrorText(
+            err instanceof RpcError ? err : { message: err instanceof Error ? err.message : String(err) },
+          ),
+        ]),
       });
     }
   },
@@ -287,11 +290,11 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     }
   },
 
-  showToast(t, autoDismissMs) {
+  showToast(toast, autoDismissMs) {
     if (toastTimer) {
       clearTimeout(toastTimer);
     }
-    set({ toast: t });
+    set({ toast });
     if (autoDismissMs) {
       toastTimer = setTimeout(() => {
         useConsoleStore.getState().dismissToast();

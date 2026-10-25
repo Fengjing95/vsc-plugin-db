@@ -1,4 +1,5 @@
 import type { DatabaseSpecPayload, FormFieldPayload } from '@db-explorer/protocol';
+import { formText, t } from './i18n';
 
 /**
  * 库级 DDL 弹窗纯函数（M8-DBDDL，概要 D-19 / 交互稿 §8.3）：
@@ -16,30 +17,32 @@ export function initialFieldValues(fields: FormFieldPayload[]): Record<string, u
   return values;
 }
 
-/** 逐字段校验（required → number → regex validator）；返回 key → 错误文案（空对象 = 通过） */
+/** 逐字段校验（required → number → regex validator）；返回 key → 错误文案（空对象 = 通过）。
+ *  label 经 formText 解析（驱动下发域键 → 翻译；自由文本/单测桩原文 → 原样） */
 export function validateFieldValues(
   fields: FormFieldPayload[],
   values: Record<string, unknown>,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const f of fields) {
+    const label = formText(f.label);
     const raw = values[f.key];
     const text = raw === null || raw === undefined ? '' : String(raw);
     if (f.required && text.trim() === '') {
-      errors[f.key] = `${f.label}为必填项`;
+      errors[f.key] = t('dbddl.errRequired', [label]);
       continue;
     }
     if (text === '') {
       continue; // 非必填留空合法
     }
     if (f.type === 'number' && !Number.isFinite(Number(text))) {
-      errors[f.key] = `${f.label}需为数字`;
+      errors[f.key] = t('dbddl.errNumber', [label]);
       continue;
     }
     if (f.validator === 'regex' && f.validationRegex) {
       try {
         if (!new RegExp(f.validationRegex).test(text)) {
-          errors[f.key] = `${f.label}格式不正确`;
+          errors[f.key] = t('dbddl.errFormat', [label]);
         }
       } catch {
         // 驱动下发的 regex 非法：跳过该校验（不阻塞用户）

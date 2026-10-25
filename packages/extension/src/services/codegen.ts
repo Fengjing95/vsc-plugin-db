@@ -1,4 +1,5 @@
 import type { ColumnMeta } from '@db-explorer/core';
+import { t } from './i18n';
 
 /**
  * 由表结构生成代码（概要设计 §6 #7 P1）：TS interface / Java POJO / Go struct / Prisma schema。
@@ -7,12 +8,19 @@ import type { ColumnMeta } from '@db-explorer/core';
 
 export type CodegenLanguage = 'ts' | 'java' | 'go' | 'prisma';
 
-export const CODEGEN_LANGUAGES: Array<{ label: string; value: CodegenLanguage; description: string }> = [
-  { label: 'TypeScript interface', value: 'ts', description: '字段类型按值编码契约映射（DECIMAL=string）' },
-  { label: 'Java POJO', value: 'java', description: '私有字段 + getter/setter' },
-  { label: 'Go struct', value: 'go', description: 'json tag + 可空指针' },
-  { label: 'Prisma schema', value: 'prisma', description: 'model 定义，PK/自增映射 @id' },
-];
+/**
+ * 语言选项（QuickPick 展示，description 为用户可见文案）。
+ * 模块加载早于 activate 注入 l10n 后端（C-17/D-25），含文案的常量必须惰性构造——
+ * 调用点（commands.ts generateCode）在使用处取值。
+ */
+export function getCodegenLanguages(): Array<{ label: string; value: CodegenLanguage; description: string }> {
+  return [
+    { label: 'TypeScript interface', value: 'ts', description: t('字段类型按值编码契约映射（DECIMAL=string）') },
+    { label: 'Java POJO', value: 'java', description: t('私有字段 + getter/setter') },
+    { label: 'Go struct', value: 'go', description: t('json tag + 可空指针') },
+    { label: 'Prisma schema', value: 'prisma', description: t('model 定义，PK/自增映射 @id') },
+  ];
+}
 
 // ── 标识符处理 ────────────────────────────────────────────────
 

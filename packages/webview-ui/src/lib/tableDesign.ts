@@ -6,6 +6,7 @@ import type {
   TableSpecPayload,
   UniqueKeySpecPayload,
 } from '@db-explorer/protocol';
+import { t, type MessageKey } from './i18n';
 
 /**
  * 表结构编辑器视图推导（M8-B2，交互稿 §12；键/外键/索引为表设计器批次 B §12.4~12.7）：
@@ -76,13 +77,13 @@ function columnDiffers(a: ColumnSpecPayload, b: ColumnSpecPayload): boolean {
 export function diffSummaryText(summary: SpecDiffSummary): string | undefined {
   const parts: string[] = [];
   if (summary.added > 0) {
-    parts.push(`新增 ${summary.added} 列`);
+    parts.push(t('design.diffColumnsAdded', [summary.added]));
   }
   if (summary.removed > 0) {
-    parts.push(`删除 ${summary.removed} 列`);
+    parts.push(t('design.diffColumnsRemoved', [summary.removed]));
   }
   if (summary.modified > 0) {
-    parts.push(`修改 ${summary.modified} 列`);
+    parts.push(t('design.diffColumnsModified', [summary.modified]));
   }
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
@@ -100,11 +101,11 @@ export function columnNameError(row: ColumnRow, allRows: ColumnRow[]): string | 
   }
   const name = row.col.name.trim();
   if (!name) {
-    return '列名不能为空';
+    return t('design.errColumnNameEmpty');
   }
   const sameName = allRows.filter((r) => !r.deleted && r.rowId !== row.rowId && r.col.name.trim() === name);
   if (sameName.length > 0) {
-    return `列名 "${name}" 重复`;
+    return t('design.errColumnNameDuplicate', [name]);
   }
   return undefined;
 }
@@ -114,7 +115,7 @@ export function columnTypeError(row: ColumnRow): string | undefined {
     return undefined;
   }
   if (!row.col.dataType.trim()) {
-    return '类型不能为空';
+    return t('design.errColumnTypeEmpty');
   }
   return undefined;
 }
@@ -128,10 +129,10 @@ export function columnRowError(row: ColumnRow, allRows: ColumnRow[]): string | u
 export function tableSpecError(kind: 'create' | 'alter', tableName: string, rows: ColumnRow[]): string | undefined {
   const activeRows = rows.filter((r) => !r.deleted);
   if (!tableName.trim()) {
-    return '表名不能为空';
+    return t('design.errTableNameEmpty');
   }
   if (activeRows.length === 0) {
-    return '表至少需要一列';
+    return t('design.errTableNeedsColumn');
   }
   for (const r of activeRows) {
     const err = columnRowError(r, rows);
@@ -159,11 +160,11 @@ export function ukRowError(row: UkRow, allRows: UkRow[]): string | undefined {
     return undefined;
   }
   if (row.spec.columns.length === 0) {
-    return '唯一键至少需要一列';
+    return t('design.errUkNeedsColumn');
   }
   const name = (row.spec.name ?? '').trim();
   if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
-    return `唯一键名 "${name}" 重复`;
+    return t('design.errUkNameDuplicate', [name]);
   }
   return undefined;
 }
@@ -179,7 +180,7 @@ export function fkRefTableError(row: FkRow): string | undefined {
     return undefined;
   }
   if (!row.spec.refTable.trim()) {
-    return '引用表不能为空';
+    return t('design.errRefTableEmpty');
   }
   return undefined;
 }
@@ -192,13 +193,13 @@ export function fkPairError(row: FkRow, index: number): string | undefined {
   const col = row.spec.columns[index]?.trim() ?? '';
   const ref = row.spec.refColumns[index]?.trim() ?? '';
   if (!col && !ref) {
-    return index === 0 ? '至少需要一组列对应（本表列 → 引用列）' : undefined;
+    return index === 0 ? t('design.errFkMappingRequired') : undefined;
   }
   if (!col) {
-    return '缺少本表列';
+    return t('design.errMappingLocalMissing');
   }
   if (!ref) {
-    return '缺少引用列';
+    return t('design.errMappingRefMissing');
   }
   return undefined;
 }
@@ -210,7 +211,7 @@ export function fkNameError(row: FkRow, allRows: FkRow[]): string | undefined {
   }
   const name = (row.spec.name ?? '').trim();
   if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
-    return `外键名 "${name}" 重复`;
+    return t('design.errFkNameDuplicate', [name]);
   }
   return undefined;
 }
@@ -243,11 +244,11 @@ export function idxRowError(row: IdxRow, allRows: IdxRow[]): string | undefined 
     return undefined;
   }
   if (row.spec.columns.length === 0) {
-    return '索引至少需要一列';
+    return t('design.errIdxNeedsColumn');
   }
   const name = (row.spec.name ?? '').trim();
   if (name && allRows.some((r) => !r.deleted && r.rowId !== row.rowId && (r.spec.name ?? '').trim() === name)) {
-    return `索引名 "${name}" 重复`;
+    return t('design.errIdxNameDuplicate', [name]);
   }
   return undefined;
 }
@@ -269,6 +270,19 @@ function keyDiffCounts<T extends { name?: string }>(baseline: readonly T[] | und
   return { added, removed, modified };
 }
 
+/** 键/外键/索引 diff 计数入统计行（按实体各一组模板键，en 侧可按实体对译） */
+function pushKeyDiff(
+  parts: string[],
+  c: ReturnType<typeof keyDiffCounts>,
+  addedKey: MessageKey,
+  removedKey: MessageKey,
+  modifiedKey: MessageKey,
+): void {
+  if (c.added) parts.push(t(addedKey, [c.added]));
+  if (c.removed) parts.push(t(removedKey, [c.removed]));
+  if (c.modified) parts.push(t(modifiedKey, [c.modified]));
+}
+
 /** 变更统计扩展（§12.7）：列 + 唯一键/外键/索引合并计数；全 0 返回 undefined */
 export function diffSummaryTextExtended(
   baseline: TableSpecPayload | null,
@@ -280,22 +294,33 @@ export function diffSummaryTextExtended(
   const parts: string[] = [];
   const colSummary = baseline ? diffSpecSummary(baseline, rows) : undefined;
   if (colSummary) {
-    const t = diffSummaryText(colSummary);
-    if (t) {
-      parts.push(t);
+    const text = diffSummaryText(colSummary);
+    if (text) {
+      parts.push(text);
     }
   }
   if (baseline) {
-    const groups: Array<[string, ReturnType<typeof keyDiffCounts>]> = [
-      ['唯一键', keyDiffCounts(baseline.uniqueKeys, ukRows.filter((r) => !r.deleted).map((r) => r.spec))],
-      ['外键', keyDiffCounts(baseline.foreignKeys, fkRows.filter((r) => !r.deleted).map((r) => r.spec))],
-      ['索引', keyDiffCounts(baseline.indexes, idxRows.filter((r) => !r.deleted).map((r) => r.spec))],
-    ];
-    for (const [label, c] of groups) {
-      if (c.added) parts.push(`新增 ${c.added} ${label}`);
-      if (c.removed) parts.push(`删除 ${c.removed} ${label}`);
-      if (c.modified) parts.push(`修改 ${c.modified} ${label}`);
-    }
+    pushKeyDiff(
+      parts,
+      keyDiffCounts(baseline.uniqueKeys, ukRows.filter((r) => !r.deleted).map((r) => r.spec)),
+      'design.diffUkAdded',
+      'design.diffUkRemoved',
+      'design.diffUkModified',
+    );
+    pushKeyDiff(
+      parts,
+      keyDiffCounts(baseline.foreignKeys, fkRows.filter((r) => !r.deleted).map((r) => r.spec)),
+      'design.diffFkAdded',
+      'design.diffFkRemoved',
+      'design.diffFkModified',
+    );
+    pushKeyDiff(
+      parts,
+      keyDiffCounts(baseline.indexes, idxRows.filter((r) => !r.deleted).map((r) => r.spec)),
+      'design.diffIdxAdded',
+      'design.diffIdxRemoved',
+      'design.diffIdxModified',
+    );
   }
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { site, withBase } from '../content/site';
+import { getSiteContent, site, withBase, type SiteContent } from '../content/site';
+import { useSiteLang } from '../i18n/lang';
 import { installPlaygroundHost } from './host';
 import './playground.css';
 
@@ -23,27 +24,29 @@ type Tab =
 
 const tableKey = (db: string, obj: string) => `t:${db}/${obj}`;
 
-/** 欢迎页快捷入口（mock 库里的明星表：常规 / 全类型宽表 / 5 万行大表） */
-const QUICK_OPEN: { db: string; obj: string; label: string; desc: string }[] = [
-  { db: 'demo', obj: 'users', label: 'demo.users', desc: '常规业务表 · 可编辑' },
-  { db: 'demo', obj: 'wide', label: 'demo.wide', desc: '20 列全类型宽表' },
-  { db: 'big', obj: 't001', label: 'big.t001', desc: '50,000 行 · 虚拟滚动' },
+/** 欢迎页快捷入口的跳转目标（展示文案取词典 playground.quickOpen，按下标配对） */
+const QUICK_OPEN: { db: string; obj: string }[] = [
+  { db: 'demo', obj: 'users' },
+  { db: 'demo', obj: 'wide' },
+  { db: 'big', obj: 't001' },
 ];
 
-function tabTitle(t: Tab): string {
+function tabTitle(t: Tab, pg: SiteContent['playground']): string {
   switch (t.kind) {
     case 'table':
       return t.obj;
     case 'console':
-      return 'SQL Console';
+      return pg.cardConsoleTitle;
     case 'er':
-      return `ER · ${t.db}`;
+      return `${pg.erTabPrefix} ${t.db}`;
     case 'design':
-      return `设计 · ${t.obj}`;
+      return `${pg.designTabPrefix} ${t.obj}`;
   }
 }
 
 export function PlaygroundEmbed() {
+  const lang = useSiteLang();
+  const pg = getSiteContent(lang).playground;
   const [dbs, setDbs] = useState<DbInfo[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['demo']));
   const [objects, setObjects] = useState<Record<string, ObjectInfo[]>>({});
@@ -181,12 +184,14 @@ export function PlaygroundEmbed() {
         };
         break;
     }
-    return `${withBase('playground/webview/index.html')}?${new URLSearchParams(params).toString()}`;
+    // 站点语言随 URL 透传进 iframe（glue 注入 __BOOTSTRAP__.lang/messages）；
+    // 切换语言时 src 变化 → iframe 重载，webview 以新语言重新握手
+    return `${withBase('playground/webview/index.html')}?${new URLSearchParams({ ...params, lang }).toString()}`;
   };
 
   return (
     <div className="pg-embed-wrap">
-      <div className="pg" role="application" aria-label="DB Kit 在线 Playground（Mock 演示数据）">
+      <div className="pg" role="application" aria-label={pg.frameAria}>
         {/* 标题栏 */}
         <div className="pg-titlebar">
           <span className="pg-lights" aria-hidden="true">
@@ -194,20 +199,20 @@ export function PlaygroundEmbed() {
             <i />
             <i />
           </span>
-          <span className="pg-title">DB Kit — Playground（Mock 演示数据 · 无需安装）</span>
+          <span className="pg-title">{pg.titleBar}</span>
           <span className="pg-back" aria-hidden="true" />
         </div>
 
         <div className="pg-body">
           {/* 活动栏 */}
           <div className="pg-activity" aria-hidden="true">
-            <span className="pg-activity__icon is-active" title="数据库资源管理器">
+            <span className="pg-activity__icon is-active" title={pg.activityExplorer}>
               <DbIcon />
             </span>
-            <span className="pg-activity__icon" title="搜索（Playground 未开放）">
+            <span className="pg-activity__icon" title={pg.activitySearch}>
               <SearchIcon />
             </span>
-            <span className="pg-activity__bottom" title="账号（Playground 未开放）">
+            <span className="pg-activity__bottom" title={pg.activityAccount}>
               <GearIcon />
             </span>
           </div>
@@ -215,21 +220,21 @@ export function PlaygroundEmbed() {
           {/* 侧栏：资源树 */}
           <aside className="pg-sidebar">
             <div className="pg-sidebar__head">
-              <span>数据库 · 资源管理器</span>
+              <span>{pg.sidebarHeader}</span>
               <span className="pg-sidebar__btns">
-                <button className="pg-icon-btn" type="button" title="打开 SQL Console" onClick={() => openTab({ key: 'console', kind: 'console' })}>
+                <button className="pg-icon-btn" type="button" title={pg.openConsoleTitle} onClick={() => openTab({ key: 'console', kind: 'console' })}>
                   <TerminalIcon />
                 </button>
-                <button className="pg-icon-btn" type="button" title="重置演示数据（清空内存库与未提交变更）" onClick={resetDemo}>
+                <button className="pg-icon-btn" type="button" title={pg.resetTitle} onClick={resetDemo}>
                   <ResetIcon />
                 </button>
               </span>
             </div>
-            <div className="pg-tree" role="tree" aria-label="数据库资源树">
+            <div className="pg-tree" role="tree" aria-label={pg.treeAria}>
               <div className="pg-tree__row pg-tree__row--conn is-expanded" role="treeitem" aria-expanded="true">
                 <ChevronIcon />
                 <PlugIcon />
-                <span>Mock 数据源（演示）</span>
+                <span>{pg.treeRoot}</span>
               </div>
               {dbs.map((db) => {
                 const isOpen = expanded.has(db.name);
@@ -249,7 +254,7 @@ export function PlaygroundEmbed() {
                         <button
                           className="pg-tree__act"
                           type="button"
-                          title={`查看 ${db.name} 的 ER 图`}
+                          title={pg.erActionTitle.replace('{0}', db.name)}
                           onClick={(e) => {
                             e.stopPropagation();
                             openTab({ key: `er:${db.name}`, kind: 'er', db: db.name });
@@ -283,7 +288,7 @@ export function PlaygroundEmbed() {
                               <button
                                 className="pg-tree__act"
                                 type="button"
-                                title={`设计 ${o.name} 表结构`}
+                                title={pg.designActionTitle.replace('{0}', o.name)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openTab({ key: `design:${db.name}/${o.name}`, kind: 'design', db: db.name, obj: o.name });
@@ -299,7 +304,7 @@ export function PlaygroundEmbed() {
                 );
               })}
             </div>
-            <div className="pg-sidebar__foot">演示数据存于浏览器内存，刷新或 ⟳ 重置即还原</div>
+            <div className="pg-sidebar__foot">{pg.sidebarFoot}</div>
           </aside>
 
           {/* 编辑器区 */}
@@ -314,11 +319,11 @@ export function PlaygroundEmbed() {
                   onClick={() => setActiveKey(t.key)}
                 >
                   <TabIcon tab={t} />
-                  <span>{tabTitle(t)}</span>
+                  <span>{tabTitle(t, pg)}</span>
                   <button
                     className="pg-tab__close"
                     type="button"
-                    aria-label={`关闭 ${tabTitle(t)}`}
+                    aria-label={pg.closeTabAria.replace('{0}', tabTitle(t, pg))}
                     onClick={(e) => {
                       e.stopPropagation();
                       closeTab(t.key);
@@ -350,13 +355,13 @@ export function PlaygroundEmbed() {
                           }
                         }}
                         spellCheck={false}
-                        aria-label="SQL 输入"
-                        placeholder="-- 输入 SQL，Ctrl+Enter 运行"
+                        aria-label={pg.sqlInputAria}
+                        placeholder={pg.sqlPlaceholder}
                       />
                       <div className="pg-sqlbox__bar">
-                        <span>Ctrl+Enter 运行 · USE 可切库（demo/analytics/big）· 试一试不带 WHERE 的 UPDATE 看危险横幅</span>
+                        <span>{pg.hintBar}</span>
                         <button className="pg-sqlbox__run" type="button" onClick={() => runConsoleSql(sqlDraft)}>
-                          ▶ 运行（Ctrl+Enter）
+                          {pg.runBtn}
                         </button>
                       </div>
                     </div>
@@ -366,7 +371,7 @@ export function PlaygroundEmbed() {
                       <iframe
                         key={t.key}
                         ref={t.kind === 'console' ? consoleFrameRef : undefined}
-                        title={tabTitle(t)}
+                        title={tabTitle(t, pg)}
                         className={`pg-frame${t.key === activeKey ? '' : ' is-hidden'}`}
                         src={iframeSrc(t)}
                       />
@@ -382,11 +387,11 @@ export function PlaygroundEmbed() {
         <div className="pg-statusbar">
           <span className="pg-status__item is-accent">
             <PlugIcon />
-            Mock 数据源 · 已连接
+            {pg.statusConnected}
           </span>
-          <span className="pg-status__item">传输上限 5000 行 / 次</span>
+          <span className="pg-status__item">{pg.statusLimit}</span>
           <span className="pg-status__spacer" />
-          <span className="pg-status__item is-dim">演示：表格编辑 · SQL Console · ER 图 · 表结构设计（其余面板陆续接入）</span>
+          <span className="pg-status__item is-dim">{pg.statusDemo}</span>
           <a className="pg-status__item" href={site.urls.repo} target="_blank" rel="noreferrer">
             GitHub
           </a>
@@ -406,38 +411,41 @@ function Welcome({
   onConsole: () => void;
   onEr: () => void;
 }) {
+  const pg = getSiteContent(useSiteLang()).playground;
   return (
     <div className="pg-welcome">
       <img src={withBase('assets/favicon.svg')} alt="" width={56} height={56} />
-      <h2>这是真的 DB Kit，跑在你的浏览器里</h2>
+      <h2>{pg.welcomeTitle}</h2>
       <p>
-        界面与交互是插件的真实 Webview 产物，数据来自内置 Mock 驱动（无需安装、不连任何数据库）。
+        {pg.welcomeBody}
         <br />
-        单击左侧表名开始；双击单元格直改 → 工具栏「提交变更」查看参数化 SQL 预览 → 应用后数据真实变更。
+        {pg.welcomeBody2}
       </p>
       <div className="pg-welcome__quick">
-        {QUICK_OPEN.map((q) => (
-          <button
-            key={q.label}
-            type="button"
-            onClick={() => onOpen(q.db, { name: q.obj, kind: 'table' })}
-          >
-            <strong>{q.label}</strong>
-            <span>{q.desc}</span>
-          </button>
-        ))}
+        {QUICK_OPEN.map((q, i) => {
+          // 展示文案按 下标 与词典 quickOpen 配对（跳转目标在本数组）
+          const item = pg.quickOpen[i];
+          return (
+            <button
+              key={`${q.db}/${q.obj}`}
+              type="button"
+              onClick={() => onOpen(q.db, { name: q.obj, kind: 'table' })}
+            >
+              <strong>{item.name}</strong>
+              <span>{item.desc}</span>
+            </button>
+          );
+        })}
         <button type="button" onClick={onConsole}>
-          <strong>SQL Console</strong>
-          <span>真跑 SQL · 危险语句横幅</span>
+          <strong>{pg.cardConsoleTitle}</strong>
+          <span>{pg.cardConsoleDesc}</span>
         </button>
         <button type="button" onClick={onEr}>
-          <strong>shop ER 图</strong>
-          <span>8 表 9 关系 · 自引用/多对多/复合外键</span>
+          <strong>{pg.cardErDesc}</strong>
+          <span>{pg.cardErHint}</span>
         </button>
       </div>
-      <p className="pg-welcome__hint">
-        试试：demo.users 改邮箱触发乐观锁；demo.wide 体验 NULL/DECIMAL/二进制等值编码；big.t001 感受 5 万行虚拟滚动；表行悬停「✎」进入表结构设计。
-      </p>
+      <p className="pg-welcome__hint">{pg.hint}</p>
     </div>
   );
 }

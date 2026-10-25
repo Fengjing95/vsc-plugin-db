@@ -2,6 +2,7 @@
  * 查询状态 → RPC 参数（table.fetchRows / export.run 共用形状）。
  * 纯函数：筛选/排序/投影/分页的编码与页码计算集中在此，便于单测。
  */
+import { t } from './i18n';
 
 export interface QueryUiState {
   connId: string;
@@ -84,10 +85,10 @@ export function paginationLabel(opts: {
   const from = opts.page * opts.pageSize + 1;
   const to = opts.page * opts.pageSize + opts.loadedRows;
   if (opts.totalCount !== undefined) {
-    return `第 ${from}-${to} 行 / 共 ${opts.totalCount} 行`;
+    return t('table.page.rangeOfTotal', [from, to, opts.totalCount]);
   }
   if (opts.rowEstimate !== undefined && opts.rowEstimate > 0) {
-    return `第 ${from}-${to} 行 · 约 ${formatEstimate(opts.rowEstimate)} 行`;
+    return t('table.page.rangeEstimate', [from, to, formatEstimate(opts.rowEstimate)]);
   }
-  return `第 ${from}-${to} 行`;
+  return t('table.page.range', [from, to]);
 }

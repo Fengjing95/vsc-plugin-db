@@ -1,4 +1,5 @@
 import type { RpcEvent, RpcFrame } from '@db-explorer/protocol';
+import { t } from '../lib/i18n';
 
 /**
  * Webview 侧 RPC 客户端（概要设计 7.4）：请求/响应 id 映射 + 超时。
@@ -46,7 +47,7 @@ window.addEventListener('message', (ev: MessageEvent) => {
     entry.resolve(frame.result);
   } else {
     const { code, message } = frame.error ?? {};
-    entry.reject(new RpcError(code ?? 'E_INTERNAL', message ?? '请求失败'));
+    entry.reject(new RpcError(code ?? 'E_INTERNAL', message ?? t('console.requestFailed')));
   }
 });
 
@@ -75,7 +76,7 @@ export function request<T>(method: string, params?: unknown, timeoutMs = 30_000)
       timeoutMs > 0
         ? setTimeout(() => {
             pending.delete(id);
-            reject(new Error(`请求超时：${method}`));
+            reject(new Error(t('console.requestTimeout', [method])));
           }, timeoutMs)
         : undefined;
     pending.set(id, {

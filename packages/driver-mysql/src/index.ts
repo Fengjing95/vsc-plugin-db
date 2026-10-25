@@ -70,30 +70,31 @@ const capabilities: DriverCapabilities = {
   pagination: 'offset',
 };
 
+/** FormSchema 文案 = 域键（C-17/D-25 B3）：webview 渲染时经 formText 解析，未登记文本原样展示 */
 const formSchema: FormSchema = {
   fields: [
-    { key: 'host', label: '主机', type: 'string', required: true, placeholder: '127.0.0.1' },
-    { key: 'port', label: '端口', type: 'number', required: true, default: 3306, validator: 'port' },
-    { key: 'username', label: '用户名', type: 'string', required: true },
-    { key: 'password', label: '密码', type: 'password' },
-    { key: 'database', label: '默认库', type: 'string', dynamicOptions: 'databases' },
+    { key: 'host', label: 'form.host', type: 'string', required: true, placeholder: '127.0.0.1' },
+    { key: 'port', label: 'form.port', type: 'number', required: true, default: 3306, validator: 'port' },
+    { key: 'username', label: 'form.username', type: 'string', required: true },
+    { key: 'password', label: 'form.password', type: 'password' },
+    { key: 'database', label: 'form.database', type: 'string', dynamicOptions: 'databases' },
     {
       key: 'connectTimeout',
-      label: '连接超时（ms）',
+      label: 'form.connectTimeout',
       type: 'number',
       default: 10000,
-      group: '高级',
-      section: '超时与连接池',
+      group: 'form.group.advanced',
+      section: 'form.section.timeoutPool',
     },
     {
       key: 'connectionLimit',
-      label: '连接池上限',
+      label: 'form.poolMax',
       type: 'number',
       default: 4,
-      group: '高级',
-      section: '超时与连接池',
+      group: 'form.group.advanced',
+      section: 'form.section.timeoutPool',
     },
-    { key: 'ssl', label: '启用 SSL', type: 'boolean', group: '高级', section: 'SSL' },
+    { key: 'ssl', label: 'form.ssl.enable', type: 'boolean', group: 'form.group.advanced', section: 'form.section.ssl' },
   ],
 };
 
@@ -655,15 +656,15 @@ export function createMysqlDriver(): IDatabaseDriver {
     // ── 库级 DDL（M8-DBDDL / D-19）：语句生成同源（ddl.ts 纯函数），执行走 host.query ──
     getDatabaseFormSchema: () => ({
       fields: [
-        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'mydb' },
+        { key: 'name', label: 'dbddl.name', type: 'string', required: true, placeholder: 'mydb' },
         {
           key: 'charset',
-          label: '字符集',
+          label: 'dbddl.charset',
           type: 'select',
           default: 'utf8mb4',
           options: [
-            { label: 'utf8mb4（推荐，完整 Unicode）', value: 'utf8mb4' },
-            { label: 'utf8（3 字节，遗留）', value: 'utf8' },
+            { label: 'dbddl.opt.charset.utf8mb4', value: 'utf8mb4' },
+            { label: 'dbddl.opt.charset.utf8', value: 'utf8' },
             { label: 'latin1', value: 'latin1' },
             { label: 'ascii', value: 'ascii' },
             { label: 'binary', value: 'binary' },
@@ -671,12 +672,12 @@ export function createMysqlDriver(): IDatabaseDriver {
         },
         {
           key: 'collation',
-          label: '排序规则',
+          label: 'dbddl.collation',
           type: 'select',
           default: 'utf8mb4_general_ci',
           options: [
             { label: 'utf8mb4_general_ci', value: 'utf8mb4_general_ci' },
-            { label: 'utf8mb4_0900_ai_ci（MySQL 8 默认）', value: 'utf8mb4_0900_ai_ci' },
+            { label: 'dbddl.opt.collation.utf8mb4_0900_ai_ci', value: 'utf8mb4_0900_ai_ci' },
             { label: 'utf8mb4_bin', value: 'utf8mb4_bin' },
             { label: 'utf8_general_ci', value: 'utf8_general_ci' },
             { label: 'latin1_swedish_ci', value: 'latin1_swedish_ci' },

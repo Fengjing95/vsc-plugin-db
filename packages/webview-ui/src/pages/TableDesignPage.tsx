@@ -18,6 +18,7 @@ import {
   ukRowError,
 } from '../lib/tableDesign';
 import { caretPosFor, fillValueOf, filterDataTypeOptions, movedHighlight } from '../lib/typeSuggest';
+import { t } from '../lib/i18n';
 import { useTableDesignStore, type DesignTab } from '../store/tableDesignStore';
 
 /**
@@ -66,7 +67,7 @@ function TypeSuggestInput(props: {
         ref={inputRef}
         role="combobox"
         aria-expanded={suggestions.length > 0}
-        aria-label={`类型 ${index + 1}`}
+        aria-label={t('design.ariaTypeN', [index + 1])}
         placeholder="varchar(64)"
         className={`h-6 w-full rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-border'}`}
         value={value}
@@ -107,7 +108,7 @@ function TypeSuggestInput(props: {
       {open && suggestions.length > 0 && (
         <ul
           role="listbox"
-          aria-label={`类型建议 ${index + 1}`}
+          aria-label={t('design.ariaTypeSuggestN', [index + 1])}
           className="absolute top-full left-0 z-50 mt-0.5 max-h-52 min-w-full overflow-auto rounded-sm border border-border bg-panel py-0.5 shadow-lg"
         >
           {suggestions.map((t, i) => (
@@ -166,8 +167,8 @@ function RefTableInput(props: {
         ref={inputRef}
         role="combobox"
         aria-expanded={suggestions.length > 0}
-        aria-label={`外键 ${index + 1} 引用表`}
-        placeholder="选择或输入表名"
+        aria-label={t('design.ariaFkNRefTable', [index + 1])}
+        placeholder={t('design.refTablePlaceholder')}
         className={`h-6 w-36 rounded-sm border bg-input px-1.5 ${invalid ? 'border-destructive' : 'border-border'}`}
         value={value}
         disabled={disabled}
@@ -201,11 +202,11 @@ function RefTableInput(props: {
       {open && (
         <ul
           role="listbox"
-          aria-label={`外键 ${index + 1} 引用表清单`}
+          aria-label={t('design.ariaFkNRefTableList', [index + 1])}
           className="absolute top-full left-0 z-50 mt-0.5 min-w-full overflow-auto rounded-sm border border-border bg-panel py-0.5 shadow-lg"
         >
           {suggestions.length === 0 && (
-            <li className="px-2 py-1 text-[11px] text-muted-foreground">{loading ? '加载中…' : '（暂无表清单，可直接输入）'}</li>
+            <li className="px-2 py-1 text-[11px] text-muted-foreground">{loading ? t('common.loading') : t('design.emptyRefTableList')}</li>
           )}
           {suggestions.map((t, i) => (
             <li key={t}>
@@ -259,7 +260,7 @@ function ColumnMultiSelect(props: {
     ? props.selected[0]
       ? props.selected[0]
       : (props.placeholder ?? props.label)
-    : `${props.label}${props.selected.length > 0 ? `（${props.selected.length}）` : ''}`;
+    : `${props.label}${props.selected.length > 0 ? t('design.selectedCount', [props.selected.length]) : ''}`;
   return (
     <Popover
       open={open}
@@ -283,7 +284,7 @@ function ColumnMultiSelect(props: {
     >
       <div className="max-h-56 w-52 overflow-auto p-1" role="group" aria-label={props.ariaLabel}>
         {props.options.length === 0 && (
-          <div className="px-2 py-1 text-[12px] text-muted-foreground">{props.loading ? '加载中…' : '（暂无可用列）'}</div>
+          <div className="px-2 py-1 text-[12px] text-muted-foreground">{props.loading ? t('common.loading') : t('design.emptyColumns')}</div>
         )}
         {props.options.map((name) =>
           single ? (
@@ -316,7 +317,7 @@ function RowDeleteButton({ label, disabled, onClick }: { label: string; disabled
     <button
       type="button"
       aria-label={label}
-      title="删除"
+      title={t('design.delete')}
       disabled={disabled}
       className="rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-50"
       onClick={onClick}
@@ -440,7 +441,7 @@ export function TableDesignPage() {
   }, [activeTab, loadRefTables]);
 
   if (phase === 'loading') {
-    return <div className="flex h-screen items-center justify-center text-muted-foreground">加载中…</div>;
+    return <div className="flex h-screen items-center justify-center text-muted-foreground">{t('common.loading')}</div>;
   }
   if (phase === 'error') {
     return <div className="flex h-screen items-center justify-center text-destructive">{errorMsg}</div>;
@@ -452,10 +453,10 @@ export function TableDesignPage() {
   const fkReadOnly = kind === 'alter' && !foreignKeyAlterable;
 
   const tabs: Array<{ id: DesignTab; label: string; visible: boolean }> = [
-    { id: 'columns', label: '列', visible: true },
-    { id: 'keys', label: '键', visible: true },
-    { id: 'fks', label: '外键', visible: features?.foreignKeys === true },
-    { id: 'indexes', label: '索引', visible: features?.indexes === true },
+    { id: 'columns', label: t('design.columns'), visible: true },
+    { id: 'keys', label: t('design.keys'), visible: true },
+    { id: 'fks', label: t('design.foreignKeys'), visible: features?.foreignKeys === true },
+    { id: 'indexes', label: t('design.indexes'), visible: features?.indexes === true },
   ];
 
   const formWrap = 'mx-auto flex h-full max-w-5xl flex-col gap-3 px-6 py-4';
@@ -465,18 +466,18 @@ export function TableDesignPage() {
       <div className={formWrap}>
         {/* 标题行 */}
         <div className="flex shrink-0 items-center gap-2 text-[15px] font-medium">
-          {kind === 'create' ? '新建表' : '修改表结构'}
+          {kind === 'create' ? t('design.newTable') : t('design.alterTable')}
           <span className="text-[12px] text-muted-foreground">@ {db}{obj ? ` · ${obj}` : ''}</span>
-          {readOnly && <span className="rounded-sm bg-muted px-1.5 text-[11px] text-muted-foreground">只读连接，执行被拒绝</span>}
-          {dirty && <span className="text-[11px] text-warning">未保存</span>}
+          {readOnly && <span className="rounded-sm bg-muted px-1.5 text-[11px] text-muted-foreground">{t('design.readOnlyBadge')}</span>}
+          {dirty && <span className="text-[11px] text-warning">{t('design.unsaved')}</span>}
         </div>
 
         {/* 表选项（§12.1） */}
         <div className="flex shrink-0 items-center gap-4">
           <label className="flex items-center gap-2 text-[12px]">
-            <span className="text-muted-foreground">表名<span className="text-destructive">*</span></span>
+            <span className="text-muted-foreground">{t('design.tableName')}<span className="text-destructive">*</span></span>
             <input
-              aria-label="表名"
+              aria-label={t('design.tableName')}
               className="h-7 w-52 rounded-sm border border-border bg-input px-2 text-[13px]"
               value={tableName}
               disabled={executing}
@@ -484,9 +485,9 @@ export function TableDesignPage() {
             />
           </label>
           <label className="flex min-w-0 flex-1 items-center gap-2 text-[12px]">
-            <span className="shrink-0 text-muted-foreground">注释</span>
+            <span className="shrink-0 text-muted-foreground">{t('design.comment')}</span>
             <input
-              aria-label="表注释"
+              aria-label={t('design.tableComment')}
               className="h-7 w-full rounded-sm border border-border bg-input px-2 text-[13px]"
               value={tableComment}
               disabled={executing}
@@ -496,25 +497,25 @@ export function TableDesignPage() {
         </div>
 
         {/* Tab 栏（§12.1；校验失败的 Tab 标题旁红点，§12.7） */}
-        <div className="flex shrink-0 items-center gap-1 border-b border-border" role="tablist" aria-label="表结构编辑分区">
+        <div className="flex shrink-0 items-center gap-1 border-b border-border" role="tablist" aria-label={t('design.ariaTabsRegion')}>
           {tabs
-            .filter((t) => t.visible)
-            .map((t) => {
-              const errCount = tabErrorCount(t.id);
+            .filter((tab) => tab.visible)
+            .map((tab) => {
+              const errCount = tabErrorCount(tab.id);
               return (
                 <button
-                  key={t.id}
+                  key={tab.id}
                   type="button"
                   role="tab"
-                  aria-selected={activeTab === t.id}
+                  aria-selected={activeTab === tab.id}
                   className={`flex items-center gap-1 rounded-t-sm px-3 py-1.5 text-[13px] ${
-                    activeTab === t.id ? 'border-x border-t border-border bg-panel font-medium' : 'text-muted-foreground hover:bg-accent'
+                    activeTab === tab.id ? 'border-x border-t border-border bg-panel font-medium' : 'text-muted-foreground hover:bg-accent'
                   }`}
-                  onClick={() => setActiveTab(t.id)}
+                  onClick={() => setActiveTab(tab.id)}
                 >
-                  {t.label}
+                  {tab.label}
                   {errCount > 0 && (
-                    <span aria-label={`${t.label}分区有 ${errCount} 项校验错误`} className="inline-block h-1.5 w-1.5 rounded-full bg-destructive" />
+                    <span aria-label={t('design.ariaTabErrors', [tab.label, errCount])} className="inline-block h-1.5 w-1.5 rounded-full bg-destructive" />
                   )}
                 </button>
               );
@@ -528,13 +529,13 @@ export function TableDesignPage() {
               <thead className="sticky top-0 bg-panel text-left text-[12px] text-muted-foreground">
                 <tr>
                   <th className="w-8 px-2 py-1.5 font-normal">#</th>
-                  <th className="px-2 py-1.5 font-normal">列名</th>
-                  <th className="px-2 py-1.5 font-normal">类型</th>
-                  <th className="w-20 px-2 py-1.5 text-center font-normal">NOT NULL</th>
-                  <th className="w-16 px-2 py-1.5 font-normal">主键</th>
-                  <th className="w-16 px-2 py-1.5 font-normal">自增</th>
-                  <th className="px-2 py-1.5 font-normal">默认值</th>
-                  <th className="px-2 py-1.5 font-normal">注释</th>
+                  <th className="px-2 py-1.5 font-normal">{t('design.columnName')}</th>
+                  <th className="px-2 py-1.5 font-normal">{t('design.type')}</th>
+                  <th className="w-20 px-2 py-1.5 text-center font-normal">{t('design.notNull')}</th>
+                  <th className="w-16 px-2 py-1.5 font-normal">{t('design.primaryKey')}</th>
+                  <th className="w-16 px-2 py-1.5 font-normal">{t('design.autoIncrement')}</th>
+                  <th className="px-2 py-1.5 font-normal">{t('design.defaultValue')}</th>
+                  <th className="px-2 py-1.5 font-normal">{t('design.comment')}</th>
                   <th className="w-10 px-2 py-1.5 font-normal"></th>
                 </tr>
               </thead>
@@ -558,7 +559,7 @@ export function TableDesignPage() {
                               nameInputRefs.current.delete(r.rowId);
                             }
                           }}
-                          aria-label={`列名 ${i + 1}`}
+                          aria-label={t('design.ariaColumnNameN', [i + 1])}
                           className={`h-6 w-full rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-border'}`}
                           value={r.col.name}
                           disabled={executing || r.deleted}
@@ -581,7 +582,7 @@ export function TableDesignPage() {
                       <td className="px-2 py-1 pt-1.5 text-center align-top">
                         <input
                           type="checkbox"
-                          aria-label={`NOT NULL ${i + 1}`}
+                          aria-label={t('design.ariaNotNullN', [i + 1])}
                           checked={!r.col.nullable}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { nullable: !e.target.checked })}
@@ -590,7 +591,7 @@ export function TableDesignPage() {
                       <td className="px-2 py-1 pt-1.5 text-center align-top">
                         <input
                           type="checkbox"
-                          aria-label={`主键 ${i + 1}`}
+                          aria-label={t('design.ariaPrimaryKeyN', [i + 1])}
                           checked={r.col.isPrimaryKey}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { isPrimaryKey: e.target.checked })}
@@ -599,7 +600,7 @@ export function TableDesignPage() {
                       <td className="px-2 py-1 pt-1.5 text-center align-top">
                         <input
                           type="checkbox"
-                          aria-label={`自增 ${i + 1}`}
+                          aria-label={t('design.ariaAutoIncrementN', [i + 1])}
                           checked={Boolean(r.col.autoIncrement)}
                           disabled={executing || r.deleted}
                           onChange={(e) => editColumn(r.rowId, { autoIncrement: e.target.checked })}
@@ -607,8 +608,8 @@ export function TableDesignPage() {
                       </td>
                       <td className="px-2 py-1 align-top">
                         <input
-                          aria-label={`默认值 ${i + 1}`}
-                          placeholder="无"
+                          aria-label={t('design.ariaDefaultValueN', [i + 1])}
+                          placeholder={t('design.defaultEmpty')}
                           className="h-6 w-full rounded-sm border border-border bg-input px-1.5"
                           value={r.col.defaultValue ?? ''}
                           disabled={executing || r.deleted}
@@ -617,7 +618,7 @@ export function TableDesignPage() {
                       </td>
                       <td className="px-2 py-1 align-top">
                         <input
-                          aria-label={`注释 ${i + 1}`}
+                          aria-label={t('design.ariaCommentN', [i + 1])}
                           className="h-6 w-full rounded-sm border border-border bg-input px-1.5"
                           value={r.col.comment ?? ''}
                           disabled={executing || r.deleted}
@@ -628,8 +629,8 @@ export function TableDesignPage() {
                         {r.deleted ? (
                           <button
                             type="button"
-                            aria-label={`撤销删除列 ${i + 1}`}
-                            title="撤销删除"
+                            aria-label={t('design.ariaRestoreColumnN', [i + 1])}
+                            title={t('design.restoreColumn')}
                             className="rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                             onClick={() => restoreColumn(r.rowId)}
                           >
@@ -638,8 +639,8 @@ export function TableDesignPage() {
                         ) : (
                           <button
                             type="button"
-                            aria-label={`删除列 ${i + 1}`}
-                            title="删除该列"
+                            aria-label={t('design.ariaDeleteColumnN', [i + 1])}
+                            title={t('design.deleteColumn')}
                             disabled={executing}
                             className="rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-50"
                             onClick={() => removeColumn(r.rowId)}
@@ -658,7 +659,7 @@ export function TableDesignPage() {
           {activeTab === 'columns' && (
             <div className="p-2">
               <Button variant="secondary" size="sm" disabled={executing} onClick={() => addColumn()}>
-                ＋添加列
+                {t('design.addColumn')}
               </Button>
             </div>
           )}
@@ -666,10 +667,10 @@ export function TableDesignPage() {
           {activeTab === 'keys' && (
             <div className="flex flex-col gap-4 p-3">
               {/* 主键区（§12.4）：与列网格「主键」列同一状态的两个视图 */}
-              <section aria-label="主键">
-                <div className="mb-1.5 text-[12px] text-muted-foreground">主键（可多选组成复合主键；顺序 = 列序）</div>
+              <section aria-label={t('design.primaryKey')}>
+                <div className="mb-1.5 text-[12px] text-muted-foreground">{t('design.pkSectionHint')}</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-sm border border-border p-2">
-                  {activeColumns.length === 0 && <span className="text-[12px] text-muted-foreground">先在「列」Tab 添加并命名列</span>}
+                  {activeColumns.length === 0 && <span className="text-[12px] text-muted-foreground">{t('design.pkEmptyHint')}</span>}
                   {rows
                     .filter((r) => !r.deleted)
                     .map((r, i) =>
@@ -677,7 +678,7 @@ export function TableDesignPage() {
                         <label key={r.rowId} className="flex items-center gap-1.5 text-[12px]">
                           <input
                             type="checkbox"
-                            aria-label={`主键列 ${r.col.name}`}
+                            aria-label={t('design.ariaPkColumnN', [r.col.name])}
                             checked={r.col.isPrimaryKey}
                             disabled={executing}
                             onChange={(e) => editColumn(r.rowId, { isPrimaryKey: e.target.checked })}
@@ -686,7 +687,7 @@ export function TableDesignPage() {
                         </label>
                       ) : (
                         <span key={r.rowId} className="text-[12px] text-muted-foreground">
-                          第 {i + 1} 行列名未命名
+                          {t('design.unnamedColumnRow', [i + 1])}
                         </span>
                       ),
                     )}
@@ -694,11 +695,11 @@ export function TableDesignPage() {
               </section>
 
               {features?.uniqueKeys === true && (
-                <section aria-label="唯一键">
+                <section aria-label={t('design.uniqueKey')}>
                   <div className="mb-1.5 flex items-center gap-2">
-                    <span className="text-[12px] text-muted-foreground">唯一键（名称留空由驱动自动生成）</span>
+                    <span className="text-[12px] text-muted-foreground">{t('design.ukSectionHint')}</span>
                     <Button variant="secondary" size="sm" disabled={executing} onClick={addUk}>
-                      ＋添加唯一键
+                      {t('design.addUniqueKey')}
                     </Button>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -707,33 +708,33 @@ export function TableDesignPage() {
                       return (
                         <div key={r.rowId} className="flex flex-col gap-0.5 rounded-sm border border-border p-2">
                           <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-[12px] text-muted-foreground">名称</span>
+                            <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                             <input
-                              aria-label={`唯一键名 ${i + 1}`}
-                              placeholder="uk_…（留空自动生成）"
+                              aria-label={t('design.ariaUkNameN', [i + 1])}
+                              placeholder={t('design.ukPlaceholder')}
                               className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                               value={r.spec.name ?? ''}
                               disabled={executing}
                               onChange={(e) => editUk(r.rowId, { name: e.target.value })}
                             />
                             <ColumnMultiSelect
-                              label="列"
-                              ariaLabel={`唯一键 ${i + 1} 列选择`}
+                              label={t('design.columns')}
+                              ariaLabel={t('design.ariaUkColumnsN', [i + 1])}
                               options={activeColumns}
                               selected={r.spec.columns}
                               disabled={executing}
                               onChange={(columns) => editUk(r.rowId, { columns })}
                             />
                             <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                              {r.spec.columns.length > 0 ? r.spec.columns.join(', ') : '未选择列'}
+                              {r.spec.columns.length > 0 ? r.spec.columns.join(', ') : t('design.noColumnsSelected')}
                             </span>
-                            <RowDeleteButton label={`删除唯一键 ${i + 1}`} disabled={executing} onClick={() => removeUk(r.rowId)} />
+                            <RowDeleteButton label={t('design.ariaDeleteUkN', [i + 1])} disabled={executing} onClick={() => removeUk(r.rowId)} />
                           </div>
                           <ErrorSlot text={err} />
                         </div>
                       );
                     })}
-                    {ukRows.length === 0 && <span className="text-[12px] text-muted-foreground">暂无唯一键</span>}
+                    {ukRows.length === 0 && <span className="text-[12px] text-muted-foreground">{t('design.noUniqueKeys')}</span>}
                   </div>
                 </section>
               )}
@@ -744,14 +745,14 @@ export function TableDesignPage() {
             <div className="flex flex-col gap-3 p-3">
               {fkReadOnly && (
                 <div className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-                  SQLite 不支持原地修改外键；此处只读展示库内现状。可在新建表时声明，或经 SQL Console 重建表
+                  {t('design.fkReadOnlyBanner')}
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <span className="text-[12px] text-muted-foreground">外键（名称留空由驱动自动生成）</span>
+                <span className="text-[12px] text-muted-foreground">{t('design.fkSectionHint')}</span>
                 {!fkReadOnly && (
                   <Button variant="secondary" size="sm" disabled={executing} onClick={addFk}>
-                    ＋添加外键
+                    {t('design.addForeignKey')}
                   </Button>
                 )}
               </div>
@@ -774,17 +775,17 @@ export function TableDesignPage() {
                   <div key={r.rowId} className="flex flex-col gap-2 rounded-sm border border-border p-2">
                     {/* 第 1 行：名称 + 引用表（§12.5 修订）+ 组级移除（组右上角 ✕） */}
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="shrink-0 text-[12px] text-muted-foreground">名称</span>
+                      <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                       <input
-                        aria-label={`外键名 ${i + 1}`}
-                        placeholder="fk_…（留空自动生成）"
+                        aria-label={t('design.ariaFkNameN', [i + 1])}
+                        placeholder={t('design.fkPlaceholder')}
                         className={`h-6 w-40 rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing || fkReadOnly}
                         onChange={(e) => editFk(r.rowId, { name: e.target.value })}
                       />
                       {nameErr && <span className="text-[11px] text-destructive">{nameErr}</span>}
-                      <span className="ml-2 shrink-0 text-[12px] text-muted-foreground">引用表</span>
+                      <span className="ml-2 shrink-0 text-[12px] text-muted-foreground">{t('design.refTable')}</span>
                       {/* 引用表（§12.5 修订二稿：输入与选择统一为单控件，主题化清单聚焦即弹、可键入过滤/手输） */}
                       <RefTableInput
                         index={i}
@@ -801,7 +802,7 @@ export function TableDesignPage() {
                       {refTableErr && <span className="text-[11px] text-destructive">{refTableErr}</span>}
                       {!fkReadOnly && (
                         <span className="ml-auto">
-                          <RowDeleteButton label={`删除外键 ${i + 1}`} disabled={executing} onClick={() => removeFk(r.rowId)} />
+                          <RowDeleteButton label={t('design.ariaDeleteFkN', [i + 1])} disabled={executing} onClick={() => removeFk(r.rowId)} />
                         </span>
                       )}
                     </div>
@@ -809,18 +810,18 @@ export function TableDesignPage() {
                     {/* 第 2 行：列对应可变数组（本表列 → 引用列一一对应，＋ 增行，§12.5 修订） */}
                     <div className="flex flex-col gap-1 rounded-sm border border-border/60 bg-input/20 p-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-muted-foreground">列对应（本表列 → 引用列）</span>
+                        <span className="text-[11px] text-muted-foreground">{t('design.fkMappingLabel')}</span>
                         {!fkReadOnly && (
                           <button
                             type="button"
-                            aria-label={`外键 ${i + 1} 添加列对应`}
+                            aria-label={t('design.ariaFkAddMappingN', [i + 1])}
                             disabled={executing}
                             className="ml-auto rounded-sm px-1.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
                             onClick={() => {
                               editFk(r.rowId, { columns: [...r.spec.columns, ''], refColumns: [...r.spec.refColumns, ''] });
                             }}
                           >
-                            ＋ 添加对应
+                            {t('design.addMapping')}
                           </button>
                         )}
                       </div>
@@ -829,8 +830,8 @@ export function TableDesignPage() {
                         return (
                           <div key={pi} className="flex flex-wrap items-center gap-2">
                             <ColumnMultiSelect
-                              label="本表列"
-                              ariaLabel={`外键 ${i + 1} 第 ${pi + 1} 组本表列`}
+                              label={t('design.localColumn')}
+                              ariaLabel={t('design.ariaFkNMappingLocalM', [i + 1, pi + 1])}
                               options={activeColumns}
                               selected={r.spec.columns[pi] ? [r.spec.columns[pi]] : []}
                               disabled={executing || fkReadOnly}
@@ -840,8 +841,8 @@ export function TableDesignPage() {
                               →
                             </span>
                             <ColumnMultiSelect
-                              label="引用列"
-                              ariaLabel={`外键 ${i + 1} 第 ${pi + 1} 组引用列`}
+                              label={t('design.refColumn')}
+                              ariaLabel={t('design.ariaFkNMappingRefM', [i + 1, pi + 1])}
                               options={refColumnOptions}
                               selected={r.spec.refColumns[pi] ? [r.spec.refColumns[pi]] : []}
                               disabled={executing || fkReadOnly || !r.spec.refTable.trim()}
@@ -856,8 +857,8 @@ export function TableDesignPage() {
                             {!fkReadOnly && pairCount > 1 && (
                               <button
                                 type="button"
-                                aria-label={`外键 ${i + 1} 删除第 ${pi + 1} 组列对应`}
-                                title="删除该组对应"
+                                aria-label={t('design.ariaFkNDeleteMappingM', [i + 1, pi + 1])}
+                                title={t('design.deleteMapping')}
                                 disabled={executing}
                                 className="rounded-sm px-1 text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-50"
                                 onClick={() => {
@@ -879,15 +880,15 @@ export function TableDesignPage() {
                     {/* 第 3 行：动作选项 */}
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-1.5 text-[12px]">
-                        <span className="text-muted-foreground">ON DELETE</span>
+                        <span className="text-muted-foreground">{t('design.onDelete')}</span>
                         <select
-                          aria-label={`外键 ${i + 1} ON DELETE`}
+                          aria-label={t('design.ariaFkOnDeleteN', [i + 1])}
                           className="h-6 rounded-sm border border-border bg-input px-1"
                           value={r.spec.onDelete ?? ''}
                           disabled={executing || fkReadOnly}
                           onChange={(e) => editFk(r.rowId, { onDelete: (e.target.value || undefined) as FkAction })}
                         >
-                          <option value="">（无动作）</option>
+                          <option value="">{t('design.noAction')}</option>
                           {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).map((a) => (
                             <option key={a} value={a}>
                               {a}
@@ -896,15 +897,15 @@ export function TableDesignPage() {
                         </select>
                       </label>
                       <label className="flex items-center gap-1.5 text-[12px]">
-                        <span className="text-muted-foreground">ON UPDATE</span>
+                        <span className="text-muted-foreground">{t('design.onUpdate')}</span>
                         <select
-                          aria-label={`外键 ${i + 1} ON UPDATE`}
+                          aria-label={t('design.ariaFkOnUpdateN', [i + 1])}
                           className="h-6 rounded-sm border border-border bg-input px-1"
                           value={r.spec.onUpdate ?? ''}
                           disabled={executing || fkReadOnly}
                           onChange={(e) => editFk(r.rowId, { onUpdate: (e.target.value || undefined) as FkAction })}
                         >
-                          <option value="">（无动作）</option>
+                          <option value="">{t('design.noAction')}</option>
                           {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).map((a) => (
                             <option key={a} value={a}>
                               {a}
@@ -916,16 +917,16 @@ export function TableDesignPage() {
                   </div>
                 );
               })}
-              {fkRows.length === 0 && <span className="text-[12px] text-muted-foreground">暂无外键</span>}
+              {fkRows.length === 0 && <span className="text-[12px] text-muted-foreground">{t('design.noForeignKeys')}</span>}
             </div>
           )}
 
           {activeTab === 'indexes' && (
             <div className="flex flex-col gap-3 p-3">
               <div className="flex items-center gap-2">
-                <span className="text-[12px] text-muted-foreground">索引（二级索引；唯一约束在「键」Tab 管理。名称留空由驱动自动生成）</span>
+                <span className="text-[12px] text-muted-foreground">{t('design.idxSectionHint')}</span>
                 <Button variant="secondary" size="sm" disabled={executing} onClick={addIdx}>
-                  ＋添加索引
+                  {t('design.addIndex')}
                 </Button>
               </div>
               {idxRows.map((r, i) => {
@@ -934,18 +935,18 @@ export function TableDesignPage() {
                 return (
                   <div key={r.rowId} className="flex flex-col gap-0.5 rounded-sm border border-border p-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="shrink-0 text-[12px] text-muted-foreground">名称</span>
+                      <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                       <input
-                        aria-label={`索引名 ${i + 1}`}
-                        placeholder="idx_…（留空自动生成）"
+                        aria-label={t('design.ariaIdxNameN', [i + 1])}
+                        placeholder={t('design.idxPlaceholder')}
                         className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing}
                         onChange={(e) => editIdx(r.rowId, { name: e.target.value })}
                       />
                       <ColumnMultiSelect
-                        label="列"
-                        ariaLabel={`索引 ${i + 1} 列选择`}
+                        label={t('design.columns')}
+                        ariaLabel={t('design.ariaIdxColumnsN', [i + 1])}
                         options={activeColumns}
                         selected={r.spec.columns}
                         disabled={executing}
@@ -954,24 +955,24 @@ export function TableDesignPage() {
                       <label className="flex items-center gap-1.5 text-[12px]">
                         <input
                           type="checkbox"
-                          aria-label={`索引 ${i + 1} 唯一`}
+                          aria-label={t('design.ariaIdxUniqueN', [i + 1])}
                           checked={Boolean(r.spec.unique)}
                           disabled={executing}
                           onChange={(e) => editIdx(r.rowId, { unique: e.target.checked })}
                         />
-                        <span className="text-muted-foreground">唯一索引</span>
+                        <span className="text-muted-foreground">{t('design.uniqueIndex')}</span>
                       </label>
                       {indexTypes.length > 0 && (
                         <label className="flex items-center gap-1.5 text-[12px]">
-                          <span className="text-muted-foreground">类型</span>
+                          <span className="text-muted-foreground">{t('design.type')}</span>
                           <select
-                            aria-label={`索引 ${i + 1} 类型`}
+                            aria-label={t('design.ariaIdxTypeN', [i + 1])}
                             className="h-6 rounded-sm border border-border bg-input px-1"
                             value={r.spec.type ?? ''}
                             disabled={executing}
                             onChange={(e) => editIdx(r.rowId, { type: e.target.value || undefined })}
                           >
-                            <option value="">（默认）</option>
+                            <option value="">{t('design.defaultOption')}</option>
                             {indexTypes.map((t) => (
                               <option key={t} value={t}>
                                 {t}
@@ -981,15 +982,15 @@ export function TableDesignPage() {
                         </label>
                       )}
                       <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                        {r.spec.columns.length > 0 ? r.spec.columns.join(', ') : '未选择列'}
+                        {r.spec.columns.length > 0 ? r.spec.columns.join(', ') : t('design.noColumnsSelected')}
                       </span>
-                      <RowDeleteButton label={`删除索引 ${i + 1}`} disabled={executing} onClick={() => removeIdx(r.rowId)} />
+                      <RowDeleteButton label={t('design.ariaDeleteIdxN', [i + 1])} disabled={executing} onClick={() => removeIdx(r.rowId)} />
                     </div>
                     <ErrorSlot text={err} />
                   </div>
                 );
               })}
-              {idxRows.length === 0 && <span className="text-[12px] text-muted-foreground">暂无索引</span>}
+              {idxRows.length === 0 && <span className="text-[12px] text-muted-foreground">{t('design.noIndexes')}</span>}
             </div>
           )}
         </div>
@@ -1001,20 +1002,20 @@ export function TableDesignPage() {
           <div className="ml-auto flex items-center gap-2">
             {executeError ? (
               <span className="text-[12px] text-destructive">
-                第 {executeError.index} 条语句失败（{executeError.code}），已执行部分不回滚
+                {t('design.executeErrorInline', [executeError.index, executeError.code])}
               </span>
             ) : (
               // §12.1 修订：底部说明由长文案改为图标 + tooltip（HoverTip），节省状态行空间
-              <HintTip text="语句由驱动按方言生成，执行前可预览；逐条执行、失败即停并定位序号（DDL 隐式提交不回滚）" />
+              <HintTip text={t('design.executeHint')} />
             )}
             <Button variant="secondary" size="sm" disabled={executing || !canExecute()} onClick={() => void showPreview()}>
-              SQL 预览
+              {t('design.previewSql')}
             </Button>
             <Button size="sm" disabled={executing || !canExecute()} onClick={() => void execute()}>
-              {executing ? '执行中…' : '执行'}
+              {executing ? t('design.executing') : t('design.run')}
             </Button>
             <Button variant="secondary" size="sm" onClick={() => void closePanel()}>
-              取消
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
@@ -1022,14 +1023,14 @@ export function TableDesignPage() {
 
       {/* SQL 预览 Modal（§5 样式：逐条折叠 + destructive 红条汇总） */}
       {preview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" role="dialog" aria-label="SQL 预览">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" role="dialog" aria-label={t('design.previewSql')}>
           <div className="flex max-h-[80vh] w-full max-w-2xl flex-col gap-3 rounded-md border border-border bg-panel p-4 shadow-lg">
             <div className="flex items-center gap-2 text-[14px] font-medium">
-              SQL 预览（{preview.statements.length} 条语句）
+              {t('design.previewTitle', [preview.statements.length])}
             </div>
             {destructiveCount(preview.statements) > 0 && (
               <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-                ⚠ {destructiveCount(preview.statements)} 条语句可能造成数据丢失，请逐条确认
+                {t('design.destructiveWarning', [destructiveCount(preview.statements)])}
               </div>
             )}
             <div className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5">
@@ -1044,10 +1045,10 @@ export function TableDesignPage() {
             </div>
             <div className="flex shrink-0 justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={hidePreview}>
-                返回修改
+                {t('design.goBack')}
               </Button>
               <Button size="sm" disabled={executing} onClick={() => void execute()}>
-                {executing ? '执行中…' : '确认执行'}
+                {executing ? t('design.executing') : t('design.confirmRun')}
               </Button>
             </div>
           </div>
@@ -1064,7 +1065,7 @@ export function TableDesignPage() {
           <span className="min-w-0 break-words">{toast.text}</span>
           <button
             type="button"
-            aria-label="关闭提示"
+            aria-label={t('design.dismissToast')}
             className="ml-2 text-muted-foreground hover:text-foreground"
             onClick={dismissToast}
           >
