@@ -8,6 +8,7 @@ import {
   runDdlChecks,
   runFilterPushdownChecks,
   runInteractiveTransactionChecks,
+  runLazyCellChecks,
   runMetadataChecks,
   runPaginationChecks,
   runRelationGraphChecks,
@@ -130,6 +131,12 @@ d('postgres conformance（CI service 实跑）', () => {
     logFailures(summary);
     expect(summary.failed).toBe(0);
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(3);
+  });
+
+  it('lazy-cell 组（能力门控：fetchCell 未实现即整组跳过）', async () => {
+    const summary = await runLazyCellChecks(makeConn);
+    logFailures(summary);
+    expect(summary.failed).toBe(0);
   });
 
   it('metadata 组（D-15：listDatabases=schema）', async () => {

@@ -92,16 +92,23 @@ async function pickTargetFile(
   format: ExportFormat,
 ): Promise<string | undefined> {
   const wsFolder = vscode.workspace.workspaceFolders?.[0];
+  const ext = format === 'markdown' ? 'md' : format === 'insert' ? 'sql' : format;
   const defaultDir = wsFolder ? path.join(wsFolder.uri.fsPath, '.db-export') : undefined;
   const defaultUri = defaultDir
-    ? vscode.Uri.file(path.join(defaultDir, `${safeFileName(`${db}.${obj}`)}.${format}`))
+    ? vscode.Uri.file(path.join(defaultDir, `${safeFileName(`${db}.${obj}`)}.${ext}`))
     : undefined;
-  const filters: Record<string, string[]> | undefined =
-    format === 'csv' ? { CSV: ['csv'] } : format === 'xlsx' ? { Excel: ['xlsx'] } : { JSON: ['json'] };
+  const filters: Record<ExportFormat, Record<string, string[]>> = {
+    csv: { CSV: ['csv'] },
+    json: { JSON: ['json'] },
+    xlsx: { Excel: ['xlsx'] },
+    ndjson: { 'NDJSON（换行分隔 JSON）': ['ndjson'] },
+    markdown: { Markdown: ['md'] },
+    insert: { 'SQL（INSERT）': ['sql'] },
+  };
   const target = await vscode.window.showSaveDialog({
     defaultUri,
     saveLabel: '导出',
-    filters,
+    filters: filters[format],
   });
   return target?.fsPath;
 }

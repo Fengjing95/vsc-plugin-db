@@ -197,6 +197,26 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             >
               ⇩ Excel
             </button>
+            <button
+              type="button"
+              aria-label="导出 NDJSON"
+              title="导出 NDJSON（换行分隔 JSON）"
+              disabled={exporting}
+              className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              onClick={() => void exportItem(activeItem.seq, 'ndjson')}
+            >
+              ⇩ NDJSON
+            </button>
+            <button
+              type="button"
+              aria-label="导出 Markdown"
+              title="导出 Markdown"
+              disabled={exporting}
+              className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              onClick={() => void exportItem(activeItem.seq, 'markdown')}
+            >
+              ⇩ MD
+            </button>
           </>
         )}
         <button

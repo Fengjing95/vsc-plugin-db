@@ -59,7 +59,7 @@ interface ConsoleStoreState {
   resolveBanner(action: 'proceed' | 'cancel'): Promise<void>;
   cancelRun(): Promise<void>;
   rerun(sql: string): Promise<void>;
-  exportItem(seq: number, format: 'csv' | 'json' | 'xlsx'): Promise<void>;
+  exportItem(seq: number, format: 'csv' | 'json' | 'xlsx' | 'ndjson' | 'markdown'): Promise<void>;
   openFix(seq: number): Promise<void>;
   retryExplain(): Promise<void>;
   openAiSettings(): Promise<void>;

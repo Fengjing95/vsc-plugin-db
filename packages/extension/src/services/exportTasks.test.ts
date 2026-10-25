@@ -256,4 +256,39 @@ describe('ExportTaskRunner（M8 导出后台化）', () => {
     await vi.waitFor(() => expect(h.doneEvents).toHaveLength(2));
     expect(h.doneEvents.map((d) => d.exportId)).toContain(ack1.exportId);
   });
+
+  it('NDJSON：每行独立 JSON 对象（无头无尾，任意前缀合法）', async () => {
+    const gate = deferred<ResultSet>();
+    const { host } = gatedHost(gate.promise, [page([[3, 'c']])]);
+    const h = makeHarness({ host, target: path.join(tmpDir, 'out.ndjson') });
+
+    const ack = await h.runner.run({ ...baseParams, format: 'ndjson' });
+    gate.resolve(page([[1, 'a'], [2, 'b']]));
+    await vi.waitFor(() => expect(h.doneEvents).toHaveLength(1));
+    expect(h.doneEvents[0].exportId).toBe(ack.exportId);
+    const content = await fs.promises.readFile(h.target as string, 'utf8');
+    const lines = content.trimEnd().split('\n');
+    expect(lines).toEqual(['{"id":1,"name":"a"}', '{"id":2,"name":"b"}', '{"id":3,"name":"c"}']);
+    // 每行独立合法 JSON
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { id: 1, name: 'a' },
+      { id: 2, name: 'b' },
+      { id: 3, name: 'c' },
+    ]);
+  });
+
+  it('SQL INSERT：批一条完整多值语句（MySQL 方言 + 分号收口）', async () => {
+    const { host } = gatedHost(
+      Promise.resolve(page([[1, 'a'], [2, null]])),
+      [page([[3, { k: 1 }]])],
+    );
+    const h = makeHarness({ host, target: path.join(tmpDir, 'out.sql') });
+    await h.runner.run({ ...baseParams, format: 'insert' });
+    await vi.waitFor(() => expect(h.doneEvents).toHaveLength(1));
+    const content = await fs.promises.readFile(h.target as string, 'utf8');
+    expect(content).toBe(
+      'INSERT INTO `mydb`.`users` (`id`, `name`) VALUES\n  (1, \'a\'),\n  (2, NULL);\n' +
+        'INSERT INTO `mydb`.`users` (`id`, `name`) VALUES\n  (3, \'{"k":1}\');\n',
+    );
+  });
 });

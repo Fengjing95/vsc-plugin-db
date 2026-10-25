@@ -412,6 +412,12 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             { key: 'json-result', label: 'JSON · 全部结果', onSelect: () => onExport('json', 'result') },
             { key: 'xlsx-page', label: 'Excel (xlsx) · 当前页', onSelect: () => onExport('xlsx', 'page') },
             { key: 'xlsx-result', label: 'Excel (xlsx) · 全部结果', onSelect: () => onExport('xlsx', 'result') },
+            { key: 'ndjson-page', label: 'NDJSON · 当前页', onSelect: () => onExport('ndjson', 'page') },
+            { key: 'ndjson-result', label: 'NDJSON · 全部结果', onSelect: () => onExport('ndjson', 'result') },
+            { key: 'markdown-page', label: 'Markdown · 当前页', onSelect: () => onExport('markdown', 'page') },
+            { key: 'markdown-result', label: 'Markdown · 全部结果', onSelect: () => onExport('markdown', 'result') },
+            { key: 'insert-page', label: 'SQL (INSERT) · 当前页', onSelect: () => onExport('insert', 'page') },
+            { key: 'insert-result', label: 'SQL (INSERT) · 全部结果', onSelect: () => onExport('insert', 'result') },
           ]}
         />
       </div>

@@ -80,6 +80,7 @@ const capabilities: DriverCapabilities = {
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable + query() 执行 DDL（内存）
   supportsDatabaseDdl: true, // M8-DBDDL：buildCreateDatabase/buildAlterDatabase/buildDropDatabase（内存库列表）
   supportsErDiagram: true, // M8-ER：listKeys FK 元数据完整（关系收集契约基准，概要 §5.11 / D-22）
+  lazyCell: true, // 单元格查看器批次：fetchCell 按需拉取（交互稿 §4.6；契约组 lazy-cell 基准）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column'],
   editable: true,
   pagination: 'offset',
@@ -1108,6 +1109,24 @@ export class MockConnection implements IConnection {
   }
 
   /** 内存短事务：逐条执行 + 失败整体回滚（快照恢复），任一 update/delete 匹配行数 ≠ 1 → E_CONFLICT */
+  /** 单元格查看器批次（交互稿 §4.6）：按 RowKey 取单格 C-7 值——内存数据本就完整，
+   *  mock 提供该方法是作为契约组 lazy-cell 的基准实现（roundtrip / 错误码口径） */
+  async fetchCell(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown> {
+    const def = defOf(db, obj);
+    const idxOf = (name: string) => def.columns.findIndex((c) => c.name === name);
+    if (idxOf(column) < 0) {
+      throw new DriverError('E_VALIDATION', `列不存在: ${column}`);
+    }
+    const rows = materialize(db, obj);
+    for (const row of rows) {
+      if (rowMatches(row, idxOf, rowKey, undefined)) {
+        return row[idxOf(column)];
+      }
+    }
+    // 不带 meta（rowKey 承载行数据值，C-10 不入日志/错误）
+    throw new DriverError('E_NOT_FOUND', '行不存在或已被删除');
+  }
+
   async applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult> {
     const def = defOf(db, obj);
     if (def.kind === 'view') {

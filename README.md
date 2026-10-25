@@ -25,7 +25,7 @@
 | 表结构编辑器（建/改表、列） | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
 | 库级 DDL（新建/编辑/删除库） | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | —（单库） | ✓ 建/删库 | —（库数固定） | — |
 | SSL / SSH 隧道（TOFU 指纹） | ✓ | ✓ | ✓ | — | ✓ | ✓ / TLS | — |
-| 导出（CSV/JSON/XLSX，后台任务可取消） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 导出（CSV/JSON/XLSX/NDJSON/Markdown/SQL INSERT，后台任务可取消） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 契约测试（CI 实跑） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 恒跑 |
 
 其他能力：查看 DDL、由表结构生成代码（TS/Java/Go/Prisma）、复制为多种格式、SQL 格式化、保存查询与树内查询目录、EXPLAIN 树形缩进、行内执行结果注记、CodeLens 逐语句执行、操作日志（`dbExplorer.showLog`）。

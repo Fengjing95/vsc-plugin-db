@@ -11,7 +11,7 @@ import {
   type ExportRunResult,
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
-import { csvRow, toJsonObject } from './csvJson';
+import { csvRow, insertStatement, markdownHeader, markdownRow, ndjsonRow, toJsonObject } from './csvJson';
 import { writeXlsxFile } from './xlsxWriter';
 
 /**
@@ -297,14 +297,31 @@ export class ExportTaskRunner {
         if (!headerWritten) {
           if (p.format === 'csv') {
             await writeChunk(csvRow(names));
-          } else {
+          } else if (p.format === 'markdown') {
+            await writeChunk(markdownHeader(names));
+          } else if (p.format === 'json') {
             await writeChunk('[\n');
           }
+          // ndjson 无头；insert 每批自带完整语句头
           headerWritten = true;
         }
         if (p.format === 'csv') {
           for (const row of rows) {
             await writeChunk(csvRow(row));
+          }
+        } else if (p.format === 'ndjson') {
+          for (const row of rows) {
+            await writeChunk(ndjsonRow(names, row));
+          }
+        } else if (p.format === 'markdown') {
+          for (const row of rows) {
+            await writeChunk(markdownRow(row));
+          }
+        } else if (p.format === 'insert') {
+          // 每批一条完整多值语句（分号收口，批间取消不产生半语句）
+          const stmt = insertStatement(p.db, p.obj, names, rows);
+          if (stmt) {
+            await writeChunk(stmt);
           }
         } else if (rows.length > 0) {
           const parts = rows.map((row) => JSON.stringify(toJsonObject(names, row)));

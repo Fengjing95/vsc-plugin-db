@@ -11,7 +11,8 @@ export interface CopyColumn {
   type: string; // NormalizedType（ResultSet.columns 原样字符串）
 }
 
-/** SQL 字面量（IN 列表 / INSERT 共用；NULL 严格区分空串，C-7） */
+/** SQL 字面量（IN 列表 / INSERT 共用；NULL 严格区分空串，C-7；JSON 对象 →
+ *  JSON 文本字面量——String(object) 会落 '[object Object]'，P-53 同族收口） */
 export function toSqlLiteral(v: unknown): string {
   if (v === null || v === undefined) {
     return 'NULL';
@@ -22,7 +23,8 @@ export function toSqlLiteral(v: unknown): string {
   if (typeof v === 'boolean') {
     return v ? 'TRUE' : 'FALSE';
   }
-  return `'${String(v).replace(/'/g, "''")}'`;
+  const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return `'${text.replace(/'/g, "''")}'`;
 }
 
 /** IN 列表：选中行某列的值 → ('a','b',NULL)。IN 查询高频复用（§6 #6） */
@@ -45,10 +47,15 @@ export function rowsToJson(columns: string[], rows: unknown[][]): string {
   );
 }
 
-/** Markdown 表格：管道转义，NULL 显式标注（复制到文档/IM 可读） */
+/** Markdown 表格：管道转义，NULL 显式标注（复制到文档/IM 可读；JSON 对象序列化原文） */
 export function rowsToMarkdown(columns: string[], rows: unknown[][]): string {
-  const esc = (v: unknown): string =>
-    v === null || v === undefined ? 'NULL' : String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  const esc = (v: unknown): string => {
+    if (v === null || v === undefined) {
+      return 'NULL';
+    }
+    const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  };
   const head = `| ${columns.map(esc).join(' | ')} |`;
   const sep = `| ${columns.map(() => '---').join(' | ')} |`;
   const body = rows.map((row) => `| ${row.map((v) => esc(v)).join(' | ')} |`).join('\n');

@@ -23,7 +23,7 @@ import {
   type ConsoleRunItem,
   type ConsoleStateResult,
 } from '@db-explorer/protocol';
-import { csvRow, toJsonObject } from './csvJson';
+import { csvRow, markdownHeader, markdownRow, ndjsonRow, toJsonObject } from './csvJson';
 import type { ConnectionManager } from './connectionManager';
 import { describeError, type Logger } from './logger';
 import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePanel';
@@ -1180,26 +1180,39 @@ export class ConsoleService implements vscode.Disposable {
     return undefined;
   }
 
+  /** Console 结果导出（内存结果集，非流式）。ndjson/markdown @since 批次②（§5.7 P2 收口）；
+   *  insert 不支持——Console 结果可来自任意 JOIN/别名查询，无单一目标表，生成 INSERT 语句
+   *  会误导使用方（表格视图的 INSERT 导出才有明确目标表） */
   async exportResult(
     consoleId: string,
     itemSeq: number,
-    format: 'csv' | 'json' | 'xlsx',
+    format: 'csv' | 'json' | 'xlsx' | 'ndjson' | 'markdown' | 'insert',
   ): Promise<{ filePath: string; rows: number; bytes: number; canceled?: boolean }> {
     const state = this.consoles.get(consoleId);
     const rs = state?.run?.items.find((i) => i.seq === itemSeq)?.resultSet;
     if (!rs) {
       throw new DriverError('E_VALIDATION', '该结果不可导出');
     }
+    if (format === 'insert') {
+      throw new DriverError('E_VALIDATION', 'Console 结果无单一目标表，INSERT 导出请在表格视图使用');
+    }
     const wsFolder = vscode.workspace.workspaceFolders?.[0];
+    const ext = format === 'markdown' ? 'md' : format;
     const defaultDir = wsFolder ? vscode.Uri.file(`${wsFolder.uri.fsPath}/.db-export`) : undefined;
     const defaultUri = defaultDir
-      ? vscode.Uri.joinPath(defaultDir, `结果-${itemSeq}.${format}`)
+      ? vscode.Uri.joinPath(defaultDir, `结果-${itemSeq}.${ext}`)
       : undefined;
+    const filters: Record<string, Record<string, string[]>> = {
+      csv: { CSV: ['csv'] },
+      json: { JSON: ['json'] },
+      xlsx: { Excel: ['xlsx'] },
+      ndjson: { 'NDJSON（换行分隔 JSON）': ['ndjson'] },
+      markdown: { Markdown: ['md'] },
+    };
     const target = await vscode.window.showSaveDialog({
       defaultUri,
       saveLabel: '导出',
-      filters:
-        format === 'csv' ? { CSV: ['csv'] } : format === 'xlsx' ? { Excel: ['xlsx'] } : { JSON: ['json'] },
+      filters: filters[format],
     });
     if (!target) {
       return { filePath: '', rows: 0, bytes: 0, canceled: true };
@@ -1218,6 +1231,14 @@ export class ConsoleService implements vscode.Disposable {
     } else if (format === 'csv') {
       content = rs.rows.map((row) => csvRow(row)).join('');
       content = csvRow(names) + content;
+      bytes = Buffer.byteLength(content);
+      await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
+    } else if (format === 'ndjson') {
+      content = rs.rows.map((row) => ndjsonRow(names, row)).join('');
+      bytes = Buffer.byteLength(content);
+      await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
+    } else if (format === 'markdown') {
+      content = markdownHeader(names) + rs.rows.map((row) => markdownRow(row)).join('');
       bytes = Buffer.byteLength(content);
       await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
     } else {

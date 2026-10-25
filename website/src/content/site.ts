@@ -8,7 +8,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 
 export const site = {
   name: 'DB Kit',
-  version: 'v0.5.0',
+  version: 'v0.6.0',
   tagline: '在 VSCode 里，搞定数据库的一切',
   subTagline: '浏览 · 查询 · 编辑 · 导出 —— 六类数据源统一入口，AI 助手自带钥匙、开箱即连、零遥测。',
   extId: 'db-explorer-dev.db-kit',
@@ -88,7 +88,7 @@ export const features: Feature[] = [
   {
     icon: '📤',
     title: '百万行导出不卡界面',
-    desc: 'CSV / JSON / XLSX 流式导出转入后台执行：通知中心看进度、随时取消、多任务并发，导完一键定位文件。',
+    desc: 'CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX 六种格式流式导出转入后台执行：通知中心看进度、随时取消、多任务并发，导完一键定位文件。',
   },
   {
     icon: '🔌',

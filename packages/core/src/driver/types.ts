@@ -178,8 +178,10 @@ export interface IConnection extends Disposable {
   /** 变更预览：与 applyChanges 同源生成语句，保证“预览即执行” */
   previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]>;
   applyChanges(db: string, obj: string, cs: ChangeSet): Promise<ApplyResult>;
-  /** 大字段按需拉取（capabilities.lazyCell 时实现） */
-  fetchCell?(db: string, obj: string, rowKey: RowKey, column: string): Promise<string>;
+  /** 大字段按需拉取（capabilities.lazyCell 时实现）。返回 C-7 编码的单元格值，
+   *  与 fetchRows 单元格同形（JSON=已解析对象、binary=base64、NULL=null）；
+   *  未知列 → E_VALIDATION，RowKey 无命中 → E_NOT_FOUND */
+  fetchCell?(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown>;
   /** DDL 生成（capabilities.supportsDdl = true 时实现，@since apiVersion 1） */
   getDdl?(db: string, obj: string): Promise<string>;
   /** @since M8-B2 表结构编辑器（概要 §5.9；capabilities.supportsDdlEditor = true 时实现）。

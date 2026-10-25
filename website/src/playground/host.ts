@@ -591,22 +591,50 @@ export class PlaygroundHost {
     }
   }
 
-  /** Console 结果导出：浏览器侧 Blob 下载（xlsx 按 consolePanel 口径降级为 csv） */
-  private consoleExportResult(consoleId: string, itemSeq: number, format: 'csv' | 'json' | 'xlsx') {
+  /** Console 结果导出：浏览器侧 Blob 下载（xlsx 按 consolePanel 口径降级为 csv；
+   *  insert 与扩展侧同口径拒绝——Console 结果无单一目标表） */
+  private consoleExportResult(
+    consoleId: string,
+    itemSeq: number,
+    format: 'csv' | 'json' | 'xlsx' | 'ndjson' | 'markdown' | 'insert',
+  ) {
     const item = this.consoleRun?.items.find((i) => i.seq === itemSeq);
     const rs = item?.resultSet;
     if (!rs) {
       throw new DriverError('E_VALIDATION', '该结果不可导出');
     }
-    const effective = format === 'json' ? 'json' : 'csv';
+    if (format === 'insert') {
+      throw new DriverError('E_VALIDATION', 'Console 结果无单一目标表，INSERT 导出请在表格视图使用');
+    }
+    const names = rs.columns.map((c) => c.name);
+    const objects = rs.rows.map((row) => Object.fromEntries(names.map((n, i) => [n, row[i] ?? null])));
     let body: string;
-    if (effective === 'json') {
-      body = JSON.stringify(
-        rs.rows.map((row) => Object.fromEntries(rs.columns.map((c, i) => [c.name, row[i] ?? null]))),
-        null,
-        2,
-      );
+    let mime: string;
+    let ext: string;
+    if (format === 'json') {
+      body = JSON.stringify(objects, null, 2);
+      mime = 'application/json';
+      ext = 'json';
+    } else if (format === 'ndjson') {
+      body = objects.map((o) => JSON.stringify(o)).join('\n') + (objects.length > 0 ? '\n' : '');
+      mime = 'application/x-ndjson';
+      ext = 'ndjson';
+    } else if (format === 'markdown') {
+      const esc = (v: unknown): string => {
+        if (v === null || v === undefined) {
+          return 'NULL';
+        }
+        const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      };
+      body =
+        `| ${names.map(esc).join(' | ')} |\n| ${names.map(() => '---').join(' | ')} |\n` +
+        rs.rows.map((row) => `| ${row.map((v) => esc(v)).join(' | ')} |`).join('\n') +
+        (rs.rows.length > 0 ? '\n' : '');
+      mime = 'text/markdown';
+      ext = 'md';
     } else {
+      // csv（xlsx 降级同口径）
       const cell = (v: unknown): string => {
         const s = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
         return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -615,9 +643,11 @@ export class PlaygroundHost {
         rs.columns.map((c) => cell(c.name)).join(','),
         ...rs.rows.map((row) => row.map((v) => cell(v)).join(',')),
       ].join('\n');
+      mime = 'text/csv';
+      ext = 'csv';
     }
-    const blob = new Blob([body], { type: effective === 'json' ? 'application/json' : 'text/csv' });
-    const name = `结果-${itemSeq}.${effective}`;
+    const blob = new Blob([body], { type: mime });
+    const name = `结果-${itemSeq}.${ext}`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
