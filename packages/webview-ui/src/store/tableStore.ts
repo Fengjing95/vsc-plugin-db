@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import { maxExploredPage, updateCursorStack } from '../lib/queryState';
 import { request, RpcError } from '../rpc/client';
 import { errorCodeToMessage } from '../lib/errors';
+import { t } from '../lib/i18n';
 import { viewerKindFor, type ViewerKind } from '../lib/cellViewer';
 import { cellInputText, parseCellInput } from '../lib/editValues';
 import {
@@ -194,7 +195,7 @@ interface TableState {
   /** E_CONFLICT 动作：放弃全部变更并刷新 */
   discardAndRefresh(): Promise<void>;
   dismissToast(): void;
-  showToast(t: ToastState, autoDismissMs?: number): void;
+  showToast(toast: ToastState, autoDismissMs?: number): void;
   /** 行级编辑状态（DataGrid 视觉） */
   rowEditState(rowIndex: number): { kind: 'normal' | 'updated' | 'deleted' | 'inserted'; overlay?: RowOverlay };
   /** 生效单元格值（覆盖层叠加后） */
@@ -358,7 +359,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     const s = get();
     if (s.orderFreeform) {
       // 自由表达式不参与联动：提示而非静默覆盖用户输入
-      get().showToast({ kind: 'info', text: '已存在手写 ORDER BY 表达式，列头排序停用（清空输入框后可用）' });
+      get().showToast({ kind: 'info', text: t('table.toast.orderFreeform') });
       return;
     }
     const names = (s.allColumns.length > 0 ? s.allColumns : s.columns).map((c) => c.name);
@@ -436,7 +437,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     } catch (err) {
       get().showToast({
         kind: 'error',
-        text: `导出失败：${err instanceof Error ? err.message : String(err)}`,
+        text: t('table.toast.exportFailed', [err instanceof Error ? err.message : String(err)]),
       });
     }
   },
@@ -535,11 +536,11 @@ export const useTableStore = create<TableState>((set, get) => ({
       return;
     }
     if (col.type === 'binary') {
-      get().showToast({ kind: 'info', text: '二进制列只读展示（点击值可复制）' });
+      get().showToast({ kind: 'info', text: t('table.toast.binaryReadonly') });
       return;
     }
     if (rowIndex < s.rows.length && s.primaryKey.includes(col.name)) {
-      get().showToast({ kind: 'info', text: '主键列不可编辑（行定位依赖主键）' });
+      get().showToast({ kind: 'info', text: t('table.toast.pkReadonly') });
       return;
     }
     if (rowIndex < s.rows.length && get().rowEditState(rowIndex).kind === 'deleted') {
@@ -561,7 +562,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     }
     const parsed = parseCellInput(text, col.type);
     if (!parsed.ok) {
-      get().showToast({ kind: 'error', text: `${col.name}：${parsed.error}` });
+      get().showToast({ kind: 'error', text: t('table.cell.valueInvalid', [col.name, parsed.error ?? '']) });
       return; // 保持编辑态，用户修正
     }
     const value = parsed.value;
@@ -775,7 +776,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     }
     set({ updates, deletes, rowErrors });
     scheduleSync(set, get);
-    get().showToast({ kind: 'info', text: `已撤销 ${reverted} 行的未提交变更` });
+    get().showToast({ kind: 'info', text: t('table.toast.revertedRows', [reverted]) });
   },
 
   async revertAll() {
@@ -791,7 +792,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         obj: s.obj,
         target: { scope: 'all' },
       });
-      get().showToast({ kind: 'info', text: '已撤销全部未提交变更' });
+      get().showToast({ kind: 'info', text: t('table.toast.revertedAll') });
     } catch (err) {
       get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
     }
@@ -807,7 +808,7 @@ export const useTableStore = create<TableState>((set, get) => ({
       return; // 上行失败已提示，中止预览
     }
     if (get().editCount().total === 0) {
-      get().showToast({ kind: 'info', text: '没有可提交的变更' });
+      get().showToast({ kind: 'info', text: t('table.toast.noChanges') });
       return;
     }
     set({ previewing: true });
@@ -839,7 +840,7 @@ export const useTableStore = create<TableState>((set, get) => ({
       return; // 上行失败已提示；带着缺失的权威副本提交会静默漏改，必须中止
     }
     if (get().editCount().total === 0) {
-      get().showToast({ kind: 'info', text: '没有可提交的变更' });
+      get().showToast({ kind: 'info', text: t('table.toast.noChanges') });
       return;
     }
     set({ committing: true, previewItems: null });
@@ -850,7 +851,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         obj: s.obj,
       });
       set({ committing: false, updates: {}, deletes: {}, inserts: [], rowErrors: {} });
-      get().showToast({ kind: 'info', text: `已提交 ${result.items.length} 条变更` });
+      get().showToast({ kind: 'info', text: t('table.toast.committed', [result.items.length]) });
       await get().refresh();
     } catch (err) {
       set({ committing: false });
@@ -862,10 +863,10 @@ export const useTableStore = create<TableState>((set, get) => ({
           get().showToast(
             {
               kind: 'error',
-              text: '数据已被他人修改，请刷新后重试',
+              text: t('table.toast.conflict'),
               actions: [
-                { label: '刷新并放弃', onSelect: () => void get().discardAndRefresh() },
-                { label: '保留我的修改', onSelect: () => void get().retainMyChanges() },
+                { label: t('table.action.refreshDiscard'), onSelect: () => void get().discardAndRefresh() },
+                { label: t('table.action.retainMine'), onSelect: () => void get().retainMyChanges() },
               ],
             },
             8000,
@@ -939,7 +940,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         set({ viewer: { ...cur, loading: false } });
         get().showToast({
           kind: 'error',
-          text: `按需拉取失败，已回退行内值：${err instanceof Error ? err.message : String(err)}`,
+          text: t('table.toast.lazyCellFailed', [err instanceof Error ? err.message : String(err)]),
         });
       });
   },
@@ -964,10 +965,10 @@ export const useTableStore = create<TableState>((set, get) => ({
       const { path } = await request<{ path: string | null }>('sys.saveFile', {
         defaultName: `${s.obj}-${col?.name ?? 'binary'}.bin`,
         base64: v.value,
-        title: '另存为文件',
+        title: t('table.viewer.saveAsFile'),
       });
       if (path) {
-        get().showToast({ kind: 'info', text: `已保存 → ${path}` });
+        get().showToast({ kind: 'info', text: t('table.toast.savedTo', [path]) });
       }
     } catch (err) {
       get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
@@ -984,7 +985,7 @@ export const useTableStore = create<TableState>((set, get) => ({
     try {
       if (rowError.kind === 'insert' || rowError.tempId) {
         // insert 不参与乐观锁（约束错误走 E_CONSTRAINT），无可保留语义
-        get().showToast({ kind: 'error', text: '新增行提交失败，请检查数据后重试或删除该行' }, 6000);
+        get().showToast({ kind: 'error', text: t('table.toast.insertFailed') }, 6000);
         return;
       }
       if (!rowError.rowKey) {
@@ -1014,12 +1015,12 @@ export const useTableStore = create<TableState>((set, get) => ({
       if (!currentRow) {
         if (rowError.kind === 'delete') {
           // 该行已被他人删除 → DELETE 已完成，丢弃本地删除标记
-          get().showToast({ kind: 'error', text: '该行已被他人删除，本地删除标记已失效' }, 6000);
+          get().showToast({ kind: 'error', text: t('table.toast.rowDeletedStale') }, 6000);
           set({ rowErrors: {} });
           return;
         }
         get().showToast(
-          { kind: 'error', text: '该行已被他人删除，无法保留修改', actions: [{ label: '刷新并放弃', onSelect: () => void get().discardAndRefresh() }] },
+          { kind: 'error', text: t('table.toast.rowDeletedNoRetain'), actions: [{ label: t('table.action.refreshDiscard'), onSelect: () => void get().discardAndRefresh() }] },
           8000,
         );
         return;
@@ -1047,8 +1048,8 @@ export const useTableStore = create<TableState>((set, get) => ({
         get().showToast(
           {
             kind: 'error',
-            text: `变更列已被他人修改：${conflictedCols.join('、')}。无法自动保留，请刷新后重新编辑`,
-            actions: [{ label: '刷新并放弃', onSelect: () => void get().discardAndRefresh() }],
+            text: t('table.toast.conflictColumns', [conflictedCols.join('、')]),
+            actions: [{ label: t('table.action.refreshDiscard'), onSelect: () => void get().discardAndRefresh() }],
           },
           8000,
         );
@@ -1068,7 +1069,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         updates[currentKey] = rebuilt;
       }
       set({ updates, rowErrors: {} });
-      get().showToast({ kind: 'info', text: '已基于最新数据重新定基，请确认预览' });
+      get().showToast({ kind: 'info', text: t('table.toast.rebased') });
       await get().openPreview();
     } catch (err) {
       get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) }, 6000);
@@ -1095,13 +1096,13 @@ export const useTableStore = create<TableState>((set, get) => ({
     set({ toast: null });
   },
 
-  showToast(t, autoDismissMs) {
+  showToast(toast, autoDismissMs) {
     if (toastTimer !== undefined) {
       clearTimeout(toastTimer);
     }
-    set({ toast: t });
-    const ms = autoDismissMs ?? (t.actions ? 8000 : 3000);
-    if (t.actions && ms === 0) {
+    set({ toast });
+    const ms = autoDismissMs ?? (toast.actions ? 8000 : 3000);
+    if (toast.actions && ms === 0) {
       return; // 常驻
     }
     toastTimer = setTimeout(() => {
@@ -1165,7 +1166,7 @@ function flushPending(
       if (seq !== syncSeq) {
         return false;
       }
-      get().showToast({ kind: 'error', text: `变更同步失败：${err instanceof Error ? err.message : String(err)}` });
+      get().showToast({ kind: 'error', text: t('table.toast.syncFailed', [err instanceof Error ? err.message : String(err)]) });
       set({}); // 触发一次渲染
       return false;
     },

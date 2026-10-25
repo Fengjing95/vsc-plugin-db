@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import type { ResultSetPayload } from '@db-explorer/protocol';
 import { ContextMenu, type ContextMenuItem } from '../../components/ui/contextMenu';
 import { cellView } from '../../lib/cellDisplay';
+import { t } from '../../lib/i18n';
 import { explainIndentPrefix } from '../../lib/consoleView';
 import { defaultWidth } from '../table/DataGrid';
 
@@ -107,12 +108,12 @@ export function ConsoleGrid({
                           items: [
                             {
                               key: 'copy',
-                              label: '复制值',
+                              label: t('console.copyValue'),
                               onSelect: () => copyValue(rowIndex, colIdx),
                             },
                             {
                               key: 'copy-row',
-                              label: '复制行 JSON',
+                              label: t('console.copyRowJson'),
                               onSelect: () =>
                                 void navigator.clipboard.writeText(
                                   JSON.stringify(

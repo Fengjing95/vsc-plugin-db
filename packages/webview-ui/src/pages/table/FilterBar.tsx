@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { IconPlay } from '../../components/ui/icons';
+import { t } from '../../lib/i18n';
 import { useTableStore } from '../../store/tableStore';
 import { SqlInput } from './SqlInput';
 
@@ -31,7 +32,7 @@ export function FilterBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-panel px-2 py-1.5">
-      <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 WHERE 条件（语法错误在应用时提示）">
+      <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title={t('table.filter.whereTitle')}>
         WHERE
       </span>
       <SqlInput
@@ -40,10 +41,10 @@ export function FilterBar() {
         onApply={apply}
         columns={allColumns}
         context="where"
-        ariaLabel="WHERE 条件"
+        ariaLabel={t('table.filter.whereAria')}
         widthClass="min-w-56 flex-1"
       />
-      <span className="ml-1 shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title="手写 ORDER BY（追加在列头排序之后）">
+      <span className="ml-1 shrink-0 font-mono text-[11px] font-medium text-muted-foreground" title={t('table.filter.orderTitle')}>
         ORDER BY
       </span>
       <SqlInput
@@ -52,7 +53,7 @@ export function FilterBar() {
         onApply={apply}
         columns={allColumns}
         context="order"
-        ariaLabel="ORDER BY 排序"
+        ariaLabel={t('table.filter.orderAria')}
         widthClass="w-64"
       />
       <Button
@@ -61,8 +62,8 @@ export function FilterBar() {
         className="w-7 px-0"
         disabled={!dirty}
         onClick={apply}
-        aria-label="应用条件"
-        title={dirty ? '应用条件（Enter 同效）' : '条件未变化'}
+        aria-label={t('table.filter.apply')}
+        title={dirty ? t('table.filter.applyTitle') : t('table.filter.unchanged')}
       >
         <IconPlay size={13} />
       </Button>

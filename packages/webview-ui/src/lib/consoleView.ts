@@ -1,4 +1,5 @@
 import type { ConsoleAi, ConsoleRun, ConsoleRunItem } from '@db-explorer/protocol';
+import { t } from './i18n';
 
 /**
  * Console 结果面板视图推导（交互稿 §7.3）：
@@ -25,12 +26,12 @@ export function deriveTabs(run: ConsoleRun | null, ai?: ConsoleAi | null): Conso
   for (const item of run?.items ?? []) {
     if (item.resultSet) {
       resultIndex++;
-      tabs.push({ id: `result-${item.seq}`, kind: 'result', label: `结果 ${resultIndex}`, item });
+      tabs.push({ id: `result-${item.seq}`, kind: 'result', label: t('console.resultTab', [resultIndex]), item });
     }
   }
-  tabs.push({ id: 'msg', kind: 'message', label: '消息' });
+  tabs.push({ id: 'msg', kind: 'message', label: t('console.messagesTab') });
   if (ai) {
-    tabs.push({ id: 'ai', kind: 'ai', label: 'AI 解释' });
+    tabs.push({ id: 'ai', kind: 'ai', label: t('ai.tabLabel') });
   }
   return tabs;
 }
@@ -44,12 +45,12 @@ export function oneLineSql(sql: string): string {
 /** 执行项摘要（消息 Tab 行 / 状态行共用） */
 export function runItemSummary(item: ConsoleRunItem): string {
   if (item.error) {
-    return `错误 ${item.error.code}: ${item.error.message}`;
+    return t('console.errorSummary', [item.error.code, item.error.message]);
   }
   if (item.affectedRows !== undefined) {
-    return `${item.affectedRows} rows affected · ${item.executionMs}ms`;
+    return t('console.rowsAffected', [item.affectedRows, item.executionMs]);
   }
-  return `${item.resultSet?.rowCount ?? 0} 行 · ${item.executionMs}ms`;
+  return t('console.rowCountMs', [item.resultSet?.rowCount ?? 0, item.executionMs]);
 }
 
 function itemSummary(item: ConsoleRunItem): string {
@@ -63,40 +64,40 @@ export function messageLines(run: ConsoleRun): string[] {
     if (item.resultSet) {
       continue;
     }
-    lines.push(`[${item.seq}] ${oneLineSql(item.sql)}`);
-    lines.push(`  → ${itemSummary(item)}`);
+    lines.push(t('console.itemLine', [item.seq, oneLineSql(item.sql)]));
+    lines.push(t('console.itemSummaryLine', [itemSummary(item)]));
     for (const w of item.messages ?? []) {
-      lines.push(`  ⚠ ${w}`);
+      lines.push(t('console.warnLine', [w]));
     }
   }
   if (run.status === 'canceled') {
-    lines.push('⊘ 已取消');
+    lines.push(t('console.canceledLine'));
   }
   const last = run.items[run.items.length - 1];
   if (last) {
-    lines.push(`最后一条语句：${itemSummary(last)}`);
+    lines.push(t('console.lastStatement', [itemSummary(last)]));
   } else if (run.status === 'running') {
-    lines.push('执行中…');
+    lines.push(t('console.running'));
   }
   return lines;
 }
 
 /** 状态行（结果 Tab）：`SELECT … · 12ms · 50 行` */
 export function resultStatusLine(item: ConsoleRunItem): string {
-  return `${oneLineSql(item.sql)} · ${item.executionMs}ms · ${item.resultSet?.rowCount ?? 0} 行`;
+  return t('console.resultStatusLine', [oneLineSql(item.sql), item.executionMs, item.resultSet?.rowCount ?? 0]);
 }
 
 /** 运行状态文案（状态行右段 / 消息 Tab） */
 export function runStatusText(run: ConsoleRun): string {
   switch (run.status) {
     case 'running':
-      return '执行中…';
+      return t('console.running');
     case 'ok':
-      return `完成（${run.durationMs}ms）`;
+      return t('console.done', [run.durationMs]);
     case 'canceled':
-      return '已取消';
+      return t('console.canceled');
     case 'error':
-      return `出错（${run.durationMs}ms）`;
+      return t('console.failed', [run.durationMs]);
   }
 }
 

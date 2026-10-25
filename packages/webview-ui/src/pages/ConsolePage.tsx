@@ -10,6 +10,7 @@ import {
   runStatusText,
 } from '../lib/consoleView';
 import { parseAiMarkdown } from '../lib/aiMarkdown';
+import { t } from '../lib/i18n';
 import { rpcErrorText } from '../lib/errors';
 import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
@@ -102,7 +103,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   }, [consoleId]);
 
   if (phase === 'loading') {
-    return <div className="flex h-screen items-center justify-center text-muted-foreground">加载中…</div>;
+    return <div className="flex h-screen items-center justify-center text-muted-foreground">{t('common.loading')}</div>;
   }
   if (phase === 'error') {
     return (
@@ -111,7 +112,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   }
 
   const tabs = deriveTabs(run, ai);
-  const active = tabs.find((t) => t.id === activeTab) ?? tabs[0] ?? null;
+  const active = tabs.find((tb) => tb.id === activeTab) ?? tabs[0] ?? null;
   const activeItem = active?.kind === 'result' ? active.item : undefined;
   const activeResultSet = activeItem?.resultSet;
 
@@ -127,13 +128,13 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         >
           <span className="text-warning">⚠</span>
           <span className="min-w-0 flex-1 break-all">
-            检测到可能影响全表的语句：{banner.reasons.join('；')}
+            {t('console.bannerDetected', [banner.reasons.join('；')])}
             <span className="ml-2 text-muted-foreground">{banner.sql.replace(/\s+/g, ' ').slice(0, 120)}</span>
           </span>
           <Button variant="secondary" onClick={() => void resolveBanner('cancel')}>
-            取消
+            {t('common.cancel')}
           </Button>
-          <Button onClick={() => void resolveBanner('proceed')}>仍要执行</Button>
+          <Button onClick={() => void resolveBanner('proceed')}>{t('console.runAnyway')}</Button>
         </div>
       )}
 
@@ -160,8 +161,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
           <>
             <button
               type="button"
-              aria-label="重跑该语句"
-              title="重跑该语句"
+              aria-label={t('console.rerunStatement')}
+              title={t('console.rerunStatement')}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               onClick={() => void rerun(activeItem.sql)}
             >
@@ -169,8 +170,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </button>
             <button
               type="button"
-              aria-label="导出 CSV"
-              title="导出 CSV"
+              aria-label={t('console.exportCsv')}
+              title={t('console.exportCsv')}
               disabled={exporting}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               onClick={() => void exportItem(activeItem.seq, 'csv')}
@@ -179,8 +180,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </button>
             <button
               type="button"
-              aria-label="导出 JSON"
-              title="导出 JSON"
+              aria-label={t('console.exportJson')}
+              title={t('console.exportJson')}
               disabled={exporting}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               onClick={() => void exportItem(activeItem.seq, 'json')}
@@ -189,8 +190,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </button>
             <button
               type="button"
-              aria-label="导出 Excel"
-              title="导出 Excel (xlsx)"
+              aria-label={t('console.exportExcel')}
+              title={t('console.exportExcelTitle')}
               disabled={exporting}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               onClick={() => void exportItem(activeItem.seq, 'xlsx')}
@@ -199,8 +200,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </button>
             <button
               type="button"
-              aria-label="导出 NDJSON"
-              title="导出 NDJSON（换行分隔 JSON）"
+              aria-label={t('console.exportNdjson')}
+              title={t('console.exportNdjsonTitle')}
               disabled={exporting}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               onClick={() => void exportItem(activeItem.seq, 'ndjson')}
@@ -209,8 +210,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </button>
             <button
               type="button"
-              aria-label="导出 Markdown"
-              title="导出 Markdown"
+              aria-label={t('console.exportMarkdown')}
+              title={t('console.exportMarkdown')}
               disabled={exporting}
               className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               onClick={() => void exportItem(activeItem.seq, 'markdown')}
@@ -221,8 +222,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         )}
         <button
           type="button"
-          aria-label="关闭结果面板"
-          title="关闭"
+          aria-label={t('console.closePanel')}
+          title={t('common.close')}
           className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onClick={() => void closePanel()}
         >
@@ -237,15 +238,15 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
           {ai.status === 'error' ? (
             <div className="flex flex-col gap-2" role="alert">
               <div className="rounded-sm border border-destructive/40 px-3 py-2 text-[12px] text-destructive">
-                {rpcErrorText({ code: ai.errorCode, message: ai.errorMessage ?? '' }) || 'AI 解释失败'}
+                {rpcErrorText({ code: ai.errorCode, message: ai.errorMessage ?? '' }) || t('ai.explainFailed')}
               </div>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={() => void retryExplain()}>
-                  重试
+                  {t('common.retry')}
                 </Button>
                 {(ai.errorCode === 'E_AI_NOT_CONFIGURED' || ai.errorCode === undefined) && (
                   <Button variant="secondary" onClick={() => void openAiSettings()}>
-                    去配置
+                    {t('ai.setUp')}
                   </Button>
                 )}
               </div>
@@ -253,10 +254,10 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </div>
           ) : (
             <>
-              {ai.status === 'running' && <div className="mb-2 text-[12px] text-muted-foreground">AI 正在解释…</div>}
+              {ai.status === 'running' && <div className="mb-2 text-[12px] text-muted-foreground">{t('ai.explaining')}</div>}
               <AiMarkdownView content={ai.content} />
               {ai.status === 'done' && (
-                <div className="mt-3 text-[11px] text-muted-foreground">由 AI 生成，仅供参考</div>
+                <div className="mt-3 text-[11px] text-muted-foreground">{t('ai.disclaimer')}</div>
               )}
             </>
           )}
@@ -274,15 +275,13 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-[13px] leading-6">
           {!run || run.items.length === 0 ? (
             <div className="text-muted-foreground">
-              {bound ? '暂无执行记录。在 SQL 编辑器中按 Ctrl+Enter 执行。' : '未绑定连接（可在状态栏选择）。'}
+              {bound ? t('console.emptyBound') : t('console.emptyUnbound')}
             </div>
           ) : (
             <div className="font-mono whitespace-pre-wrap break-all text-panel-foreground">
               {messageItems.map((item) => (
                 <div key={item.seq} className="mb-2">
-                  <div>
-                    [{item.seq}] {oneLineSql(item.sql)}
-                  </div>
+                  <div>{t('console.itemLine', [item.seq, oneLineSql(item.sql)])}</div>
                   <div className={`pl-4 ${item.error ? 'text-destructive' : 'text-muted-foreground'}`}>
                     → {runItemSummary(item)}
                   </div>
@@ -298,13 +297,13 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
                       className="ml-4 mt-1 rounded-sm border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                       onClick={() => void openFix(item.seq)}
                     >
-                      ✨ 修复建议
+                      {t('console.fixSuggestion')}
                     </button>
                   )}
                 </div>
               ))}
-              {run.status === 'canceled' && <div>⊘ 已取消</div>}
-              {run.status === 'running' && <div className="text-muted-foreground">执行中…</div>}
+              {run.status === 'canceled' && <div>{t('console.canceledLine')}</div>}
+              {run.status === 'running' && <div className="text-muted-foreground">{t('console.running')}</div>}
             </div>
           )}
         </div>
@@ -317,7 +316,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
         role="status"
       >
         <span className="shrink-0">
-          {run ? runStatusText(run) : bound ? '就绪' : '未绑定连接'}
+          {run ? runStatusText(run) : bound ? t('console.ready') : t('console.noConnection')}
           {connLabel ? ` · ${connLabel}${db ? ` · ${db}` : ''}` : ''}
         </span>
         {activeItem && <span className="min-w-0 flex-1 truncate">{resultStatusLine(activeItem)}</span>}
@@ -325,17 +324,17 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
       {/* truncated 黄字（§7.3：状态行追加“结果已截断”） */}
       {activeItem?.resultSet?.truncated && (
         <div className="shrink-0 border-t border-border bg-dirty-bg px-3 py-1 text-[12px] text-warning" role="status">
-          结果已截断至 {activeItem.resultSet.rowCount} 行（可在设置中调整行数上限）
+          {t('console.truncatedRows', [activeItem.resultSet.rowCount])}
         </div>
       )}
       {/* 执行中：状态行内取消入口（§7.2） */}
       {running && (
         <div className="flex shrink-0 items-center gap-2 border-t border-border bg-panel px-3 py-1 text-[12px]">
           <span className="text-muted-foreground">
-            执行中（{run?.items.length ?? 0}/{running.total}）…
+            {t('console.runningProgress', [run?.items.length ?? 0, running.total])}
           </span>
           <Button variant="secondary" onClick={() => void cancelRun()}>
-            取消执行
+            {t('console.cancelRun')}
           </Button>
         </div>
       )}
@@ -350,7 +349,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
           <span className="min-w-0 break-words">{toast.text}</span>
           <button
             type="button"
-            aria-label="关闭提示"
+            aria-label={t('console.dismissToast')}
             className="ml-2 text-muted-foreground hover:text-foreground"
             onClick={dismissToast}
           >

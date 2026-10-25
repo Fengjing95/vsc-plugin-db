@@ -15,6 +15,7 @@ import {
   type ErRect,
 } from '../lib/erCanvas';
 import { buildErSvg, rasterizeSvgToPng, utf8ToBase64, type ErPalette } from '../lib/erExport';
+import { t } from '../lib/i18n';
 import { request } from '../rpc/client';
 import { fitToViewport, useErStore } from '../store/erStore';
 
@@ -214,17 +215,17 @@ export function ErDiagramPage() {
           : await rasterizeSvgToPng(svg, g.layout.width + 80, g.layout.height + 80, 2);
       const { path } = await request<{ path: string | null }>(
         RpcMethods.sysSaveFile,
-        { defaultName: `er-${db}.${kind}`, base64, title: kind === 'svg' ? '导出 SVG' : '导出 PNG' },
+        { defaultName: `er-${db}.${kind}`, base64, title: kind === 'svg' ? t('er.exportSvg') : t('er.exportPng') },
       );
-      setExportHint(path ? `已导出 → ${path}` : '已取消');
+      setExportHint(path ? t('er.exportedTo', [path]) : t('er.cancelled'));
     } catch (err) {
-      setExportHint(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+      setExportHint(t('er.exportFailed', [err instanceof Error ? err.message : String(err)]));
     }
     setTimeout(() => setExportHint(''), 6000);
   };
 
   if (!boot || !connId || !db) {
-    return <div className="status error">缺少 ER 图参数</div>;
+    return <div className="status error">{t('er.missingParams')}</div>;
   }
 
   const consts = graph?.layout;
@@ -236,31 +237,31 @@ export function ErDiagramPage() {
         <input
           value={search}
           onChange={(e) => useErStore.getState().setSearch(e.target.value)}
-          placeholder="搜索表名…"
-          aria-label="搜索表名"
+          placeholder={t('er.searchPlaceholder')}
+          aria-label={t('er.searchTables')}
           className="h-6 w-44 rounded-sm border border-input-border bg-input-bg px-2 text-[12px] text-foreground outline-none placeholder:text-placeholder focus-visible:ring-1 focus-visible:ring-ring"
         />
-        <div className="mx-1 flex overflow-hidden rounded-sm border border-border" role="group" aria-label="节点形态">
+        <div className="mx-1 flex overflow-hidden rounded-sm border border-border" role="group" aria-label={t('er.nodeModeGroup')}>
           <button
             type="button"
             className={`px-2 py-1 text-[12px] ${displayMode === 'full' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
             onClick={() => useErStore.getState().setDisplayMode('full')}
           >
-            完整
+            {t('er.full')}
           </button>
           <button
             type="button"
             className={`px-2 py-1 text-[12px] ${displayMode === 'compact' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
             onClick={() => useErStore.getState().setDisplayMode('compact')}
           >
-            紧凑
+            {t('er.compact')}
           </button>
         </div>
         <Button
           variant="secondary"
           size="icon"
-          title="缩小"
-          aria-label="缩小"
+          title={t('er.zoomOut')}
+          aria-label={t('er.zoomOut')}
           onClick={() => {
             const rect = viewportRef.current?.getBoundingClientRect();
             useErStore.getState().zoomBy(1 / 1.2, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
@@ -274,8 +275,8 @@ export function ErDiagramPage() {
         <Button
           variant="secondary"
           size="icon"
-          title="放大"
-          aria-label="放大"
+          title={t('er.zoomIn')}
+          aria-label={t('er.zoomIn')}
           onClick={() => {
             const rect = viewportRef.current?.getBoundingClientRect();
             useErStore.getState().zoomBy(1.2, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
@@ -283,35 +284,35 @@ export function ErDiagramPage() {
         >
           <IconPlus />
         </Button>
-        <Button variant="secondary" size="sm" title="适应画布（1）" onClick={() => fitToViewport(viewport, graph)}>
-          适应画布
+        <Button variant="secondary" size="sm" title={t('er.fitTitle')} onClick={() => fitToViewport(viewport, graph)}>
+          {t('er.fit')}
         </Button>
-        <Button variant="secondary" size="sm" title="恢复初始布局" onClick={() => useErStore.getState().resetLayout()}>
-          重新布局
+        <Button variant="secondary" size="sm" title={t('er.relayoutTitle')} onClick={() => useErStore.getState().resetLayout()}>
+          {t('er.relayout')}
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          title="导出 SVG（矢量图）"
+          title={t('er.exportSvgTitle')}
           disabled={status !== 'ready' || !graph || graph.tables.length === 0}
           onClick={() => void doExport('svg')}
         >
-          导出 SVG
+          {t('er.exportSvg')}
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          title="导出 PNG（2x 光栅化）"
+          title={t('er.exportPngTitle')}
           disabled={status !== 'ready' || !graph || graph.tables.length === 0}
           onClick={() => void doExport('png')}
         >
-          导出 PNG
+          {t('er.exportPng')}
         </Button>
         <Button
           variant="secondary"
           size="icon"
-          title="刷新（绕缓存重拉）"
-          aria-label="刷新"
+          title={t('er.refreshTitle')}
+          aria-label={t('er.refresh')}
           disabled={status === 'loading'}
           onClick={() => void useErStore.getState().load({ connId, db, scope, refresh: true })}
         >
@@ -321,35 +322,35 @@ export function ErDiagramPage() {
         <Popover
           align="end"
           trigger={
-            <Button variant="secondary" size="sm" title="图例">
-              <IconInfo /> 图例
+            <Button variant="secondary" size="sm" title={t('er.legend')}>
+              <IconInfo /> {t('er.legend')}
             </Button>
           }
         >
           <div className="space-y-1.5 p-2 text-[12px]">
             <div className="flex items-center gap-1.5">
               <IconKey className="text-warning" />
-              <span>主键列</span>
+              <span>{t('er.primaryKeyColumn')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <IconLink className="text-link" />
-              <span>外键列</span>
+              <span>{t('er.foreignKeyColumn')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <svg width="26" height="12" aria-hidden="true">
                 <path d="M0 6 H26" style={{ stroke: 'var(--color-border)' }} strokeWidth="1.5" />
                 <path d="M6 1 L13 6 L6 11" fill="none" style={{ stroke: 'var(--color-border)' }} strokeWidth="1.5" />
               </svg>
-              <span>多端（FK 子表）</span>
+              <span>{t('er.manySide')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <svg width="26" height="12" aria-hidden="true">
                 <path d="M0 6 H26" style={{ stroke: 'var(--color-border)' }} strokeWidth="1.5" />
                 <path d="M18 1 V11 M22 1 V11" style={{ stroke: 'var(--color-border)' }} strokeWidth="1.5" />
               </svg>
-              <span>一端（被引用父表）</span>
+              <span>{t('er.oneSide')}</span>
             </div>
-            <div className="text-muted-foreground">悬停节点高亮邻接；双击标题折叠列清单</div>
+            <div className="text-muted-foreground">{t('er.legendHint')}</div>
           </div>
         </Popover>
       </div>
@@ -366,20 +367,20 @@ export function ErDiagramPage() {
       >
         {status === 'loading' && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-[13px] text-muted-foreground">
-            正在读取表结构…
+            {t('er.loadingSchema')}
           </div>
         )}
         {status === 'error' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
-            <div className="text-destructive">{error?.message ?? '加载失败'}</div>
+            <div className="text-destructive">{error?.message ?? t('er.loadFailed')}</div>
             <Button variant="secondary" size="sm" onClick={() => void useErStore.getState().load({ connId, db, scope })}>
-              重试
+              {t('common.retry')}
             </Button>
           </div>
         )}
         {status === 'ready' && graph && graph.tables.length === 0 && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-[13px] text-muted-foreground">
-            此数据库没有可绘制的数据表
+            {t('er.emptyDb')}
           </div>
         )}
 
@@ -437,24 +438,24 @@ export function ErDiagramPage() {
             </svg>
 
             {/* 节点层（HTML 卡片） */}
-            {graph.tables.map((t) => {
-              const base = graph.layout.nodes.find((n) => n.table === t.name);
-              const x = positions[t.name]?.x ?? base?.x ?? 0;
-              const y = positions[t.name]?.y ?? base?.y ?? 0;
-              const rows = nodeVisibleRows(t, { compact: displayMode === 'compact', expanded: expanded[t.name] ?? false });
+            {graph.tables.map((tb) => {
+              const base = graph.layout.nodes.find((n) => n.table === tb.name);
+              const x = positions[tb.name]?.x ?? base?.x ?? 0;
+              const y = positions[tb.name]?.y ?? base?.y ?? 0;
+              const rows = nodeVisibleRows(tb, { compact: displayMode === 'compact', expanded: expanded[tb.name] ?? false });
               const h = nodeHeight(rows, consts);
-              const matched = tableMatchesSearch(t, search);
-              const isHover = hoverTable === t.name;
-              const neighbor = hoverTable !== null && !isHover && isNeighbor(graph, hoverTable, t.name);
+              const matched = tableMatchesSearch(tb, search);
+              const isHover = hoverTable === tb.name;
+              const neighbor = hoverTable !== null && !isHover && isNeighbor(graph, hoverTable, tb.name);
               const dim = !matched || (hoverTable !== null && !isHover && !neighbor);
-              const visibleColumns = displayMode === 'compact' ? [] : (expanded[t.name] ?? false) ? t.columns : t.columns.slice(0, 12);
-              const tailCount = t.columns.length - visibleColumns.length + (t.columnsTruncated ?? 0);
+              const visibleColumns = displayMode === 'compact' ? [] : (expanded[tb.name] ?? false) ? tb.columns : tb.columns.slice(0, 12);
+              const tailCount = tb.columns.length - visibleColumns.length + (tb.columnsTruncated ?? 0);
               return (
                 <div
-                  key={t.name}
+                  key={tb.name}
                   tabIndex={0}
                   role="group"
-                  aria-label={t.name}
+                  aria-label={tb.name}
                   className="absolute select-none rounded-sm border bg-panel shadow-sm outline-none"
                   style={{
                     left: x,
@@ -470,27 +471,27 @@ export function ErDiagramPage() {
                       return;
                     }
                     e.stopPropagation();
-                    startNodeDrag(e, t.name, x, y, transform.scale);
+                    startNodeDrag(e, tb.name, x, y, transform.scale);
                   }}
                   onDoubleClick={(e) => {
                     // 标题栏双击 = 折叠/展开列；其余区域双击 = 打开表格（§13.4）
                     if ((e.target as HTMLElement).closest('[data-zone="header"]')) {
-                      useErStore.getState().toggleExpanded(t.name);
+                      useErStore.getState().toggleExpanded(tb.name);
                     } else {
-                      void openTable(connId, db, t.name);
+                      void openTable(connId, db, tb.name);
                     }
                   }}
-                  onPointerEnter={() => useErStore.getState().setHoverTable(t.name)}
+                  onPointerEnter={() => useErStore.getState().setHoverTable(tb.name)}
                   onPointerLeave={() => useErStore.getState().setHoverTable(null)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     const rect = viewportRef.current?.getBoundingClientRect();
-                    setContextMenu({ x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0), table: t.name });
+                    setContextMenu({ x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0), table: tb.name });
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      void openTable(connId, db, t.name);
+                      void openTable(connId, db, tb.name);
                     }
                   }}
                 >
@@ -500,15 +501,17 @@ export function ErDiagramPage() {
                     className="flex h-[30px] cursor-pointer items-center justify-between rounded-t-sm border-b border-border bg-muted px-2"
                     title={
                       displayMode === 'compact'
-                        ? `${t.comment ? `${t.comment}\n` : ''}${t.columns.map((c) => c.name).join(', ')}`
-                        : (t.comment ?? t.name)
+                        ? `${tb.comment ? `${tb.comment}\n` : ''}${tb.columns.map((c) => c.name).join(', ')}`
+                        : (tb.comment ?? tb.name)
                     }
                   >
-                    <span className="truncate text-[12px] font-medium text-foreground" title={t.name}>
-                      {t.name}
+                    <span className="truncate text-[12px] font-medium text-foreground" title={tb.name}>
+                      {tb.name}
                     </span>
                     <span className="ml-1 shrink-0 rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground">
-                      {displayMode === 'compact' ? `${t.columns.length + (t.columnsTruncated ?? 0)} 列` : `${t.columns.length} 列`}
+                      {displayMode === 'compact'
+                        ? t('er.columnCount', [tb.columns.length + (tb.columnsTruncated ?? 0)])
+                        : t('er.columnCount', [tb.columns.length])}
                     </span>
                   </div>
                   {/* 列行（完整档） */}
@@ -517,7 +520,7 @@ export function ErDiagramPage() {
                       <div key={c.name} className="flex h-[22px] items-center justify-between gap-2 px-2 text-[11px] leading-[22px]">
                         <span className="flex min-w-0 items-center gap-1">
                           {c.isPrimaryKey && <IconKey className="shrink-0 text-warning" />}
-                          {!c.isPrimaryKey && isFkColumn(graph, t.name, c.name) && <IconLink className="shrink-0 text-link" />}
+                          {!c.isPrimaryKey && isFkColumn(graph, tb.name, c.name) && <IconLink className="shrink-0 text-link" />}
                           <span className={`truncate text-foreground ${c.isPrimaryKey ? 'font-medium' : ''}`} title={c.name}>
                             {c.name}
                           </span>
@@ -529,9 +532,9 @@ export function ErDiagramPage() {
                       <button
                         type="button"
                         className="h-[22px] w-full px-2 text-left text-[11px] leading-[22px] text-link hover:bg-accent"
-                        onClick={() => useErStore.getState().toggleExpanded(t.name)}
+                        onClick={() => useErStore.getState().toggleExpanded(tb.name)}
                       >
-                        +{tailCount} 列…
+                        {t('er.moreColumns', [tailCount])}
                       </button>
                     )}
                   </div>
@@ -547,12 +550,12 @@ export function ErDiagramPage() {
             className="pointer-events-none absolute z-20 max-w-[280px] rounded-sm border border-border bg-panel px-2 py-1.5 text-[11px] text-foreground shadow-md"
             style={{ left: edgeTip.x, top: edgeTip.y }}
           >
-            <div className="font-medium">{edgeTip.edge.name ?? '外键'}</div>
+            <div className="font-medium">{edgeTip.edge.name ?? t('er.foreignKey')}</div>
             <div className="font-mono text-[10px] text-muted-foreground">
               {edgeTip.edge.sourceTable}({edgeTip.edge.sourceColumns.join(', ')}) → {edgeTip.edge.targetTable}
               ({edgeTip.edge.targetColumns.join(', ')})
             </div>
-            <div className="text-muted-foreground">N : 1（子表多端 → 父表一端）</div>
+            <div className="text-muted-foreground">{t('er.cardinality')}</div>
           </div>
         )}
 
@@ -572,7 +575,7 @@ export function ErDiagramPage() {
                 setContextMenu(null);
               }}
             >
-              打开表格视图
+              {t('er.openTableView')}
             </button>
             <button
               type="button"
@@ -583,7 +586,7 @@ export function ErDiagramPage() {
                 setContextMenu(null);
               }}
             >
-              <IconCopy /> 复制表名
+              <IconCopy /> {t('er.copyTableName')}
             </button>
           </div>
         )}
@@ -593,13 +596,13 @@ export function ErDiagramPage() {
       <div className="flex items-center gap-2 border-t border-border px-2 py-1 text-[11px] text-muted-foreground">
         {graph ? (
           <>
-            <span>{graph.tableCount} 表</span>
+            <span>{t('er.tableCount', [graph.tableCount])}</span>
             <span>·</span>
-            <span>{graph.edges.length} 关系</span>
+            <span>{t('er.edgeCount', [graph.edges.length])}</span>
             {graph.hiddenEdges > 0 && (
               <>
                 <span>·</span>
-                <span className="text-warning">{graph.hiddenEdges} 条跨选区关系未显示</span>
+                <span className="text-warning">{t('er.hiddenEdges', [graph.hiddenEdges])}</span>
               </>
             )}
           </>
@@ -608,7 +611,7 @@ export function ErDiagramPage() {
         )}
         <div className="flex-1" />
         {exportHint && <span className="text-link">{exportHint}</span>}
-        <span>滚轮缩放 · 拖拽平移 · 双击节点打开表格</span>
+        <span>{t('er.statusHint')}</span>
       </div>
     </div>
   );

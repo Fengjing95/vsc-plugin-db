@@ -6,6 +6,7 @@
  * §13.9），落盘统一走 sys.saveFile（Host SaveDialog + 写文件）。
  */
 import type { ErGraphResult, ErTableSummaryPayload } from '@db-explorer/protocol';
+import { t } from './i18n';
 import {
   crowFootPath,
   edgeGeometry,
@@ -103,20 +104,20 @@ export function buildErSvg(input: ErExportInput): string {
   }
 
   // 节点层（卡片 = 面板底 + 标题栏 + 列行；PK/FK 标记与图例同义：实心=主键、圆环=外键）
-  for (const t of graph.tables) {
-    const base = graph.layout.nodes.find((n) => n.table === t.name);
+  for (const tb of graph.tables) {
+    const base = graph.layout.nodes.find((n) => n.table === tb.name);
     if (!base) {
       continue;
     }
-    const x = positions[t.name]?.x ?? base.x;
-    const y = positions[t.name]?.y ?? base.y;
-    const rows = nodeVisibleRows(t, { compact: displayMode === 'compact', expanded: expanded[t.name] ?? false });
+    const x = positions[tb.name]?.x ?? base.x;
+    const y = positions[tb.name]?.y ?? base.y;
+    const rows = nodeVisibleRows(tb, { compact: displayMode === 'compact', expanded: expanded[tb.name] ?? false });
     const h = nodeHeight(rows, consts);
     const visibleColumns =
-      displayMode === 'compact' ? [] : (expanded[t.name] ?? false) ? t.columns : t.columns.slice(0, FULL_VIEW_ROWS);
-    const tailCount = t.columns.length - visibleColumns.length + (t.columnsTruncated ?? 0);
+      displayMode === 'compact' ? [] : (expanded[tb.name] ?? false) ? tb.columns : tb.columns.slice(0, FULL_VIEW_ROWS);
+    const tailCount = tb.columns.length - visibleColumns.length + (tb.columnsTruncated ?? 0);
     const edgeOf = (col: string): boolean =>
-      graph.edges.some((e) => e.sourceTable === t.name && e.sourceColumns.includes(col));
+      graph.edges.some((e) => e.sourceTable === tb.name && e.sourceColumns.includes(col));
 
     parts.push(`<g class="er-node" transform="translate(${x} ${y})">`);
     parts.push(
@@ -124,10 +125,10 @@ export function buildErSvg(input: ErExportInput): string {
     );
     parts.push(`<rect width="${consts.nodeWidth}" height="${consts.headerHeight}" rx="2" fill="${palette.mutedBg}"/>`);
     parts.push(
-      `<text x="8" y="${consts.headerHeight / 2}" dominant-baseline="central" font-size="12" font-weight="600" fill="${palette.foreground}">${esc(t.name)}</text>`,
+      `<text x="8" y="${consts.headerHeight / 2}" dominant-baseline="central" font-size="12" font-weight="600" fill="${palette.foreground}">${esc(tb.name)}</text>`,
     );
     parts.push(
-      `<text x="${consts.nodeWidth - 6}" y="${consts.headerHeight / 2}" text-anchor="end" dominant-baseline="central" font-size="10" fill="${palette.mutedForeground}">${t.columns.length} 列</text>`,
+      `<text x="${consts.nodeWidth - 6}" y="${consts.headerHeight / 2}" text-anchor="end" dominant-baseline="central" font-size="10" fill="${palette.mutedForeground}">${t('er.columnCount', [tb.columns.length])}</text>`,
     );
     parts.push(`<line x1="0" y1="${consts.headerHeight}" x2="${consts.nodeWidth}" y2="${consts.headerHeight}" stroke="${palette.border}"/>`);
 
@@ -149,7 +150,7 @@ export function buildErSvg(input: ErExportInput): string {
     if (tailCount > 0) {
       const ty = consts.headerHeight + visibleColumns.length * consts.rowHeight + consts.rowHeight / 2;
       parts.push(
-        `<text class="er-tail" x="8" y="${ty}" dominant-baseline="central" font-size="11" fill="${palette.link}">+${tailCount} 列…</text>`,
+        `<text class="er-tail" x="8" y="${ty}" dominant-baseline="central" font-size="11" fill="${palette.link}">${t('er.moreColumns', [tailCount])}</text>`,
       );
     }
     parts.push('</g>');
@@ -184,7 +185,7 @@ export function rasterizeSvgToPng(svg: string, width: number, height: number, sc
         canvas.height = Math.round(height * scale);
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          throw new Error('canvas 2d 不可用');
+          throw new Error(t('er.canvasUnavailable'));
         }
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0, width, height);
@@ -195,7 +196,7 @@ export function rasterizeSvgToPng(svg: string, width: number, height: number, sc
       }
     };
     img.onerror = () => {
-      reject(new Error('SVG 光栅化失败（图片被 CSP 拦截或解码错误）'));
+      reject(new Error(t('er.rasterizeFailed')));
     };
     img.src = url;
   });

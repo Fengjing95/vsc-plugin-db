@@ -15,6 +15,10 @@ describe('i18n 词典（D-25）', () => {
     expect(messagesFor('zh-cn')['table.noMatch']).toBe('无匹配数据');
   });
 
+  it('en 词典与 zh 键集完全一致（B3 收口起全量对译，parity 守卫）', () => {
+    expect(Object.keys(enMessages).sort()).toEqual(Object.keys(zhMessages).sort());
+  });
+
   it('en 词典已登记的值必须非空字符串', () => {
     for (const [key, value] of Object.entries(enMessages)) {
       expect(typeof value).toBe('string');

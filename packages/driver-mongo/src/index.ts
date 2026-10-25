@@ -58,34 +58,35 @@ const capabilities: DriverCapabilities = {
   pagination: 'cursor',
 };
 
+/** FormSchema 文案 = 域键（C-17/D-25 B3）：webview 渲染时经 formText 解析，未登记文本原样展示 */
 const formSchema: FormSchema = {
   fields: [
-    { key: 'host', label: '主机', type: 'string', required: true, placeholder: '127.0.0.1', validator: 'host' },
-    { key: 'port', label: '端口', type: 'number', required: true, default: 27017, validator: 'port' },
-    { key: 'username', label: '用户名（可选）', type: 'string' },
-    { key: 'password', label: '密码', type: 'password', hint: '留空 = 免认证实例' },
-    { key: 'authDatabase', label: '认证库（authSource）', type: 'string', default: 'admin' },
+    { key: 'host', label: 'form.host', type: 'string', required: true, placeholder: '127.0.0.1', validator: 'host' },
+    { key: 'port', label: 'form.port', type: 'number', required: true, default: 27017, validator: 'port' },
+    { key: 'username', label: 'form.mongo.usernameOptional', type: 'string' },
+    { key: 'password', label: 'form.password', type: 'password', hint: 'form.mongo.passwordHint' },
+    { key: 'authDatabase', label: 'form.mongo.authDatabase', type: 'string', default: 'admin' },
     {
       key: 'database',
-      label: '默认库（可选）',
+      label: 'form.mongo.databaseOptional',
       type: 'string',
       dynamicOptions: 'databases',
-      hint: '树上的「库」为 MongoDB database（非库内 schema）',
+      hint: 'form.mongo.dbHint',
     },
     {
       key: 'directConnection',
-      label: '单机直连',
+      label: 'form.mongo.directConnection',
       type: 'boolean',
       default: true,
-      group: '高级',
-      hint: 'IP 直连目标的最稳口径；副本集自动发现可关闭',
+      group: 'form.group.advanced',
+      hint: 'form.mongo.directConnectionHint',
     },
     {
       key: 'connectTimeout',
-      label: '连接超时（ms）',
+      label: 'form.connectTimeout',
       type: 'number',
       default: 10000,
-      group: '高级',
+      group: 'form.group.advanced',
     },
   ],
 };
@@ -922,14 +923,14 @@ export function createMongoDriver(): IDatabaseDriver {
     //    （getSiblingDB 显式定位，JSON 引号化防注入）；树建/删库与命令行同一护栏 ──
     getDatabaseFormSchema: () => ({
       fields: [
-        { key: 'name', label: '库名', type: 'string', required: true, placeholder: 'mydb' },
+        { key: 'name', label: 'dbddl.name', type: 'string', required: true, placeholder: 'mydb' },
         {
           key: 'collection',
-          label: '首个集合名',
+          label: 'dbddl.collection',
           type: 'string',
           required: true,
           placeholder: 'init',
-          hint: 'MongoDB 库在拥有首个集合后才会真正创建（空库不显示）',
+          hint: 'dbddl.collectionHint',
         },
       ],
     }),

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { hexDump, parseJsonText, prettyJson, sniffImageKind } from '../../lib/cellViewer';
+import { t } from '../../lib/i18n';
 import { parseCellInput } from '../../lib/editValues';
 import { useTableStore } from '../../store/tableStore';
 
@@ -71,10 +72,10 @@ export function CellViewerModal() {
       title={
         viewer ? (
           <span>
-            值查看器{' '}
+            {t('table.viewer.title')}{' '}
             <span className="font-normal text-muted-foreground">
               · {columns[viewer.colIndex]?.name} · {db}.{obj}
-              {viewer.loading ? ' · 加载中…' : ''}
+              {viewer.loading ? ` · ${t('common.loading')}` : ''}
             </span>
           </span>
         ) : (
@@ -110,7 +111,7 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
       return;
     }
     if (!parsed.ok) {
-      showToast({ kind: 'error', text: `${col.name}：${parsed.error}` });
+      showToast({ kind: 'error', text: t('table.cell.valueInvalid', [col.name, parsed.error ?? '']) });
       return;
     }
     applyCellValue(viewer.rowIndex, viewer.colIndex, parsed.value);
@@ -119,7 +120,7 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
   const format = () => {
     const check = parseJsonText(text);
     if (!check.ok) {
-      showToast({ kind: 'error', text: '内容不是合法 JSON，无法格式化' });
+      showToast({ kind: 'error', text: t('table.viewer.invalidJsonFormat') });
       return;
     }
     setText(prettyJson(check.value));
@@ -128,7 +129,7 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
   if (viewer.loading) {
     return (
       <div className="flex h-full min-h-[160px] items-center justify-center text-[13px] text-muted-foreground">
-        加载中…
+        {t('common.loading')}
       </div>
     );
   }
@@ -141,16 +142,16 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
     <div className="flex h-full min-h-[320px] flex-col">
       {isJson && (
         <div className="flex shrink-0 gap-1 border-b border-border px-4 pt-1.5">
-          {(['tree', 'raw'] as const).map((t) => (
+          {(['tree', 'raw'] as const).map((k) => (
             <button
-              key={t}
+              key={k}
               type="button"
-              onClick={() => setTab(t)}
+              onClick={() => setTab(k)}
               className={`border-b-2 px-2 py-1 text-[12px] ${
-                tab === t ? 'border-foreground font-medium text-foreground' : 'border-transparent text-muted-foreground'
+                tab === k ? 'border-foreground font-medium text-foreground' : 'border-transparent text-muted-foreground'
               }`}
             >
-              {t === 'tree' ? '树视图' : '原文编辑'}
+              {k === 'tree' ? t('table.viewer.treeTab') : t('table.viewer.rawTab')}
             </button>
           ))}
         </div>
@@ -166,27 +167,27 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
           onChange={(e) => setText(e.target.value)}
           readOnly={!editable}
           spellCheck={false}
-          aria-label={`${col?.name ?? ''} 值编辑`}
+          aria-label={t('table.viewer.editValueAria', [col?.name ?? ''])}
           className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 font-mono text-[12px] leading-relaxed text-foreground outline-none"
         />
       )}
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2">
-        {!editable && <span className="text-[11px] text-muted-foreground">当前列不可编辑（只读连接 / 主键列），仅查看</span>}
+        {!editable && <span className="text-[11px] text-muted-foreground">{t('table.viewer.readonlyNote')}</span>}
         {parsed && !parsed.ok && <span className="text-[11px] text-destructive">{parsed.error}</span>}
         <span className="mr-auto" />
         {(viewer.kind === 'text' || (isJson && tab === 'raw')) && (
           <Button variant="secondary" size="md" onClick={format}>
-            格式化
+            {t('table.viewer.format')}
           </Button>
         )}
         {editable && (
           <Button variant="primary" size="md" disabled={!parsed?.ok} onClick={save}>
-            保存写回
+            {t('table.viewer.saveBack')}
           </Button>
         )}
         <Button variant="secondary" size="md" onClick={closeCellViewer}>
-          关闭
+          {t('common.close')}
         </Button>
       </div>
     </div>
@@ -206,7 +207,7 @@ function BinaryBody({ viewer }: { viewer: ViewerState }) {
         <div className="flex shrink-0 justify-center border-b border-border py-3">
           <img
             src={`data:image/${imageKind};base64,${base64}`}
-            alt="二进制图片预览"
+            alt={t('table.viewer.imageAlt')}
             className="max-h-56 rounded border border-border"
           />
         </div>
@@ -216,14 +217,14 @@ function BinaryBody({ viewer }: { viewer: ViewerState }) {
       </pre>
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2">
         <span className="text-[11px] text-muted-foreground">
-          只读 · 前 64KB hex 视图{imageKind ? ` · 已识别 ${imageKind.toUpperCase()} 图片` : ''}
+          {t('table.viewer.binaryNote')}{imageKind ? t('table.viewer.imageDetected', [imageKind.toUpperCase()]) : ''}
         </span>
         <span className="mr-auto" />
         <Button variant="secondary" size="md" onClick={() => void saveViewerBinary()}>
-          另存为文件
+          {t('table.viewer.saveAsFile')}
         </Button>
         <Button variant="secondary" size="md" onClick={closeCellViewer}>
-          关闭
+          {t('common.close')}
         </Button>
       </div>
     </div>

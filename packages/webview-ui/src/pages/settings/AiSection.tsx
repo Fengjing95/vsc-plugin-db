@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AiSettingsResult } from '@db-explorer/protocol';
 import { Button } from '../../components/ui/button';
 import { rpcErrorText } from '../../lib/errors';
+import { t } from '../../lib/i18n';
 import { RpcError, request } from '../../rpc/client';
 
 type TestPhase = 'idle' | 'testing' | 'ok' | 'fail';
@@ -34,7 +35,7 @@ export function AiSection() {
         setModel(s.model);
         setHasKey(s.hasKey);
       } catch {
-        if (!cancelled) setTestError('加载设置失败，请重载窗口重试');
+        if (!cancelled) setTestError(t('settings.ai.loadFailed'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -63,9 +64,9 @@ export function AiSection() {
       });
       setHasKey(result.hasKey);
       setApiKey('');
-      setTestInfo(extra?.clearKey ? '已清除 API 密钥' : '设置已保存');
+      setTestInfo(extra?.clearKey ? t('settings.ai.cleared') : t('settings.ai.saved'));
     } catch (err) {
-      setTestError(`保存失败：${errorTextOf(err)}`);
+      setTestError(t('settings.ai.saveFailed', [errorTextOf(err)]));
     } finally {
       setSaving(false);
     }
@@ -82,7 +83,7 @@ export function AiSection() {
         90_000,
       );
       setTestPhase('ok');
-      setTestInfo(`连接成功 · ${result.model ?? model} · ${result.latencyMs ?? 0}ms`);
+      setTestInfo(t('settings.ai.testOk', [result.model ?? model, result.latencyMs ?? 0]));
     } catch (err) {
       setTestPhase('fail');
       setTestError(errorTextOf(err));
@@ -95,14 +96,12 @@ export function AiSection() {
     <div className="flex w-full max-w-xl flex-col gap-4">
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-[15px] font-semibold">AI 设置</h2>
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            配置 OpenAI 兼容的模型服务（OpenAI / DeepSeek / Moonshot / ollama / 企业网关等均可）。
-          </p>
+          <h2 className="text-[15px] font-semibold">{t('settings.ai.title')}</h2>
+          <p className="mt-1 text-[12px] text-muted-foreground">{t('settings.ai.desc')}</p>
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium">API 地址</span>
+          <span className="text-[12px] font-medium">{t('settings.ai.endpoint')}</span>
           <input
             type="text"
             value={endpoint}
@@ -114,13 +113,13 @@ export function AiSection() {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium">API 密钥</span>
+          <span className="text-[12px] font-medium">{t('settings.ai.apiKey')}</span>
           <div className="flex gap-2">
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={hasKey ? '••••••••（已配置，留空保持不变）' : 'sk-…'}
+              placeholder={hasKey ? t('settings.ai.keyConfigured') : 'sk-…'}
               disabled={loading}
               autoComplete="off"
               className="h-8 flex-1 rounded-sm border border-border bg-input px-2 text-[13px] outline-none focus:border-primary"
@@ -130,16 +129,14 @@ export function AiSection() {
               disabled={loading || saving || !hasKey}
               onClick={() => void save({ clearKey: true })}
             >
-              清除
+              {t('settings.ai.clear')}
             </Button>
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            密钥只保存在系统密钥库（SecretStorage），不会写入设置文件，也不会回显。
-          </span>
+          <span className="text-[11px] text-muted-foreground">{t('settings.ai.keyNote')}</span>
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium">模型</span>
+          <span className="text-[12px] font-medium">{t('settings.ai.model')}</span>
           <input
             type="text"
             value={model}
@@ -164,17 +161,20 @@ export function AiSection() {
 
         <div className="flex gap-2">
           <Button disabled={!canSubmit || saving} onClick={() => void save()}>
-            {saving ? '保存中…' : '保存'}
+            {saving ? t('settings.ai.saving') : t('settings.save')}
           </Button>
           <Button variant="secondary" disabled={!canSubmit || testPhase === 'testing'} onClick={() => void test()}>
-            {testPhase === 'testing' ? '测试中…' : '测试连接'}
+            {testPhase === 'testing' ? t('settings.ai.testing') : t('settings.ai.testButton')}
           </Button>
         </div>
 
         {/* 固定隐私说明（交互稿 §15.1，不可关闭） */}
         <div className="mt-2 rounded-sm border border-border bg-panel px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-          使用 AI 功能时，当前库的<strong>表结构</strong>（表 / 列 / 类型 / 注释）将发送给你配置的服务；
-          <strong>表数据不会发送</strong>。单库表较多时会先让你选择提供给 AI 的表。
+          {t('settings.ai.privacyLead')}
+          <strong>{t('settings.ai.privacySchema')}</strong>
+          {t('settings.ai.privacyMid')}
+          <strong>{t('settings.ai.privacyNoData')}</strong>
+          {t('settings.ai.privacyTail')}
         </div>
       </div>
     </div>

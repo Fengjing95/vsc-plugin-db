@@ -10,6 +10,7 @@ import { cellView } from '../../lib/cellDisplay';
 import { viewerKindFor } from '../../lib/cellViewer';
 import { applyOverlay } from '../../lib/editOverlay';
 import { cellInputText } from '../../lib/editValues';
+import { t } from '../../lib/i18n';
 import { useTableStore } from '../../store/tableStore';
 
 const ROW_HEIGHT = 28;
@@ -155,17 +156,17 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const cellMenuItems = (rowIndex: number, colIndex: number): ContextMenuItem[] => {
     const value = useTableStore.getState().effectiveValue(rowIndex, colIndex);
     const items: ContextMenuItem[] = [
-      { key: 'edit', label: '编辑', disabled: !editEnabled, onSelect: () => beginEdit(rowIndex, colIndex) },
+      { key: 'edit', label: t('table.grid.edit'), disabled: !editEnabled, onSelect: () => beginEdit(rowIndex, colIndex) },
     ];
     if (value !== null) {
-      items.push({ key: 'null', label: '设为 NULL', disabled: !editEnabled, onSelect: () => setCellNull(rowIndex, colIndex) });
+      items.push({ key: 'null', label: t('table.grid.setNull'), disabled: !editEnabled, onSelect: () => setCellNull(rowIndex, colIndex) });
     }
     if (value === null) {
-      items.push({ key: 'empty', label: '设为空串', disabled: !editEnabled, onSelect: () => setCellEmpty(rowIndex, colIndex) });
+      items.push({ key: 'empty', label: t('table.grid.setEmpty'), disabled: !editEnabled, onSelect: () => setCellEmpty(rowIndex, colIndex) });
     }
     items.push({
       key: 'copy',
-      label: '复制值',
+      label: t('table.grid.copyValue'),
       onSelect: () => {
         void navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value));
       },
@@ -179,7 +180,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
       return [
         {
           key: 'drop',
-          label: '移除新增行',
+          label: t('table.grid.removeInsertRow'),
           disabled: !editEnabled,
           onSelect: () => tempId && removeInsertRow(tempId),
         },
@@ -187,12 +188,12 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
     }
     const kind = rowEditState(rowIndex).kind;
     return [
-      { key: 'delete', label: '标记删除', disabled: !editEnabled || kind === 'deleted', onSelect: () => markDeleteRow(rowIndex) },
-      { key: 'undelete', label: '撤销删除', disabled: !editEnabled || kind !== 'deleted', onSelect: () => unmarkDeleteRow(rowIndex) },
-      { key: 'revert', label: '放弃该行修改', disabled: !editEnabled || kind === 'normal', onSelect: () => revertRowByIndex(rowIndex) },
+      { key: 'delete', label: t('table.grid.markDelete'), disabled: !editEnabled || kind === 'deleted', onSelect: () => markDeleteRow(rowIndex) },
+      { key: 'undelete', label: t('table.grid.unmarkDelete'), disabled: !editEnabled || kind !== 'deleted', onSelect: () => unmarkDeleteRow(rowIndex) },
+      { key: 'revert', label: t('table.grid.revertRow'), disabled: !editEnabled || kind === 'normal', onSelect: () => revertRowByIndex(rowIndex) },
       {
         key: 'revert-all',
-        label: '撤销全部变更',
+        label: t('table.grid.revertAll'),
         disabled: !editEnabled || useTableStore.getState().committing || useTableStore.getState().editCount().total === 0,
         onSelect: () => void useTableStore.getState().revertAll(),
       },
@@ -233,7 +234,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                 className={`group relative flex shrink-0 select-none items-center justify-between gap-1 overflow-hidden border-r border-border px-2 text-left text-[13px] font-semibold text-panel-foreground ${orderFreeform ? 'cursor-default' : 'cursor-pointer hover:bg-accent'}`}
                 style={{ width: header.getSize() }}
                 onClick={() => toggleHeaderSort(header.id)}
-                title={orderFreeform ? '自定义 ORDER BY 表达式生效中，列头排序已停用（清空输入框后可用）' : `按 ${header.id} 排序`}
+                title={orderFreeform ? t('table.grid.orderFreeformTitle') : t('table.grid.sortBy', [header.id])}
               >
                 <span className="truncate">{header.id}</span>
                 <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -313,19 +314,19 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                           ? 'linear-gradient(var(--color-row-selected), var(--color-row-selected))'
                           : undefined,
                   }}
-                  title={!isInsert ? '点击选择行（拖拽/Shift 范围选 · Ctrl 增删 · Esc 取消）' : undefined}
+                  title={!isInsert ? t('table.grid.selectRowHint') : undefined}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setMenu({ x: e.clientX, y: e.clientY, items: rowNumMenuItems(rowIndex) });
                   }}
                 >
                   {isInsert ? (
-                    <span title="新增行（未落库）" className="text-success">＋</span>
+                    <span title={t('table.grid.insertBadge')} className="text-success">＋</span>
                   ) : editState.kind === 'deleted' ? (
                     <button
                       type="button"
                       className="text-destructive"
-                      title="撤销删除"
+                      title={t('table.grid.unmarkDelete')}
                       onClick={() => unmarkDeleteRow(rowIndex)}
                     >
                       ↺
@@ -373,7 +374,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                         <input
                           autoFocus
                           value={editText}
-                          aria-label={`编辑 ${colName}`}
+                          aria-label={t('table.grid.editColumn', [colName])}
                           /* 铺满单元格（absolute 覆盖含父级 px-2 的内边距区），
                              字号/内边距与展示态一致——避免进入编辑时文本跳动"闪烁" */
                           className="absolute inset-0 bg-input-bg px-2 text-[13px] text-input-fg caret-ring outline-none"
@@ -413,8 +414,8 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                       {!isEditing && rowIndex < rows.length && viewerKindFor(type, value) !== null && (
                         <button
                           type="button"
-                          aria-label={`查看 ${colName} 完整值`}
-                          title="查看完整值"
+                          aria-label={t('table.grid.viewFullValueColumn', [colName])}
+                          title={t('table.grid.viewFullValue')}
                           className={`absolute top-0 z-10 rounded-bl-sm bg-panel/80 px-1 text-[10px] leading-4 text-muted-foreground hover:text-foreground ${
                             isDirty ? 'right-2.5' : 'right-0'
                           }`}
@@ -430,7 +431,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                       {isDirty && (
                         <span
                           aria-hidden
-                          title="已修改"
+                          title={t('table.grid.modified')}
                           className="pointer-events-none absolute right-0 top-0 h-0 w-0 border-r-[9px] border-t-[9px] border-r-transparent border-t-warning"
                         />
                       )}

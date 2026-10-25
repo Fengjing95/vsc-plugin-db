@@ -81,23 +81,24 @@ const capabilities: DriverCapabilities = {
   pagination: 'offset',
 };
 
+/** FormSchema 文案 = 域键（C-17/D-25 B3）：webview 渲染时经 formText 解析，未登记文本原样展示 */
 const formSchema: FormSchema = {
   fields: [
     {
       key: 'path',
-      label: '数据库文件路径',
+      label: 'form.sqlite.path',
       type: 'file', // file 控件（首次落地）：输入框 + 「浏览…」原生选择，输入保持可手输（§5.4）
       required: true,
       placeholder: '~/data/app.db',
-      hint: 'SQLite 单文件数据库；支持 ~（主目录）与相对工作区路径；文件必须已存在（不会自动创建）',
+      hint: 'form.sqlite.pathHint',
     },
     {
       key: 'readonly',
-      label: '以只读打开',
+      label: 'form.sqlite.readonly',
       type: 'boolean',
       default: false,
-      group: '高级',
-      hint: '只读模式下拒绝写入语句，且永不写回文件',
+      group: 'form.group.advanced',
+      hint: 'form.sqlite.readonlyHint',
     },
   ],
 };

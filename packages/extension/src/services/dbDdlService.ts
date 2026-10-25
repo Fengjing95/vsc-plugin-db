@@ -35,10 +35,9 @@ import { describeError, type Logger } from './logger';
  * 方法在 driver 层（懒连接树菜单同口径，方法存在性裁剪菜单与执行）。
  */
 
-/** 回落最小表单（驱动未实现 getDatabaseFormSchema 时）；
- *  label '库名' 暂不迁移——B3 批次表单键化统一处理（C-17 迁移规则） */
+/** 回落最小表单（驱动未实现 getDatabaseFormSchema 时）；label = dbddl 域键（C-17/D-25 B3，webview formText 解析） */
 const FALLBACK_FORM_SCHEMA: FormSchema = {
-  fields: [{ key: 'name', label: '库名', type: 'string', required: true }],
+  fields: [{ key: 'name', label: 'dbddl.name', type: 'string', required: true }],
 };
 
 export class DbDdlService {

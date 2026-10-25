@@ -4,6 +4,7 @@ import type { PreviewItemPayload } from '@db-explorer/protocol';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { IconInfo } from '../../components/ui/icons';
+import { t } from '../../lib/i18n';
 import { highlightSql, interpolateSqlParams } from '../../lib/sqlHighlight';
 import { useTableStore } from '../../store/tableStore';
 
@@ -87,7 +88,7 @@ function SqlList({
                 <div className="sql-hl mb-1 rounded-sm border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-relaxed">
                   <div className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: highlightSql(shownSql) }} />
                   {item.params && item.params.length > 0 && (
-                    <div className="mt-1 text-muted-foreground">参数: {JSON.stringify(item.params)}</div>
+                    <div className="mt-1 text-muted-foreground">{t('table.preview.params', [JSON.stringify(item.params)])}</div>
                   )}
                 </div>
               )}
@@ -98,7 +99,7 @@ function SqlList({
       {/* 展开/折叠入口放在列表末尾，>50 条时可达（交互稿 §5） */}
       {list.length > COLLAPSE_THRESHOLD && (
         <button type="button" className="m-3 text-link hover:underline" onClick={onToggleListOpen}>
-          {showFullList ? '折叠全部 ▴' : `展开全部 ${list.length} 条 ▾`}
+          {showFullList ? t('table.preview.collapseAll') : t('table.preview.expandAll', [list.length])}
         </button>
       )}
     </div>
@@ -137,19 +138,19 @@ export function ChangePreviewModal({ env }: { env: 'dev' | 'test' | 'prod' | nul
       }}
       title={
         <span>
-          提交预览（{list.length}）<span className="font-normal text-muted-foreground"> · {db}.{obj}</span>
+          {t('table.preview.title', [list.length])}<span className="font-normal text-muted-foreground"> · {db}.{obj}</span>
         </span>
       }
       footer={
         <>
           <span className="mr-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <IconInfo size={15} className="shrink-0" /> 全部语句在单事务内执行，失败自动回滚
+            <IconInfo size={15} className="shrink-0" /> {t('table.preview.txNote')}
           </span>
           <Button variant="secondary" size="md" disabled={committing} onClick={closePreview}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button variant="primary" size="md" disabled={committing} onClick={() => void submitChanges()}>
-            {committing ? '提交中…' : '确认提交'}
+            {committing ? t('table.preview.committing') : t('table.preview.confirm')}
           </Button>
         </>
       }
@@ -162,14 +163,14 @@ export function ChangePreviewModal({ env }: { env: 'dev' | 'test' | 'prod' | nul
           }`}
         >
           {env === 'prod' ? (
-            <span className="font-medium">█ 目标环境：生产 (prod) — 确认提交后需按提示输入表名二次确认</span>
+            <span className="font-medium">{t('table.preview.prodBanner')}</span>
           ) : (
-            <span>目标环境：{env ? envLabel(env) : '未设置'} · 连接生效中的只读/生产策略在提交时强制校验</span>
+            <span>{t('table.preview.envBanner', [env ? envLabel(env) : t('table.preview.envUnset')])}</span>
           )}
         </div>
 
         <div className="shrink-0 px-4 py-2 text-[12px] text-muted-foreground">
-          {updateLines} 条 UPDATE · {insertLines} 条 INSERT · {deleteLines} 条 DELETE
+          {t('table.preview.counts', [updateLines, insertLines, deleteLines])}
         </div>
 
         <SqlList list={list} showFullList={showFullList} onToggleListOpen={() => setListOpen((v) => !v)} />
@@ -181,10 +182,10 @@ export function ChangePreviewModal({ env }: { env: 'dev' | 'test' | 'prod' | nul
 function envLabel(env: 'dev' | 'test' | 'prod'): string {
   switch (env) {
     case 'dev':
-      return '开发 (dev)';
+      return t('table.env.devLabel');
     case 'test':
-      return '测试 (test)';
+      return t('table.env.testLabel');
     case 'prod':
-      return '生产 (prod)';
+      return t('table.env.prodLabel');
   }
 }

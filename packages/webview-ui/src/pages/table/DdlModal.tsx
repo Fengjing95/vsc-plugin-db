@@ -1,5 +1,6 @@
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
+import { t } from '../../lib/i18n';
 import { highlightSql } from '../../lib/sqlHighlight';
 import { useTableStore } from '../../store/tableStore';
 
@@ -36,16 +37,16 @@ export function DdlModal() {
             disabled={ddl === null}
             onClick={() => void navigator.clipboard.writeText(ddl ?? '')}
           >
-            复制
+            {t('common.copy')}
           </Button>
           <Button variant="secondary" size="md" onClick={closeDdl}>
-            关闭
+            {t('common.close')}
           </Button>
         </>
       }
     >
       {ddlLoading || ddl === null ? (
-        <div className="flex h-32 items-center justify-center text-[12px] text-muted-foreground">加载中…</div>
+        <div className="flex h-32 items-center justify-center text-[12px] text-muted-foreground">{t('common.loading')}</div>
       ) : (
         <pre
           className="sql-hl h-full max-h-[60vh] overflow-auto border-t border-border bg-background px-4 py-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-all"

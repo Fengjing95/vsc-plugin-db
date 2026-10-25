@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { t } from './lib/i18n';
 import { ConnectionFormPage } from './pages/ConnectionFormPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { DatabaseDesignPage } from './pages/DatabaseDesignPage';
@@ -16,7 +17,7 @@ import { TablePage } from './pages/TablePage';
 export default function App() {
   const boot = window.__BOOTSTRAP__;
   if (!boot) {
-    return <div className="status error">缺少引导数据（bootstrap）</div>;
+    return <div className="status error">{t('console.bootstrapMissing')}</div>;
   }
   let page: ReactElement;
   if (boot.page === 'connectionForm') {
@@ -47,7 +48,7 @@ export default function App() {
       />
     );
   } else {
-    page = <div className="status error">缺少表格视图参数</div>;
+    page = <div className="status error">{t('console.tableParamsMissing')}</div>;
   }
   return page;
 }

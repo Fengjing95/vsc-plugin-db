@@ -104,12 +104,12 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
           }
           useTableStore.getState().showToast({
             kind: 'error',
-            text: `${errorCodeToMessage(e.code, e.message)}（第 ${Object.keys(useTableStore.getState().rowErrors).length} 处）`,
+            text: t('table.rowError.toast', [errorCodeToMessage(e.code, e.message), Object.keys(useTableStore.getState().rowErrors).length]),
             actions:
               e.code === 'E_CONFLICT'
                 ? [
-                    { label: '刷新并放弃', onSelect: () => void useTableStore.getState().discardAndRefresh() },
-                    { label: '保留我的修改', onSelect: () => void useTableStore.getState().retainMyChanges() },
+                    { label: t('table.action.refreshDiscard'), onSelect: () => void useTableStore.getState().discardAndRefresh() },
+                    { label: t('table.action.retainMine'), onSelect: () => void useTableStore.getState().retainMyChanges() },
                   ]
                 : undefined,
           }, 9000);
@@ -126,7 +126,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
         if (hs.protocolVersion !== RPC_PROTOCOL_VERSION) {
           useTableStore.setState({
             phase: 'error',
-            errorMsg: '插件与视图版本不一致，请重载窗口',
+            errorMsg: t('table.error.versionMismatch'),
           });
           return;
         }
@@ -160,7 +160,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       <div className="flex h-screen flex-col items-center justify-center gap-3">
         <div className="text-destructive">{errorCodeToMessage(errorCode, errorMsg)}</div>
         <Button variant="secondary" onClick={() => void refresh()}>
-          重试
+          {t('common.retry')}
         </Button>
       </div>
     );

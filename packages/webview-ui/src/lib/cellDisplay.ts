@@ -3,6 +3,7 @@
  * NULL 灰斜体、空串灰点、二进制 🔒、JSON 截断原文、超长文本省略。
  * 纯函数，便于单测；颜色只用语义 token（--vscode-* 映射）。
  */
+import { t } from './i18n';
 
 /** JSON / 超长文本的 JS 级截断上限（视觉省略另由 CSS ellipsis 处理） */
 const MAX_TEXT = 2000;
@@ -36,7 +37,7 @@ export function cellView(value: unknown, type: string): CellView {
     };
   }
   if (type === 'datetime' || type === 'timestamptz') {
-    return { text: String(value), title: '按连接会话时区解释' };
+    return { text: String(value), title: t('table.cell.timezoneNote') };
   }
   if (typeof value === 'boolean') {
     return { text: value ? 'true' : 'false' };

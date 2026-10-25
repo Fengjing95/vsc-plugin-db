@@ -10,6 +10,7 @@ import type {
 import { request } from '../rpc/client';
 import { DbDriverIcon } from '../components/ui/dbIcons';
 import { IconEye, IconEyeOff, IconInfo } from '../components/ui/icons';
+import { formText, t } from '../lib/i18n';
 import {
   filterSuggestions,
   initialDbSuggestState,
@@ -85,10 +86,10 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!name.trim()) {
-      errs._name = '请输入连接名称';
+      errs._name = t('form.err.nameRequired');
     }
     if (!driverId) {
-      errs._driver = '请选择数据库类型';
+      errs._driver = t('form.err.driverRequired');
     }
     if (schema) {
       for (const f of schema.fields) {
@@ -96,24 +97,24 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         const v = options[f.key];
         const empty = v === undefined || v === null || String(v).trim() === '';
         if (f.required && empty) {
-          errs[f.key] = `请输入${f.label}`;
+          errs[f.key] = t('form.err.required', [formText(f.label)]);
           continue;
         }
         if (empty) continue;
         if (f.type === 'number' && Number.isNaN(Number(v))) {
-          errs[f.key] = '请输入数字';
+          errs[f.key] = t('form.err.number');
           continue;
         }
         if (f.validator === 'port') {
           const n = Number(v);
           if (!Number.isInteger(n) || n < 1 || n > 65535) {
-            errs[f.key] = '端口范围 1-65535';
+            errs[f.key] = t('form.err.port');
           }
         }
         if (f.validator === 'regex' && f.validationRegex) {
           try {
             if (!new RegExp(f.validationRegex).test(String(v))) {
-              errs[f.key] = `${f.label} 格式不正确`;
+              errs[f.key] = t('form.err.format', [formText(f.label)]);
             }
           } catch {
             // 驱动提供了非法正则：跳过该规则
@@ -178,7 +179,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
       setOptions(defaultsOf(r.schema));
     } catch (e) {
       // 切换失败保留原 schema（字段仍可编辑），错误横幅提示
-      setErrors({ _global: `切换驱动失败：${e instanceof Error ? e.message : String(e)}` });
+      setErrors({ _global: t('form.switchDriverFailed', [e instanceof Error ? e.message : String(e)]) });
     }
   }
 
@@ -225,7 +226,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
   /** 高级组状态 chips（通用规则：组内已开启的布尔字段 label；无则不显示） */
   const advancedChips = advancedFields
     .filter((f) => f.type === 'boolean' && options[f.key] === true)
-    .map((f) => f.label);
+    .map((f) => formText(f.label));
 
   const inputCls =
     'h-7 w-full rounded-sm border border-input bg-input px-2 text-[13px] text-foreground outline-none focus:border-[var(--vscode-focusBorder)] disabled:opacity-50';
@@ -235,10 +236,8 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
     <div className="min-h-screen bg-background text-panel-foreground">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-5 px-6 py-6">
         <div>
-          <h1 className="text-[15px] font-semibold">{connId ? '编辑连接' : '新建连接'}</h1>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
-            字段由驱动定义；保存不强制先测试，但建议先验证连通性
-          </p>
+          <h1 className="text-[15px] font-semibold">{t(connId ? 'form.title.edit' : 'form.title.new')}</h1>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">{t('form.subtitle')}</p>
         </div>
         {errors._global && (
           <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
@@ -249,7 +248,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {/* 驱动类型：图标选择卡片（§3.1 方案 A）；编辑连接锁定类型（B6），卡片置灰不可点 */}
         <div>
           <span className={labelCls}>
-            数据库类型 <span className="text-destructive">*</span>
+            {t('form.driverType')} <span className="text-destructive">*</span>
           </span>
           <div
             className="mt-1"
@@ -259,7 +258,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
               gridTemplateColumns: `repeat(${Math.min(drivers.length, 3)}, minmax(0, 1fr))`,
             }}
             role="radiogroup"
-            aria-label="数据库类型"
+            aria-label={t('form.driverType')}
           >
             {drivers.map((d) => {
               const active = d.id === driverId;
@@ -271,7 +270,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                   role="radio"
                   aria-checked={active}
                   aria-disabled={locked || undefined}
-                  title={locked ? '编辑连接不可更改数据库类型' : undefined}
+                  title={locked ? t('form.driverLockedTitle') : undefined}
                   className={`rounded-md border px-2 py-2.5 text-center text-[13px] ${
                     active
                       ? 'border-[var(--vscode-focusBorder)] bg-input text-foreground'
@@ -288,9 +287,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
             })}
           </div>
           {connId && (
-            <span className="mt-1 block text-[12px] text-muted-foreground">
-              编辑连接不可更改数据库类型（如需更换请新建连接）
-            </span>
+            <span className="mt-1 block text-[12px] text-muted-foreground">{t('form.driverLockedNote')}</span>
           )}
           {errors._driver && <span className="mt-1 block text-[12px] text-destructive">{errors._driver}</span>}
         </div>
@@ -298,14 +295,14 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {/* 名称 */}
         <div>
           <label className={labelCls} htmlFor="conn-name">
-            名称 <span className="text-destructive">*</span>
+            {t('form.name')} <span className="text-destructive">*</span>
           </label>
           <input
             id="conn-name"
             className={inputCls}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="如：本地 MySQL"
+            placeholder={t('form.namePlaceholder')}
           />
           {errors._name && <span className="mt-1 block text-[12px] text-destructive">{errors._name}</span>}
         </div>
@@ -313,7 +310,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {/* 基础字段：schema 驱动，双列网格（textarea 跨两列）；区块间以间距区分（无边框） */}
         {baseFields.length > 0 && (
           <section className="flex flex-col gap-3">
-            <div className="text-[11px] font-medium tracking-wider text-muted-foreground">连接参数</div>
+            <div className="text-[11px] font-medium tracking-wider text-muted-foreground">{t('form.section.params')}</div>
             {/* legacy.css 的 .grid 类带边框/限高（P-42），此处用 inline style 声明网格 */}
             <div
               style={{
@@ -352,14 +349,14 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
 
         {/* 环境与保护（三段控件；prod 红色警示与 §5.8 护栏呼应） */}
         <section className="flex flex-col gap-3">
-          <div className="text-[11px] font-medium tracking-wider text-muted-foreground">环境与保护</div>
+          <div className="text-[11px] font-medium tracking-wider text-muted-foreground">{t('form.section.env')}</div>
           <div className="flex items-center">
-            <div className="flex overflow-hidden rounded-sm border border-border" role="radiogroup" aria-label="环境">
+            <div className="flex overflow-hidden rounded-sm border border-border" role="radiogroup" aria-label={t('form.aria.env')}>
               {(
                 [
-                  ['dev', '开发'],
-                  ['test', '测试'],
-                  ['prod', '生产'],
+                  ['dev', t('form.env.dev')],
+                  ['test', t('form.env.test')],
+                  ['prod', t('form.env.prod')],
                 ] as const
               ).map(([value, label]) => {
                 const active = env === value;
@@ -392,15 +389,15 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
               checked={readOnly}
               onChange={(e) => setReadOnly(e.target.checked)}
             />
-            只读保护
-            <HintTip text="开启后 Host 层拒绝一切写操作" />
+            {t('form.readonly')}
+            <HintTip text={t('form.readonlyHint')} />
           </label>
           <span id="conn-readonly-hint" className="sr-only">
-            开启后 Host 层拒绝一切写操作
+            {t('form.readonlyHint')}
           </span>
           {env === 'prod' && (
             <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-[12px] text-destructive">
-              生产环境：所有写操作与危险语句将强制二次确认（输入名称匹配），该约束不可关闭
+              {t('form.prodWarning')}
             </div>
           )}
         </section>
@@ -409,12 +406,12 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
         {advancedSections.length > 0 && (
           <details className="group">
             <summary className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground">
-              高级选项
+              {t('form.advanced')}
               {advancedChips.length > 0 && (
                 <span className="ml-2 inline-flex gap-1.5">
                   {advancedChips.map((label) => (
                     <span key={label} className="rounded-full bg-[var(--vscode-badge-background)] px-2 py-0.5 text-[11px] text-foreground">
-                      {label} · 开
+                      {t('form.chipOn', [label])}
                     </span>
                   ))}
                 </span>
@@ -435,11 +432,11 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                           checked={headerOn}
                           onChange={(e) => setOptions((prev) => ({ ...prev, [sec.header!.key]: e.target.checked }))}
                         />
-                        {sec.header.label}
-                        {sec.header.hint && <HintTip text={sec.header.hint} />}
+                        {formText(sec.header.label)}
+                        {sec.header.hint && <HintTip text={formText(sec.header.hint)} />}
                       </label>
                     ) : sec.title && !standaloneBool ? (
-                      <div className="text-[12px] font-medium text-foreground">{sec.title}</div>
+                      <div className="text-[12px] font-medium text-foreground">{formText(sec.title)}</div>
                     ) : null}
                     {sec.fields
                       .filter((f) => isFieldVisible(f, options))
@@ -482,18 +479,21 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
                 : 'border-border bg-panel text-muted-foreground'
           }`}
         >
-          {phase === 'idle' && 'ⓘ 尚未测试（保存不强制先测试）'}
-          {phase === 'testing' && '⏳ 正在测试连接…'}
+          {phase === 'idle' && t('form.test.idle')}
+          {phase === 'testing' && t('form.test.testing')}
           {phase === 'ok' && (
             <span>
-              ✓ 连接成功
+              {t('form.test.ok')}
               {testInfo?.latencyMs !== undefined ? ` · ${testInfo.latencyMs}ms` : ''}
               {testInfo?.serverVersion ? ` · ${testInfo.serverVersion}` : ''}
             </span>
           )}
           {phase === 'fail' && (
             <span>
-              ✗ [{testInfo?.errorCode ?? 'E_INTERNAL'}] {testInfo?.errorMessage ?? '连接失败'}
+              {t('form.test.fail', [
+                testInfo?.errorCode ?? 'E_INTERNAL',
+                testInfo?.errorMessage ?? t('form.test.failed'),
+              ])}
             </span>
           )}
         </div>
@@ -505,7 +505,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
             disabled={phase === 'testing'}
             onClick={() => void onTest()}
           >
-            测试连接
+            {t('form.test.button')}
           </button>
           <span className="flex-1" />
           <button
@@ -513,7 +513,7 @@ export function ConnectionFormPage({ connId }: { connId: string | null }) {
             disabled={phase === 'testing'}
             onClick={() => void onSave()}
           >
-            保存
+            {t('form.save')}
           </button>
         </div>
       </div>
@@ -557,6 +557,9 @@ function FieldRow({
   /** hint 经 aria-describedby 提供读屏可读（可见形态是标题后的 tips 图标） */
   const hintId = `${inputId}-hint`;
   const describedBy = field.hint ? hintId : undefined;
+  /** FormSchema 文案出口统一经 formText 解析（B3/C-17：驱动下发域键→翻译，自由文本→原样） */
+  const labelText = formText(field.label);
+  const hintText = field.hint !== undefined ? formText(field.hint) : undefined;
 
   // 布尔开关（M8 修订）：row = 复选框+标签单行（功能开关）；stacked = 标签在上复选框在下（字段网格内保留标签）
   if (field.type === 'boolean') {
@@ -564,8 +567,8 @@ function FieldRow({
       return (
         <div>
           <label className={`${labelCls} flex items-center gap-1`} htmlFor={inputId}>
-            {field.label}
-            {field.hint && <HintTip text={field.hint} />}
+            {labelText}
+            {hintText && <HintTip text={hintText} />}
           </label>
           {/* 状态文字跟随勾选态（M8 修订）：flex items-center 保证复选框与文字垂直居中。
               此行不再用 label 包裹——顶部 label 已承担命名，避免可访问名拼接 */}
@@ -578,12 +581,12 @@ function FieldRow({
               onChange={(e) => onChange(e.target.checked)}
             />
             <span className={value ? 'text-foreground' : 'text-muted-foreground'}>
-              {value ? '开启' : '关闭'}
+              {value ? t('form.on') : t('form.off')}
             </span>
           </div>
-          {field.hint && (
+          {hintText && (
             <span id={hintId} className="sr-only">
-              {field.hint}
+              {hintText}
             </span>
           )}
           {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}
@@ -600,12 +603,12 @@ function FieldRow({
             checked={Boolean(value)}
             onChange={(e) => onChange(e.target.checked)}
           />
-          <span>{field.label}</span>
-          {field.hint && <HintTip text={field.hint} />}
+          <span>{labelText}</span>
+          {hintText && <HintTip text={hintText} />}
         </label>
-        {field.hint && (
+        {hintText && (
           <span id={hintId} className="sr-only">
-            {field.hint}
+            {hintText}
           </span>
         )}
         {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}
@@ -619,9 +622,9 @@ function FieldRow({
       htmlFor={inputId}
       onClick={(e) => e.preventDefault()}
     >
-      {field.label}
+      {labelText}
       {field.required && field.type !== 'password' ? <span className="text-destructive"> *</span> : null}
-      {field.hint && <HintTip text={field.hint} />}
+      {hintText && <HintTip text={hintText} />}
     </label>
   );
 
@@ -636,13 +639,13 @@ function FieldRow({
           className={`${inputCls} pr-8`}
           value={passwordState.value}
           onChange={(e) => passwordState.onChange(e.target.value)}
-          placeholder={passwordState.hasSecret ? '●●●●●●（留空保持不变）' : field.placeholder}
+          placeholder={passwordState.hasSecret ? t('form.passwordStored') : formText(field.placeholder ?? '')}
           autoComplete="off"
         />
         <button
           type="button"
-          aria-label={show ? '隐藏密码' : '显示密码'}
-          title={show ? '隐藏密码' : '显示密码'}
+          aria-label={show ? t('form.hidePassword') : t('form.showPassword')}
+          title={show ? t('form.hidePassword') : t('form.showPassword')}
           className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
           onClick={() => setShow(!show)}
         >
@@ -655,7 +658,7 @@ function FieldRow({
       <select id={inputId} aria-describedby={describedBy} className={inputCls} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
         {(field.options ?? []).map((o) => (
           <option key={String(o.value)} value={String(o.value)}>
-            {o.label}
+            {formText(o.label)}
           </option>
         ))}
       </select>
@@ -669,7 +672,7 @@ function FieldRow({
         className={`${inputCls} h-auto py-1.5`}
         value={String(value ?? '')}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={field.placeholder}
+        placeholder={formText(field.placeholder ?? '')}
       />
     );
   } else if (field.type === 'file') {
@@ -684,18 +687,18 @@ function FieldRow({
           className={`${inputCls} flex-1`}
           value={value === undefined || value === null ? '' : String(value)}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder}
+          placeholder={formText(field.placeholder ?? '')}
           autoComplete="off"
         />
         <button
           type="button"
-          aria-label={`浏览${field.label}`}
-          title={`浏览${field.label}`}
+          aria-label={t('form.aria.browse', [labelText])}
+          title={t('form.aria.browse', [labelText])}
           className="h-7 shrink-0 rounded-sm bg-[var(--vscode-button-secondaryBackground)] px-2.5 text-[13px] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)]"
           onClick={() => {
             void (async () => {
               try {
-                const res = await request<PickFileResult>('sys.pickFile', { title: `选择${field.label}` });
+                const res = await request<PickFileResult>('sys.pickFile', { title: t('form.pickFileTitle', [labelText]) });
                 if (res.path) {
                   onChange(res.path);
                 }
@@ -705,7 +708,7 @@ function FieldRow({
             })();
           }}
         >
-          浏览…
+          {t('form.browse')}
         </button>
       </div>
     );
@@ -726,7 +729,7 @@ function FieldRow({
           className={inputCls}
           value={value === undefined || value === null ? '' : String(value)}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder}
+          placeholder={formText(field.placeholder ?? '')}
           autoComplete="off"
           role="combobox"
           aria-expanded={listOpen}
@@ -746,7 +749,7 @@ function FieldRow({
           <ul
             id={`${inputId}-suggest`}
             role="listbox"
-            aria-label={`${field.label}建议`}
+            aria-label={t('form.aria.dbSuggest', [labelText])}
             // mousedown preventDefault：点击选项不使输入框失焦（blur 先关列表会截断 click）
             onMouseDown={(e) => e.preventDefault()}
             className="absolute left-0 right-0 top-full z-10 mt-0.5 max-h-40 overflow-auto rounded-sm border border-border bg-[var(--vscode-editorHover-widget-background,#252526)] py-0.5 shadow-lg"
@@ -778,7 +781,7 @@ function FieldRow({
         className={inputCls}
         value={value === undefined || value === null ? '' : String(value)}
         onChange={(e) => onChange(field.type === 'number' ? e.target.valueAsNumber : e.target.value)}
-        placeholder={field.placeholder}
+        placeholder={formText(field.placeholder ?? '')}
       />
     );
   }
@@ -787,9 +790,9 @@ function FieldRow({
     <div>
       {label}
       {input}
-      {field.hint && (
+      {hintText && (
         <span id={hintId} className="sr-only">
-          {field.hint}
+          {hintText}
         </span>
       )}
       {error && <span className="mt-1 block text-[12px] text-destructive">{error}</span>}

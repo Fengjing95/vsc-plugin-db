@@ -7,6 +7,7 @@
 import { interpolateMessage, zhMessages, type MessageKey } from '@db-explorer/protocol';
 
 export { interpolateMessage };
+export type { MessageKey };
 
 export function t(key: MessageKey, args?: readonly (string | number)[]): string {
   const boot = typeof window !== 'undefined' ? window.__BOOTSTRAP__ : undefined;
@@ -19,4 +20,15 @@ export function t(key: MessageKey, args?: readonly (string | number)[]): string 
     return raw;
   }
   return interpolateMessage(raw, args);
+}
+
+/**
+ * FormSchema 文案解析（D-25）：驱动/Host 下发的 label/placeholder/hint 若是登记过的域键
+ * （form.* 等）则翻译，否则原样展示——第三方驱动（L2/L3）的自由文本天然兼容
+ * （C-5 契约：label 为自由字符串，键化只发生在内置驱动）。
+ */
+export function formText(value: string): string {
+  return (zhMessages as Record<string, string | undefined>)[value] !== undefined
+    ? t(value as MessageKey)
+    : value;
 }

@@ -10,6 +10,7 @@ import type {
 } from '@db-explorer/protocol';
 import { DdlLoadResultSchema, DdlPreviewResultSchema, RpcMethods } from '@db-explorer/protocol';
 import { create } from 'zustand';
+import { t } from '../lib/i18n';
 import { request } from '../rpc/client';
 import {
   columnRowError,
@@ -166,7 +167,7 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
       const raw = await request<unknown>(RpcMethods.ddlLoad, { connId, db, obj }, 30_000);
       const parsed = DdlLoadResultSchema.safeParse(raw);
       if (!parsed.success) {
-        set({ phase: 'error', errorMsg: '插件与视图版本不一致，请重载窗口' });
+        set({ phase: 'error', errorMsg: t('design.protocolMismatch') });
         return;
       }
       const features = parsed.data.features;
@@ -396,12 +397,12 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
       );
       const parsed = DdlPreviewResultSchema.safeParse(raw);
       if (!parsed.success) {
-        set({ toast: { kind: 'error', text: '预览生成失败（协议不一致）' } });
+        set({ toast: { kind: 'error', text: t('design.previewProtocolError') } });
         return;
       }
       set({ preview: { statements: parsed.data.statements } });
     } catch (err) {
-      set({ toast: { kind: 'error', text: `预览失败：${err instanceof Error ? err.message : String(err)}` } });
+      set({ toast: { kind: 'error', text: t('design.previewFailed', [err instanceof Error ? err.message : String(err)]) } });
     }
   },
 
@@ -427,7 +428,7 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
           executeError: { ...result.failed, total: s.preview?.statements.length ?? 0 },
           toast: {
             kind: 'error',
-            text: `第 ${result.failed.index} 条语句失败（${result.failed.code}）：${result.failed.message}。已执行的语句不回滚，库内结构可能处于中间态`,
+            text: t('design.executeFailedDetail', [result.failed.index, result.failed.code, result.failed.message]),
           },
         });
         return;
@@ -439,8 +440,8 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
       set({
         executing: false,
         toast: cancelled
-          ? { kind: 'info', text: '已取消执行' }
-          : { kind: 'error', text: `执行失败：${err instanceof Error ? err.message : String(err)}` },
+          ? { kind: 'info', text: t('design.executeCancelled') }
+          : { kind: 'error', text: t('design.executeFailed', [err instanceof Error ? err.message : String(err)]) },
       });
     }
   },
@@ -448,7 +449,7 @@ export const useTableDesignStore = create<TableDesignState>((set, get) => ({
   async closePanel() {
     const s = get();
     if (s.dirty) {
-      const leave = window.confirm('放弃未保存的结构修改？');
+      const leave = window.confirm(t('design.confirmDiscard'));
       if (!leave) {
         return;
       }

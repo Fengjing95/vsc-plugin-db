@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import {
-  destructiveCount,
-} from '../lib/tableDesign';
+import { formText, t } from '../lib/i18n';
+import { destructiveCount } from '../lib/tableDesign';
 import { useDatabaseDesignStore } from '../store/databaseDesignStore';
 
 /**
@@ -37,22 +36,22 @@ export function DatabaseDesignPage() {
   }, []);
 
   if (phase === 'loading') {
-    return <div className="status">加载中…</div>;
+    return <div className="status">{t('common.loading')}</div>;
   }
   if (phase === 'error') {
     return (
       <div className="wrap" style={{ padding: 16 }}>
-        <div className="status error">加载失败：{errorMsg}</div>
+        <div className="status error">{t('dbddl.loadFailed', [errorMsg])}</div>
         <div style={{ marginTop: 12 }}>
           <Button size="sm" onClick={() => void load()}>
-            重试
+            {t('common.retry')}
           </Button>
         </div>
       </div>
     );
   }
 
-  const title = kind === 'alter' ? `编辑库 · ${db}` : '新建库';
+  const title = kind === 'alter' ? t('dbddl.title.edit', [db]) : t('dbddl.title.new');
   const hasChanges = () => {
     const stmts = preview;
     return !stmts || stmts.length === 0;
@@ -68,7 +67,7 @@ export function DatabaseDesignPage() {
           return (
             <div key={f.key}>
               <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                {f.label}
+                {formText(f.label)}
                 {f.required ? ' *' : ''}
               </label>
               {f.type === 'boolean' ? (
@@ -87,7 +86,7 @@ export function DatabaseDesignPage() {
                 >
                   {f.options.map((o) => (
                     <option key={String(o.value)} value={String(o.value)}>
-                      {o.label}
+                      {formText(o.label)}
                     </option>
                   ))}
                 </select>
@@ -98,19 +97,19 @@ export function DatabaseDesignPage() {
                   type="password"
                   autoComplete="off"
                   value={String(values[f.key] ?? '')}
-                  placeholder={f.placeholder}
+                  placeholder={formText(f.placeholder ?? '')}
                   readOnly={readonly}
                   onChange={(e) => setValue(f.key, e.target.value)}
                 />
               ) : (
                 <Input
                   value={String(values[f.key] ?? '')}
-                  placeholder={f.placeholder}
+                  placeholder={formText(f.placeholder ?? '')}
                   readOnly={readonly}
                   onChange={(e) => setValue(f.key, e.target.value)}
                 />
               )}
-              {f.hint ? <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{f.hint}</div> : null}
+              {f.hint ? <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{formText(f.hint)}</div> : null}
               {errors[f.key] ? (
                 <div style={{ fontSize: 12, color: 'var(--vscode-errorForeground)', marginTop: 2 }}>{errors[f.key]}</div>
               ) : null}
@@ -130,16 +129,16 @@ export function DatabaseDesignPage() {
             fontSize: 12,
           }}
         >
-          第 {executeError.index} 条语句失败（{executeError.code}），已执行部分不回滚：{executeError.message}
+          {t('dbddl.executeError', [executeError.index, executeError.code, executeError.message])}
         </div>
       ) : null}
 
       <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
         <Button size="sm" onClick={() => void requestPreview()}>
-          预览 SQL
+          {t('dbddl.previewButton')}
         </Button>
         <Button size="sm" onClick={() => void close()}>
-          关闭
+          {t('common.close')}
         </Button>
       </div>
 
@@ -167,7 +166,7 @@ export function DatabaseDesignPage() {
               padding: 12,
             }}
           >
-            <div style={{ fontSize: 13, marginBottom: 8 }}>SQL 预览（{preview.length} 条语句）</div>
+            <div style={{ fontSize: 13, marginBottom: 8 }}>{t('dbddl.previewTitle', [preview.length])}</div>
             {destructiveCount(preview) > 0 ? (
               <div
                 style={{
@@ -178,7 +177,7 @@ export function DatabaseDesignPage() {
                   marginBottom: 8,
                 }}
               >
-                ⚠ {destructiveCount(preview)} 条语句可能造成数据丢失，请逐条确认
+                {t('dbddl.destructiveWarning', [destructiveCount(preview)])}
               </div>
             ) : null}
             <div style={{ overflow: 'auto', flex: 1 }}>
@@ -201,10 +200,10 @@ export function DatabaseDesignPage() {
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <Button size="sm" onClick={closePreview}>
-                返回修改
+                {t('dbddl.backToEdit')}
               </Button>
               <Button size="sm" disabled={executing || hasChanges()} onClick={() => void execute()}>
-                {executing ? '执行中…' : '执行'}
+                {executing ? t('dbddl.executing') : t('dbddl.execute')}
               </Button>
             </div>
           </div>
