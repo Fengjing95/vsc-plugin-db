@@ -711,7 +711,7 @@ export function TableDesignPage() {
                             <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                             <input
                               aria-label={t('design.ariaUkNameN', [i + 1])}
-                              placeholder="uk_…（留空自动生成）"
+                              placeholder={t('design.ukPlaceholder')}
                               className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                               value={r.spec.name ?? ''}
                               disabled={executing}
@@ -778,7 +778,7 @@ export function TableDesignPage() {
                       <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                       <input
                         aria-label={t('design.ariaFkNameN', [i + 1])}
-                        placeholder="fk_…（留空自动生成）"
+                        placeholder={t('design.fkPlaceholder')}
                         className={`h-6 w-40 rounded-sm border bg-input px-1.5 ${nameErr ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing || fkReadOnly}
@@ -938,7 +938,7 @@ export function TableDesignPage() {
                       <span className="shrink-0 text-[12px] text-muted-foreground">{t('design.name')}</span>
                       <input
                         aria-label={t('design.ariaIdxNameN', [i + 1])}
-                        placeholder="idx_…（留空自动生成）"
+                        placeholder={t('design.idxPlaceholder')}
                         className={`h-6 w-44 rounded-sm border bg-input px-1.5 ${err ? 'border-destructive' : 'border-border'}`}
                         value={r.spec.name ?? ''}
                         disabled={executing}

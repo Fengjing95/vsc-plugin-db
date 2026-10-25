@@ -141,6 +141,10 @@ export const zhDesign = {
   'design.diffIdxAdded': '新增 {0} 索引',
   'design.diffIdxRemoved': '删除 {0} 索引',
   'design.diffIdxModified': '修改 {0} 索引',
+  // 命名输入 placeholder：SQL 示例模式 + 提示尾（B6 校对补漏）
+  'design.ukPlaceholder': 'uk_…（留空自动生成）',
+  'design.fkPlaceholder': 'fk_…（留空自动生成）',
+  'design.idxPlaceholder': 'idx_…（留空自动生成）',
 } as const;
 
 export type DesignKey = keyof typeof zhDesign;
@@ -277,4 +281,7 @@ export const enDesign: Partial<Record<DesignKey, string>> = {
   'design.diffIdxAdded': 'Added {0} index(es)',
   'design.diffIdxRemoved': 'Removed {0} index(es)',
   'design.diffIdxModified': 'Modified {0} index(es)',
+  'design.ukPlaceholder': 'uk_… (auto-generated if left empty)',
+  'design.fkPlaceholder': 'fk_… (auto-generated if left empty)',
+  'design.idxPlaceholder': 'idx_… (auto-generated if left empty)',
 };
