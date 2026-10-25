@@ -42,7 +42,7 @@ code --install-extension db-explorer-0.1.0.vsix
 
 ## 快速上手
 
-1. 活动栏「数据库」图标 → 视图标题栏 **＋ 新建连接**（内置 Mock 数据源可直接体验，无需任何实例：`big` 库 t001~t100 每表 5 万行、`demo.wide` 1000 行×20 列）；
+1. 活动栏「数据库」图标 → 视图标题栏 **＋ 新建连接**（MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MongoDB / Redis 任一）；
 2. 展开连接 → 库 → `表` → 单击表名打开表格视图（列头排序、筛选构造器、全局搜索、列显隐、分页均为服务端下推）；
 3. 编辑：双击/`Enter`/`F2` 编辑单元格 → 工具栏「提交变更(N)」→ 参数化 SQL 预览 → 单事务提交，冲突定位错误行；NULL↔空串右键切换；
 4. 写 SQL：树查询目录「新增查询」或任意 `.sql` 文件 → `Ctrl+Enter` 执行（`Ctrl+Shift+Enter` 全部），结果面板多结果集 Tab + EXPLAIN 树形缩进；无 WHERE 的 UPDATE/DELETE 与生产库危险操作有分级确认护栏；
