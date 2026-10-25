@@ -2,6 +2,28 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.6.0] - 2026-10-25
+
+能力丰富批次：单元格查看器、导出格式补齐、ER 图导出（概要 §6 #12 / §5.7 / 交互稿 §13.9 收口）。
+
+### 特性
+
+- **单元格查看器**（大文本 / JSON / 二进制）：binary/json 类型或超长文本（>200 字符）的单元格右上角 ▤ 角标打开——大文本等宽编辑 + 格式化 + 保存写回 ChangeSet（主键列 / 只读连接与内联编辑同口径降级）；JSON 折叠树 / 原文编辑双 Tab，语法非法时禁用保存；二进制只读 hex（前 64KB）+ PNG/JPEG/GIF 预嗅探直接预览 + 另存为文件。协议新增 `cell.fetch`（`capabilities.lazyCell` 能力门控，按需拉取整值）与 `sys.saveFile`（Host 原生保存对话框），驱动契约组 `lazy-cell` 上线（未实现自动跳过，后续驱动接入即受契约把守）
+- **导出格式补齐（六格式）**：表格导出在 CSV / JSON / XLSX 之上新增 **NDJSON**（每行独立 JSON 对象，取消任意时刻均合法）/ **Markdown**（管道转义 + NULL 显式标注）/ **SQL INSERT**（MySQL 方言反引号、限定 `db`.`obj`，每批一条完整多值语句规避 max_allowed_packet）；Console 结果面板同步新增 ⇩ NDJSON / ⇩ MD；设置中心「导出默认格式」六选一；保存对话框按格式过滤
+- **ER 图导出**：工具栏「导出 SVG / 导出 PNG」——SVG 从图数据模型直接生成（节点卡片 / 列行 / PK·FK 标记 / 鸦爪边与画布同源，色值随主题 token），PNG 为 2x 光栅化；空图禁用，结果提示在状态行
+
+### 修复
+
+- 「复制为 INSERT / Markdown」对 JSON 列输出 `[object Object]`（mysql2/sqlstring 同族值编码坑，Webview 与 Host 双侧生成器收口为 JSON 文本 + 引号转义）
+- ER PNG 导出被 webview CSP 拦截（`blob:` 不在 img-src 白名单，改 data: URL 内联，AGENTS P-67）
+
+### 已知限制
+
+- SQL INSERT 导出为 MySQL 方言（反引号 + 单引号转义），跨方言（PostgreSQL / SQL Server）回灌需先转换；二进制列以 base64 文本字面量写入
+- Console 结果导出不提供 INSERT（结果可能来自任意 JOIN，无单一目标表；请在表格视图使用）
+- `cell.fetch` 按需拉取当前仅内置基准驱动声明（`capabilities.lazyCell`）；真实驱动的行内值本就完整、查看器直接使用，后续驱动接入大字段截断时契约组自动生效
+- ER 导出不含悬停 / 搜索等视图态（全图全透明度）；PNG 尺寸 = 布局尺寸 2x
+
 ## [0.5.0] - 2026-10-24
 
 新增 AI 辅助（BYOK）与设置中心（M9-AI / ADR D-24）。
