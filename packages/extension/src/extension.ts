@@ -21,6 +21,7 @@ import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { createExecutionAnnotations } from './services/sqlExecutionDecorations';
 import { EditGuard, ViewStateStore } from './services/editGuard';
+import { setL10nBackend } from './services/i18n';
 import { Logger } from './services/logger';
 import { LoggingDriverHost } from './services/loggingDriverHost';
 import { QueryFilesService } from './services/queryFiles';
@@ -34,6 +35,9 @@ import { AiAssistService } from './services/aiAssistService';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // i18n（D-25 / C-17）：中文源文案即键，en 翻译在 l10n/bundle.l10n.en.json；
+  // 必须先于任何 t() 调用（含惰性求值前的模块级常量改惰性后无先取问题）
+  setL10nBackend((message, args) => vscode.l10n.t(message, ...args));
   const registry = new DriverRegistry();
   // mock：契约测试/DoD 基准驱动（capabilities.internal=true）——不暴露类型选择、不再种子示例连接；
   // 保留注册使历史 mock 连接（globalState 已存）仍可打开

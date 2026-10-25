@@ -14,6 +14,9 @@ declare global {
     page: WebviewPage;
     viewId: string;
     params: Record<string, string>;
+    /** UI 语言与词典（extension buildWebviewHtml 注入；stub 场景可缺省 → 回落 zh） */
+    lang?: string;
+    messages?: Record<string, string>;
   }
 
   interface Window {

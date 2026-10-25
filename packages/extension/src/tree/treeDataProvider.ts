@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { MetadataCache, ObjectMeta } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { QueryFilesService } from '../services/queryFiles';
+import { t } from '../services/i18n';
 
 export type TreeNodeType =
   | 'connection'
@@ -18,11 +19,12 @@ export type TreeNodeType =
 
 export type FolderKind = 'table' | 'view' | 'collection' | 'columns' | 'keys' | 'indexes';
 
-/** 数据源的目录分组（kind → 目录标签/图标）：数据驱动渲染，非 SQL 数据源（collection）同构处理 */
-const KIND_FOLDERS: Array<{ kind: FolderKind; label: string; iconId: string }> = [
-  { kind: 'table', label: '表', iconId: 'folder' },
-  { kind: 'view', label: '视图', iconId: 'folder' },
-  { kind: 'collection', label: 'Keys', iconId: 'folder' },
+/** 数据源的目录分组（kind → 目录标签/图标）：数据驱动渲染，非 SQL 数据源（collection）同构处理；
+ * label 惰性求值（C-17/D-25）——模块加载先于 activate 注入 l10n 后端，取值须延迟到 getChildren */
+const KIND_FOLDERS: Array<{ kind: FolderKind; label: () => string; iconId: string }> = [
+  { kind: 'table', label: () => t('表'), iconId: 'folder' },
+  { kind: 'view', label: () => t('视图'), iconId: 'folder' },
+  { kind: 'collection', label: () => 'Keys', iconId: 'folder' },
 ];
 
 export interface DbTreeNode {
@@ -283,7 +285,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           } else {
             const members = objs.filter((o) => o.kind === k.kind);
             if (members.length > 0) {
-              folders.push(this.folderNode(node, k.kind, k.label, k.iconId, countLabel(members.length)));
+              folders.push(this.folderNode(node, k.kind, k.label(), k.iconId, countLabel(members.length)));
             }
           }
         }

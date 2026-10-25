@@ -12,6 +12,7 @@ import { Button } from '../components/ui/button';
 import { Toast } from '../components/ui/toast';
 import { errorCodeToMessage } from '../lib/errors';
 import { rowKeyString } from '../lib/editOverlay';
+import { t } from '../lib/i18n';
 import { request, subscribeEvents } from '../rpc/client';
 import { useTableStore } from '../store/tableStore';
 import { ChangePreviewModal } from './table/ChangePreviewModal';
@@ -175,10 +176,10 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       {supportsSQL && <FilterBar />}
       {phase === 'ready' && rows.length === 0 && insertsLen === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-          <span>无匹配数据</span>
+          <span>{t('table.noMatch')}</span>
           {hasQuery && (
             <Button variant="secondary" onClick={() => void clearFilters()}>
-              清除筛选
+              {t('table.clearFilter')}
             </Button>
           )}
         </div>

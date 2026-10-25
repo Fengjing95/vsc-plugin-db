@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { messagesFor } from '@db-explorer/protocol';
 import { injectWebviewHtml } from './webviewHtmlInject';
 
 export type { WebviewBootstrap, WebviewPage } from './webviewHtmlInject';
@@ -31,10 +32,12 @@ export function buildWebviewHtml(
     </body></html>`;
   }
   const raw = fs.readFileSync(htmlPath, 'utf8');
+  // i18n（D-25/C-17）：语言跟随 VSCode 显示语言，词典在此集中注入（面板无需各自携带）
+  const lang = vscode.env.language;
   return injectWebviewHtml(
     raw,
     (rel) => String(webview.asWebviewUri(vscode.Uri.file(path.join(root, rel)))),
     webview.cspSource,
-    boot,
+    { ...boot, lang, messages: messagesFor(lang) },
   );
 }

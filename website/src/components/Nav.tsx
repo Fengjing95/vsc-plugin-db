@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setSiteLang, useSiteLang } from '../i18n/lang';
 import { site, withBase } from '../content/site';
 
 const NAV_LINKS = [
@@ -12,6 +13,7 @@ const NAV_LINKS = [
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const lang = useSiteLang();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -35,12 +37,20 @@ export function Nav() {
           ))}
         </nav>
         <div className="nav__actions">
+          <button
+            type="button"
+            className="nav__lang"
+            aria-label={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+            onClick={() => setSiteLang(lang === 'zh' ? 'en' : 'zh')}
+          >
+            {lang === 'zh' ? 'EN' : '中文'}
+          </button>
           <a className="nav__github" href={site.urls.repo} target="_blank" rel="noreferrer" aria-label="GitHub 仓库">
             <GitHubIcon />
             <span>GitHub</span>
           </a>
           <a className="btn btn--primary btn--sm" href={site.urls.marketplace} target="_blank" rel="noreferrer">
-            免费安装
+            {lang === 'zh' ? '免费安装' : 'Install Free'}
           </a>
         </div>
       </div>

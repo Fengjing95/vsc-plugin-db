@@ -27,6 +27,7 @@
     "vscode": "^1.85.0"
   },
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
