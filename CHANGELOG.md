@@ -2,6 +2,32 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.7.0] - 2026-10-25
+
+i18n 中英双语（概要 §14 #7 收口，ADR D-25）：UI / 官网 / GitHub·Marketplace README 三面四件套。
+
+### 特性
+
+- **界面语言跟随 VSCode 显示语言**（中文为源语言、英文为翻译，v1 不设插件内语言切换项）：
+  - **Extension 侧**走 VSCode 官方 l10n——命令面板 / 资源树 / 各类通知与确认框 / 连接表单（SSH 字段）/ CodeLens / 执行注记等约 310 处文案全部 `t()` 化；`package.json` contributes（命令标题 / 视图名 / 配置描述）`%key%` 化并随显示语言自动切换
+  - **Webview 侧**（表格 / Console / 连接表单 / 表设计器 / ER 图 / 库级 DDL / 设置中心）约 540 处文案键化入 protocol 十域词典（zh 权威键集 ~570 键 + en 全量对译，键集全等有测试守卫）；错误码 → 文案映射（C-6）本地化，驱动错误 message 仍按 detail 原文展示
+  - **连接表单驱动字段键化**：八驱动 label / placeholder / hint / 分节标题统一 form.* 域键，webview 渲染时解析（未登记文本原样展示，第三方驱动天然兼容）
+- **官网双语**（dbkit.easyremember.cn）：导航 / 页脚双语言切换器，localStorage 持久化、首访按浏览器语言；全部板块（亮点 / 支持矩阵 / 界面 / Coming Soon / 快速上手 / 页脚）+ Playground 外壳与嵌入的 webview 界面随站点语言
+- **README 双语**：仓库根新增 `README.en.md`（完整英文版，顶部互链）；Marketplace 详情页（extension README）顶部新增英文摘要节（Highlights / Quick Start / Support Matrix / Install）
+
+### 修复
+
+- 设置项 `dbExplorer.export.defaultFormat` 枚举停在旧三格式（v0.2.33 已扩六格式，漏同步）——补齐 ndjson / markdown / insert 并附 enumDescriptions
+- 官网支持矩阵标题「五引擎」与实际七引擎不符（sub 行本就列 7 引擎）
+- PostgreSQL「库级 DDL」能力格三处低报为纯 ✓（实际支持建/删 schema，D-19 口径）——根 README 原本正确，extension README 与官网已对齐
+- 官网静态 `<title>` / meta description 与词典口径不一致（引擎清单 5→7）
+
+### 已知限制
+
+- 英文词表与官网 en 首版为辅助翻译（B6 批次做过术语一致性校对，欢迎 issue 指正）；Issue 模板等社区面暂为中文
+- 官网静态首屏 SEO 标签为中文（客户端切换机制下 en 内容在 bundle 内，`/en/` 独立路由双构建列 P2）
+- 界面截图为中文界面（英文界面以 VSCode 显示语言为准，截图暂未重制）
+
 ## [0.6.0] - 2026-10-25
 
 能力丰富批次：单元格查看器、导出格式补齐、ER 图导出（概要 §6 #12 / §5.7 / 交互稿 §13.9 收口）。

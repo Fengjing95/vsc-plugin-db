@@ -6,7 +6,7 @@
     "theme": "dark"
   },
   "description": "在 VSCode 内浏览、查询、编辑 MySQL / PostgreSQL / Redis / SQLite / MongoDB：资源树、表格视图、SQL Console、结构管理与流式导出。",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "db-explorer-dev",
   "license": "Apache-2.0",
   "icon": "media/extension-icon.png",
