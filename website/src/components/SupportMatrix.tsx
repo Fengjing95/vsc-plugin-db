@@ -1,17 +1,20 @@
-import { engines, matrixFootnote, matrixRows } from '../content/site';
+import { engines, getSiteContent } from '../content/site';
+import { useSiteLang } from '../i18n/lang';
 import { Reveal } from './Reveal';
 
 function Cell({ value }: { value: string }) {
+  const lang = useSiteLang();
+  const ui = getSiteContent(lang).ui.matrix;
   if (value === 'yes') {
     return (
-      <span className="cell-yes" aria-label="支持">
+      <span className="cell-yes" aria-label={ui.yesAria}>
         <CheckIcon />
       </span>
     );
   }
   if (value === 'no') {
     return (
-      <span className="cell-no" aria-label="不支持">
+      <span className="cell-no" aria-label={ui.noAria}>
         —
       </span>
     );
@@ -20,16 +23,17 @@ function Cell({ value }: { value: string }) {
 }
 
 export function SupportMatrix() {
+  const lang = useSiteLang();
+  const c = getSiteContent(lang);
+
   return (
     <section className="section" id="matrix">
       <div className="container">
         <Reveal>
           <header className="section__head">
-            <p className="section__kicker">支持矩阵</p>
-            <h2>五引擎，一套体验</h2>
-            <p className="section__sub">
-              MySQL · PostgreSQL · SQLite · MongoDB · Redis；逐格口径与扩展详情页的支持矩阵一致，不夸大。
-            </p>
+            <p className="section__kicker">{c.ui.matrix.kicker}</p>
+            <h2>{c.ui.matrix.heading}</h2>
+            <p className="section__sub">{c.ui.matrix.sub}</p>
           </header>
         </Reveal>
         <Reveal delay={120}>
@@ -38,7 +42,7 @@ export function SupportMatrix() {
               <thead>
                 <tr>
                   <th scope="col" className="matrix__cap">
-                    能力
+                    {c.ui.matrix.capability}
                   </th>
                   {engines.map((e) => (
                     <th scope="col" key={e.key}>
@@ -51,14 +55,14 @@ export function SupportMatrix() {
                 </tr>
               </thead>
               <tbody>
-                {matrixRows.map((row) => (
+                {c.matrixRows.map((row) => (
                   <tr key={row.label}>
                     <th scope="row" className="matrix__cap">
                       {row.label}
                     </th>
-                    {row.cells.map((c, i) => (
+                    {row.cells.map((cell, i) => (
                       <td key={engines[i]?.key ?? i}>
-                        <Cell value={c} />
+                        <Cell value={cell} />
                       </td>
                     ))}
                   </tr>
@@ -66,7 +70,7 @@ export function SupportMatrix() {
               </tbody>
             </table>
           </div>
-          <p className="section__footnote">{matrixFootnote}</p>
+          <p className="section__footnote">{c.matrixFootnote}</p>
         </Reveal>
       </div>
     </section>

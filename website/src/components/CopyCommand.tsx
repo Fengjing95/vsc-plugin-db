@@ -1,10 +1,14 @@
 import { useState } from 'react';
+import { getSiteContent } from '../content/site';
+import { useSiteLang } from '../i18n/lang';
 
 type CopyCommandProps = { command: string };
 
 /** 安装命令胶囊 + 一键复制 */
 export function CopyCommand({ command }: CopyCommandProps) {
   const [copied, setCopied] = useState(false);
+  const lang = useSiteLang();
+  const c = getSiteContent(lang);
 
   const copy = async () => {
     try {
@@ -17,10 +21,10 @@ export function CopyCommand({ command }: CopyCommandProps) {
   };
 
   return (
-    <button type="button" className="copy-cmd" onClick={copy} aria-label={`复制命令 ${command}`}>
+    <button type="button" className="copy-cmd" onClick={copy} aria-label={c.ui.copy.aria.replace('{0}', command)}>
       <code>{command}</code>
       <span className={`copy-cmd__hint${copied ? ' is-copied' : ''}`} aria-live="polite">
-        {copied ? '已复制 ✓' : '复制'}
+        {copied ? c.ui.copy.copied : c.ui.copy.copy}
       </span>
     </button>
   );

@@ -1,29 +1,31 @@
-import { comingSoon, site } from '../content/site';
+import { getSiteContent, site } from '../content/site';
+import { useSiteLang } from '../i18n/lang';
 import { Reveal } from './Reveal';
 
 export function ComingSoon() {
+  const lang = useSiteLang();
+  const c = getSiteContent(lang);
+
   return (
     <section className="section" id="roadmap">
       <div className="container">
         <Reveal>
           <header className="section__head">
-            <p className="section__kicker">Coming Soon</p>
-            <h2>在路上，由你定优先级</h2>
-            <p className="section__sub">
-              以下驱动在规划中、尚未发布；想要哪个、急着用哪个，去 issue 说一句，你的声音直接决定开发顺序。
-            </p>
+            <p className="section__kicker">{c.ui.comingSoon.kicker}</p>
+            <h2>{c.ui.comingSoon.heading}</h2>
+            <p className="section__sub">{c.ui.comingSoon.sub}</p>
           </header>
         </Reveal>
         <div className="coming__grid">
-          {comingSoon.map((c, i) => (
-            <Reveal key={c.name} delay={i * 90}>
+          {c.comingSoon.map((item, i) => (
+            <Reveal key={item.name} delay={i * 90}>
               <article className="card coming__card">
-                <div className="coming__badge">规划中</div>
-                <h3>{c.name}</h3>
-                <p>{c.desc}</p>
-                {c.tags ? (
-                  <ul className="coming__tags" aria-label="候选范围">
-                    {c.tags.map((t) => (
+                <div className="coming__badge">{c.ui.comingSoon.badge}</div>
+                <h3>{item.name}</h3>
+                <p>{item.desc}</p>
+                {item.tags ? (
+                  <ul className="coming__tags" aria-label={c.ui.comingSoon.candidatesAria}>
+                    {item.tags.map((t) => (
                       <li key={t}>{t}</li>
                     ))}
                   </ul>
@@ -33,9 +35,9 @@ export function ComingSoon() {
                   href={site.urls.newFeatureIssue}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={`期待 ${c.name}？去 issue 说一句`}
+                  aria-label={c.ui.comingSoon.ctaAria.replace('{0}', item.name)}
                 >
-                  期待它？去 issue 说一句 <span aria-hidden="true">→</span>
+                  {c.ui.comingSoon.cta} <span aria-hidden="true">→</span>
                 </a>
               </article>
             </Reveal>
