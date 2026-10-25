@@ -14,6 +14,7 @@ import {
   tableMatchesSearch,
   type ErRect,
 } from '../lib/erCanvas';
+import { buildErSvg, rasterizeSvgToPng, utf8ToBase64, type ErPalette } from '../lib/erExport';
 import { request } from '../rpc/client';
 import { fitToViewport, useErStore } from '../store/erStore';
 
@@ -83,6 +84,7 @@ export function ErDiagramPage() {
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [edgeTip, setEdgeTip] = useState<EdgeTip | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; table: string } | null>(null);
+  const [exportHint, setExportHint] = useState('');
   const fittedRef = useRef(false);
 
   useEffect(() => {
@@ -176,6 +178,51 @@ export function ErDiagramPage() {
     panState.current = null;
   };
 
+  // 导出（交互稿 §13.9）：SVG 从图数据模型直接生成（画布是 HTML+SVG 混合，无法直接序列化）；
+  // PNG 在 webview 光栅化（单张图内存有界，C-13 边界确认）；落盘统一走 sys.saveFile（Host 侧）
+  const resolvePalette = (): ErPalette => {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name: string): string => cs.getPropertyValue(name).trim() || '#888888';
+    return {
+      background: v('--color-background'),
+      panel: v('--color-panel'),
+      border: v('--color-border'),
+      mutedBg: v('--color-muted'),
+      foreground: v('--color-foreground'),
+      mutedForeground: v('--color-muted-foreground'),
+      warning: v('--color-warning'),
+      link: v('--color-link'),
+    };
+  };
+  const doExport = async (kind: 'svg' | 'png'): Promise<void> => {
+    const s = useErStore.getState();
+    const g = s.graph;
+    if (!g || g.tables.length === 0) {
+      return;
+    }
+    try {
+      const svg = buildErSvg({
+        graph: g,
+        positions: s.positions,
+        expanded: s.expanded,
+        displayMode: s.displayMode,
+        palette: resolvePalette(),
+      });
+      const base64 =
+        kind === 'svg'
+          ? utf8ToBase64(svg)
+          : await rasterizeSvgToPng(svg, g.layout.width + 80, g.layout.height + 80, 2);
+      const { path } = await request<{ path: string | null }>(
+        RpcMethods.sysSaveFile,
+        { defaultName: `er-${db}.${kind}`, base64, title: kind === 'svg' ? '导出 SVG' : '导出 PNG' },
+      );
+      setExportHint(path ? `已导出 → ${path}` : '已取消');
+    } catch (err) {
+      setExportHint(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+    setTimeout(() => setExportHint(''), 6000);
+  };
+
   if (!boot || !connId || !db) {
     return <div className="status error">缺少 ER 图参数</div>;
   }
@@ -241,6 +288,24 @@ export function ErDiagramPage() {
         </Button>
         <Button variant="secondary" size="sm" title="恢复初始布局" onClick={() => useErStore.getState().resetLayout()}>
           重新布局
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          title="导出 SVG（矢量图）"
+          disabled={status !== 'ready' || !graph || graph.tables.length === 0}
+          onClick={() => void doExport('svg')}
+        >
+          导出 SVG
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          title="导出 PNG（2x 光栅化）"
+          disabled={status !== 'ready' || !graph || graph.tables.length === 0}
+          onClick={() => void doExport('png')}
+        >
+          导出 PNG
         </Button>
         <Button
           variant="secondary"
@@ -542,6 +607,7 @@ export function ErDiagramPage() {
           <span>—</span>
         )}
         <div className="flex-1" />
+        {exportHint && <span className="text-link">{exportHint}</span>}
         <span>滚轮缩放 · 拖拽平移 · 双击节点打开表格</span>
       </div>
     </div>

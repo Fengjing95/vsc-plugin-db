@@ -55,5 +55,10 @@ window.__DBX_STUB__ = {
     },
     'er.openTable': () => ({}),
     'sys.copyText': (p) => ({ written: (p?.text ?? '').length }),
+    // 导出验证（§13.9）：落盘内容暂存到 window.__DBX_SAVED__ 供浏览器断言（base64 原样）
+    'sys.saveFile': (p) => {
+      window.__DBX_SAVED__ = { name: p?.defaultName, base64: p?.base64 };
+      return { path: `/tmp/${p?.defaultName ?? 'export'}` };
+    },
   },
 };
