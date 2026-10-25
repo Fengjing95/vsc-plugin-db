@@ -7,6 +7,7 @@ import {
   runCursorPaginationChecks,
   runDatabaseDdlChecks,
   runFilterPushdownChecks,
+  runLazyCellChecks,
   runMetadataChecks,
   runPaginationChecks,
   runScanSemanticsChecks,
@@ -120,6 +121,11 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
     const s = await runConnectionChecks(makeConn);
     assertGroup('connection', s.failed, s.results);
     expect(s.results.filter((r) => !r.skipped)).toHaveLength(3);
+  });
+
+  it('lazy-cell 组（能力门控：fetchCell 未实现即整组跳过）', async () => {
+    const s = await runLazyCellChecks(makeConn);
+    assertGroup('lazy-cell', s.failed, s.results);
   });
 
   it('metadata 组（动态列采样 / 索引自省）', async () => {

@@ -2263,3 +2263,86 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
   }
   return summarize(results);
 }
+
+// ───────────────────────── 单元格查看器：大字段按需拉取（交互稿 §4.6）─────────────────────────
+
+/** 键序无关的 JSON 序列化（对象键序在驱动构造路径上可能不同，值语义必须一致） */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, v) => {
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+      );
+    }
+    return v;
+  });
+}
+
+/**
+ * lazy-cell 组（@since 单元格查看器批次）：fetchCell 按需拉取契约。
+ * 能力门控 = fetchCell 方法存在性（IConnection 观测不到 driver.capabilities，
+ * P-19 同族：未实现 → 整组跳过；实现了 → 全部检查必须通过；
+ * capabilities.lazyCell 声明与方法成对由各驱动套件自行断言）。
+ * 口径：返回值与 fetchRows 单元格 C-7 同形（键序无关 deep-equal）；
+ * 未知列 → E_VALIDATION；RowKey 无命中 → E_NOT_FOUND（读路径语义，
+ * 区别于 applyChanges 乐观锁失配的 E_CONFLICT）。
+ */
+export async function runLazyCellChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+  const results: CheckResult[] = [];
+  const conn = await create();
+  const group = 'lazy-cell';
+  if (typeof conn.fetchCell !== 'function') {
+    results.push({ group, name: '能力门控：fetchCell 未实现 → 整组跳过', ok: true, skipped: true });
+    return summarize(results);
+  }
+
+  const sample = await findSampleTable(conn, 1);
+  const row = sample?.rows[0];
+  const rowKey: RowKey = {};
+  if (sample && row) {
+    for (const pk of sample.primaryKey) {
+      const i = sample.columns.findIndex((c) => c.name === pk);
+      if (i >= 0) rowKey[pk] = row[i];
+    }
+  }
+  if (!sample || !row || Object.keys(rowKey).length === 0) {
+    await skip(results, group, 'roundtrip / 错误码（无带主键的样例表，跳过）', '样例不足');
+    return summarize(results);
+  }
+
+  await check(results, group, 'fetchCell roundtrip：与 fetchRows 单元格 C-7 同形', async () => {
+    for (let i = 0; i < sample.columns.length; i++) {
+      const value = await conn.fetchCell!(sample.db, sample.obj, rowKey, sample.columns[i].name);
+      assert(
+        stableStringify(value) === stableStringify(row[i]),
+        `列 ${sample.columns[i].name} roundtrip 不一致：${stableStringify(value)} ≠ ${stableStringify(row[i])}`,
+      );
+    }
+  });
+
+  await check(results, group, '未知列 → E_VALIDATION', async () => {
+    try {
+      await conn.fetchCell!(sample.db, sample.obj, rowKey, 'cf_no_such_column');
+      assert(false, '未知列应抛 E_VALIDATION');
+    } catch (err) {
+      assert(isCode(err, 'E_VALIDATION'), `应抛 E_VALIDATION，实际 ${describeError(err)}`);
+    }
+  });
+
+  await check(results, group, '幽灵 RowKey → E_NOT_FOUND', async () => {
+    const ghost: RowKey = {};
+    for (const pk of Object.keys(rowKey)) {
+      const i = sample.columns.findIndex((c) => c.name === pk);
+      const v = row[i];
+      ghost[pk] = typeof v === 'number' ? 987654321098 : 'cf-ghost-cell';
+    }
+    try {
+      await conn.fetchCell!(sample.db, sample.obj, ghost, sample.columns[0].name);
+      assert(false, '幽灵 RowKey 应抛 E_NOT_FOUND');
+    } catch (err) {
+      assert(isCode(err, 'E_NOT_FOUND'), `应抛 E_NOT_FOUND，实际 ${describeError(err)}`);
+    }
+  });
+
+  return summarize(results);
+}

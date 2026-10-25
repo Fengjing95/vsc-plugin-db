@@ -145,6 +145,7 @@
 | UI 状态机/键盘/文案 | `docs/交互设计稿.md`（§4 表格视图、§9.2 错误文案） |
 | RPC 消息定义 | `packages/protocol/src/methods.ts`（zod 单一来源） |
 | 单元格渲染契约 | `webview-ui/src/lib/cellDisplay.ts` |
+| 单元格查看器（大文本 / JSON / 二进制，交互稿 §4.6） | protocol `cell.fetch`（capabilities.lazyCell 门控，握手下行）+ `sys.saveFile`（Host SaveDialog 写盘，取消 = path null）；core `fetchCell?` 返回 C-7 单元格同形值（未知列 E_VALIDATION、幽灵 RowKey E_NOT_FOUND——读路径语义，区别乐观锁 E_CONFLICT）；契约组 `runLazyCellChecks`（**门控 = fetchCell 方法存在性**，IConnection 观测不到 capabilities，P-19 同族；mock 实跑基准、七套件全接入自跳过）；webview `lib/cellViewer.ts`（viewerKindFor 阈值 200 / hexDump 64KB / sniffImageKind / parseJsonText 纯函数）+ `CellViewerModal`（JSON 树/原文双 Tab + 合法校验禁用保存 + 格式化；保存复用 parseCellInput→confirmParsed 编辑管线，主键列/只读与 beginEdit 同口径）+ DataGrid ▤ 角标（dirty 三角时右移避让）；stub 场景 `scripts/cell-viewer.js` |
 | 编辑覆盖层/RowKey/取数列保障 | `webview-ui/src/lib/editOverlay.ts`（纯函数，有单测） |
 | 编辑输入→值编码 | `webview-ui/src/lib/editValues.ts`（C-7 落地点） |
 | 查询参数/分页文案 | `webview-ui/src/lib/queryState.ts`（纯函数，有单测） |

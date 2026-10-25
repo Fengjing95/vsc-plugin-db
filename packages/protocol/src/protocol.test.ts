@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ApplyChangesResultSchema,
+  CellFetchParamsSchema,
+  CellFetchResultSchema,
   ConnDbOptionsParamsSchema,
   ConnDbOptionsResultSchema,
   ConnSaveParamsSchema,
@@ -38,6 +40,8 @@ import {
   SettingsGetResultSchema,
   SettingsHubActionParamsSchema,
   SettingsOpenInVscodeParamsSchema,
+  SysSaveFileParamsSchema,
+  SysSaveFileResultSchema,
   SettingsUpdateParamsSchema,
 } from './index';
 
@@ -411,5 +415,42 @@ describe('ai.* 方法校验（M9-AI / D-24）', () => {
     expect(ConsoleAiEventSchema.parse({ consoleId: 'c1', ai: running }).ai).toEqual(running);
     expect(ConsoleAiEventSchema.parse({ consoleId: 'c1', ai: null }).ai).toBeNull();
     expect(() => ConsoleAiSchema.parse({ seq: 1, status: 'paused', content: '' })).toThrow();
+  });
+});
+
+describe('cell.fetch / sys.saveFile（单元格查看器批次）', () => {
+  it('cell.fetch：rowKey + column 定位，value 为 C-7 单元格同形值', () => {
+    const params = { connId: 'c1', db: 'demo', obj: 'wide', rowKey: { id: 1 }, column: 'meta' };
+    expect(CellFetchParamsSchema.parse(params)).toEqual(params);
+    expect(() => CellFetchParamsSchema.parse({ ...params, column: '' })).toThrow();
+    expect(() => CellFetchParamsSchema.parse({ ...params, rowKey: undefined })).toThrow();
+    expect(CellFetchResultSchema.parse({ value: null }).value).toBeNull();
+    expect(CellFetchResultSchema.parse({ value: { a: 1 } }).value).toEqual({ a: 1 });
+    expect(CellFetchResultSchema.parse({ value: 'aGVsbG8=' }).value).toBe('aGVsbG8=');
+  });
+
+  it('sys.saveFile：base64 + defaultName 必填，取消返回 path=null', () => {
+    const params = { defaultName: 'avatar.bin', base64: 'aGVsbG8=' };
+    expect(SysSaveFileParamsSchema.parse(params)).toEqual(params);
+    expect(SysSaveFileParamsSchema.parse({ ...params, title: '另存为' }).title).toBe('另存为');
+    expect(() => SysSaveFileParamsSchema.parse({ defaultName: '', base64: 'aGk=' })).toThrow();
+    expect(SysSaveFileResultSchema.parse({ path: '/tmp/avatar.bin' }).path).toBe('/tmp/avatar.bin');
+    expect(SysSaveFileResultSchema.parse({ path: null }).path).toBeNull();
+  });
+
+  it('handshake capabilities.lazyCell 可选下行（查看器是否走按需拉取）', () => {
+    const base = {
+      protocolVersion: RPC_PROTOCOL_VERSION,
+      viewId: 'c/db/t',
+      params: { connId: 'c' },
+      changeSet: { inserts: [], updates: [], deletes: [] },
+      edit: { enabled: true },
+      capabilities: { supportsSQL: true, supportsDdl: true },
+    };
+    expect(HandshakeResultSchema.parse(base).capabilities.lazyCell).toBeUndefined();
+    expect(
+      HandshakeResultSchema.parse({ ...base, capabilities: { ...base.capabilities, lazyCell: true } }).capabilities
+        .lazyCell,
+    ).toBe(true);
   });
 });

@@ -58,6 +58,10 @@ export const RpcMethods = {
   settingsHubAction: 'settings.hubAction',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
+  /** @since 单元格查看器批次（交互稿 §4.6）：大字段按需拉取（capabilities.lazyCell 驱动声明后才走 RPC） */
+  cellFetch: 'cell.fetch',
+  /** @since 单元格查看器批次：二进制查看器「另存为文件」（SaveDialog + 写盘在 Host 侧） */
+  sysSaveFile: 'sys.saveFile',
 } as const;
 
 /** Host → Webview 单向推送事件（概要设计 7.4.2） */
@@ -173,6 +177,8 @@ export const HandshakeResultSchema = z.object({
     supportsSQL: z.boolean(),
     supportsDdl: z.boolean(),
     pagination: z.enum(['offset', 'cursor', 'none']).optional(),
+    /** @since 单元格查看器批次：驱动声明大字段按需拉取（fetchCell）；缺省 = 查看器直接用行内值 */
+    lazyCell: z.boolean().optional(),
   }),
 });
 export type HandshakeResult = z.infer<typeof HandshakeResultSchema>;
@@ -1159,3 +1165,41 @@ export const SettingsHubActionParamsSchema = z.object({
   action: z.enum(['openLog', 'openGitHub', 'openIssues', 'openWebsite']),
 });
 export type SettingsHubActionParams = z.infer<typeof SettingsHubActionParamsSchema>;
+
+// ── cell.fetch（单元格查看器，交互稿 §4.6）────────────────────────
+// 大字段按需拉取：驱动声明 capabilities.lazyCell 时，查看器经此 RPC 取整值。
+// value 与 fetchRows 单元格 C-7 同形（JSON=已解析对象、binary=base64、NULL=null），
+// 网格行内值只是它的（可能截断的）视图——查看器以本方法返回为准。
+
+export const CellFetchParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  rowKey: RowKeySchema,
+  column: z.string().min(1),
+});
+export type CellFetchParams = z.infer<typeof CellFetchParamsSchema>;
+
+export const CellFetchResultSchema = z.object({
+  value: z.unknown(),
+});
+export type CellFetchResult = z.infer<typeof CellFetchResultSchema>;
+
+// ── sys.saveFile（Host 原生保存对话框：webview 无宿主文件系统能力）──
+// 二进制查看器「另存为文件」及后续需要落盘的场景；base64 进、fsPath 出，取消 = null。
+
+export const SysSaveFileParamsSchema = z.object({
+  /** 保存对话框的默认文件名（含扩展名） */
+  defaultName: z.string().min(1),
+  /** 文件内容（base64；C-9 单值沿 fetchRows 既有传输上限） */
+  base64: z.string().min(1),
+  /** 对话框标题（缺省「另存为」） */
+  title: z.string().optional(),
+});
+export type SysSaveFileParams = z.infer<typeof SysSaveFileParamsSchema>;
+
+export const SysSaveFileResultSchema = z.object({
+  /** 用户取消 = null；成功 = 写入的 fsPath */
+  path: z.string().nullable(),
+});
+export type SysSaveFileResult = z.infer<typeof SysSaveFileResultSchema>;

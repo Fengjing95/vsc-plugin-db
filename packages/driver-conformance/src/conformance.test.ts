@@ -7,6 +7,7 @@ import {
   runDdlChecks,
   runFilterPushdownChecks,
   runInteractiveTransactionChecks,
+  runLazyCellChecks,
   runMetadataChecks,
   runPaginationChecks,
   runRelationGraphChecks,
@@ -134,4 +135,16 @@ it('conformance: 取消组按能力跳过（mock 未声明 supportsCancel，M8-P
   });
   expect(summary.failed).toBe(0);
   expect(summary.results.every((r) => r.skipped)).toBe(true);
+});
+
+it('conformance: mock 驱动通过 lazy-cell 组（单元格查看器，交互稿 §4.6）', async () => {
+  // 能力声明与方法实现成对（IConnection 观测不到 capabilities，驱动级在此断言）
+  expect(createMockDriver().capabilities.lazyCell).toBe(true);
+  const summary = await runLazyCellChecks(mockConnection);
+  if (summary.failed > 0) {
+    console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
+  }
+  expect(summary.failed).toBe(0);
+  // C-3：mock 实现 fetchCell → 组必须实跑（roundtrip / 未知列 / 幽灵行）
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(3);
 });

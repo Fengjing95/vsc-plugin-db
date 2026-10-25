@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import { maxExploredPage, updateCursorStack } from '../lib/queryState';
 import { request, RpcError } from '../rpc/client';
 import { errorCodeToMessage } from '../lib/errors';
+import { viewerKindFor, type ViewerKind } from '../lib/cellViewer';
 import { cellInputText, parseCellInput } from '../lib/editValues';
 import {
   applyOverlay,
@@ -73,7 +74,12 @@ interface TableState {
   readOnly: boolean;
   rowEstimate?: number;
   /** 驱动能力子集（握手下行，概要 §5.1.3）：UI 按能力降级渲染，不感知数据库类型 */
-  capabilities: { supportsSQL: boolean; supportsDdl: boolean; pagination?: 'offset' | 'cursor' | 'none' };
+  capabilities: {
+    supportsSQL: boolean;
+    supportsDdl: boolean;
+    pagination?: 'offset' | 'cursor' | 'none';
+    lazyCell?: boolean;
+  };
   /** cursor 分页（M7 透传）：每页取数游标（cursors[0] = undefined 首页；仅 cursor 模式使用） */
   cursors: Array<string | undefined>;
 
@@ -124,6 +130,8 @@ interface TableState {
   /** DDL 查看 Modal；null = 关闭 */
   ddl: string | null;
   ddlLoading: boolean;
+  /** 单元格查看器（交互稿 §4.6）；value = 查看器当前值（lazyCell 驱动经 RPC 覆盖行内值） */
+  viewer: { rowIndex: number; colIndex: number; kind: ViewerKind; value: unknown; loading: boolean } | null;
   toast: ToastState | null;
   /** 选中行（rowKeyString → true，仅当前页服务端行；拖拽/点击/Shift 范围） */
   selectedRows: Record<string, true>;
@@ -174,6 +182,13 @@ interface TableState {
   /** 查看当前表 DDL（驱动未实现时报 E_UNSUPPORTED） */
   openDdl(): Promise<void>;
   closeDdl(): void;
+  /** 单元格查看器（交互稿 §4.6）：binary/json 类型或超长文本的整值查看与编辑 */
+  openCellViewer(rowIndex: number, colIndex: number): void;
+  closeCellViewer(): void;
+  /** 查看器保存写回 ChangeSet（文本/JSON；JSON 合法性由 Modal 校验后传入已解析值） */
+  applyCellValue(rowIndex: number, colIndex: number, value: unknown): void;
+  /** 二进制查看器「另存为文件」（sys.saveFile；取消静默） */
+  saveViewerBinary(): Promise<void>;
   /** E_CONFLICT 动作：重取该行 → 校验变更列 → 基于新基线重新预览（不静默覆写） */
   retainMyChanges(): Promise<void>;
   /** E_CONFLICT 动作：放弃全部变更并刷新 */
@@ -237,12 +252,13 @@ export const useTableStore = create<TableState>((set, get) => ({
   committing: false,
   ddl: null,
   ddlLoading: false,
+  viewer: null,
   toast: null,
   selectedRows: {},
   selectionAnchor: null,
 
   init({ connId, db, obj, rowEstimate, readOnly }) {
-    set({ connId, db, obj, rowEstimate, readOnly: readOnly ?? false, page: 0, cursors: [undefined] });
+    set({ connId, db, obj, rowEstimate, readOnly: readOnly ?? false, page: 0, cursors: [undefined], viewer: null });
     void get().refresh();
   },
 
@@ -883,6 +899,79 @@ export const useTableStore = create<TableState>((set, get) => ({
 
   closeDdl() {
     set({ ddl: null });
+  },
+
+  openCellViewer(rowIndex, colIndex) {
+    const s = get();
+    const col = s.columns[colIndex];
+    if (!col || rowIndex >= s.rows.length) {
+      return;
+    }
+    const kind = viewerKindFor(col.type, s.rows[rowIndex][colIndex]);
+    if (!kind) {
+      return;
+    }
+    const row = s.rows[rowIndex];
+    set({ viewer: { rowIndex, colIndex, kind, value: row[colIndex], loading: s.capabilities.lazyCell === true } });
+    if (s.capabilities.lazyCell !== true) {
+      return;
+    }
+    // 按需拉取整值（驱动可能截断行内值）；失败回退行内值并提示；已关闭/切换即丢弃（P-6 口径）
+    request<{ value: unknown }>('cell.fetch', {
+      connId: s.connId,
+      db: s.db,
+      obj: s.obj,
+      rowKey: rowKeyOfRow(row, s.columns, s.primaryKey),
+      column: col.name,
+    })
+      .then(({ value }) => {
+        const cur = get().viewer;
+        if (!cur || cur.rowIndex !== rowIndex || cur.colIndex !== colIndex) {
+          return;
+        }
+        set({ viewer: { ...cur, value, loading: false } });
+      })
+      .catch((err) => {
+        const cur = get().viewer;
+        if (!cur || cur.rowIndex !== rowIndex || cur.colIndex !== colIndex) {
+          return;
+        }
+        set({ viewer: { ...cur, loading: false } });
+        get().showToast({
+          kind: 'error',
+          text: `按需拉取失败，已回退行内值：${err instanceof Error ? err.message : String(err)}`,
+        });
+      });
+  },
+
+  closeCellViewer() {
+    set({ viewer: null });
+  },
+
+  applyCellValue(rowIndex, colIndex, value) {
+    confirmParsed(set, get, rowIndex, colIndex, value);
+    set({ viewer: null });
+  },
+
+  async saveViewerBinary() {
+    const s = get();
+    const v = s.viewer;
+    const col = v ? s.columns[v.colIndex] : null;
+    if (!v || v.kind !== 'binary' || typeof v.value !== 'string') {
+      return;
+    }
+    try {
+      const { path } = await request<{ path: string | null }>('sys.saveFile', {
+        defaultName: `${s.obj}-${col?.name ?? 'binary'}.bin`,
+        base64: v.value,
+        title: '另存为文件',
+      });
+      if (path) {
+        get().showToast({ kind: 'info', text: `已保存 → ${path}` });
+      }
+    } catch (err) {
+      get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
+    }
   },
 
   async retainMyChanges() {

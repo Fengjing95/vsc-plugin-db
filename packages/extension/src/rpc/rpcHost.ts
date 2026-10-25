@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { DriverError, type DriverHost, type EditOp } from '@db-explorer/core';
 import {
   ApplyChangesParamsSchema,
+  CellFetchParamsSchema,
   ConsoleCancelParamsSchema,
   ConsoleCloseParamsSchema,
   ConsoleExecuteParamsSchema,
@@ -19,6 +20,7 @@ import {
   RpcEvents,
   RpcMethods,
   RpcRequestSchema,
+  SysSaveFileParamsSchema,
   type EditPermission,
   type RpcError,
 } from '@db-explorer/protocol';
@@ -144,6 +146,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
                 supportsSQL: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsSQL ?? true,
                 supportsDdl: deps.connections?.getDriver(deps.params.connId)?.capabilities.supportsDdl ?? false,
                 pagination: deps.connections?.getDriver(deps.params.connId)?.capabilities.pagination,
+                lazyCell: deps.connections?.getDriver(deps.params.connId)?.capabilities.lazyCell,
               },
             },
           });
@@ -293,6 +296,21 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           break;
         }
 
+        case RpcMethods.cellFetch: {
+          // 单元格查看器（交互稿 §4.6）：大字段按需拉取；webview 侧按 capabilities.lazyCell
+          // 才发起，Host 仍 fail-closed——方法缺失一律 E_UNSUPPORTED
+          if (deps.connections) {
+            const p = CellFetchParamsSchema.parse(req.params);
+            const conn = await deps.connections.ensureConnected(p.connId);
+            if (typeof conn.fetchCell !== 'function') {
+              throw new DriverError('E_UNSUPPORTED', '当前驱动未实现大字段按需拉取');
+            }
+            respond(true, { result: { value: await conn.fetchCell(p.db, p.obj, p.rowKey, p.column) } });
+            return;
+          }
+          break;
+        }
+
         case RpcMethods.exportRun: {
           if (deps.exporter) {
             respond(true, { result: await deps.exporter.run(req.params) });
@@ -386,6 +404,23 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             filters: p.filters,
           });
           respond(true, { result: { path: uris?.[0]?.fsPath ?? null } });
+          return;
+        }
+
+        case RpcMethods.sysSaveFile: {
+          // 任意 webview 通用：原生保存对话框 + 写盘（二进制查看器「另存为文件」等）；
+          // 取消返回 path=null，由调用方决定提示语义
+          const p = SysSaveFileParamsSchema.parse(req.params);
+          const uri = await vscode.window.showSaveDialog({
+            defaultUri: vscode.Uri.file(p.defaultName),
+            title: p.title,
+          });
+          if (!uri) {
+            respond(true, { result: { path: null } });
+            return;
+          }
+          await vscode.workspace.fs.writeFile(uri, Buffer.from(p.base64, 'base64'));
+          respond(true, { result: { path: uri.fsPath } });
           return;
         }
       }

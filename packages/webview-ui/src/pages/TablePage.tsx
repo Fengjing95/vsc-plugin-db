@@ -15,6 +15,7 @@ import { rowKeyString } from '../lib/editOverlay';
 import { request, subscribeEvents } from '../rpc/client';
 import { useTableStore } from '../store/tableStore';
 import { ChangePreviewModal } from './table/ChangePreviewModal';
+import { CellViewerModal } from './table/CellViewerModal';
 import { DataGrid } from './table/DataGrid';
 import { DdlModal } from './table/DdlModal';
 import { FilterBar } from './table/FilterBar';
@@ -187,6 +188,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       <PaginationBar />
       <ChangePreviewModal env={env === '' ? null : env} />
       <DdlModal />
+      <CellViewerModal />
       <Toast />
     </div>
   );

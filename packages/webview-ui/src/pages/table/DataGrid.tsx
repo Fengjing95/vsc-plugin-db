@@ -7,6 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ContextMenu, type ContextMenuItem } from '../../components/ui/contextMenu';
 import { cellView } from '../../lib/cellDisplay';
+import { viewerKindFor } from '../../lib/cellViewer';
 import { applyOverlay } from '../../lib/editOverlay';
 import { cellInputText } from '../../lib/editValues';
 import { useTableStore } from '../../store/tableStore';
@@ -53,6 +54,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const rowErrors = useTableStore((s) => s.rowErrors);
   const primaryKey = useTableStore((s) => s.primaryKey);
   const beginEdit = useTableStore((s) => s.beginEdit);
+  const openCellViewer = useTableStore((s) => s.openCellViewer);
   const confirmEdit = useTableStore((s) => s.confirmEdit);
   const cancelEdit = useTableStore((s) => s.cancelEdit);
   const rowEditState = useTableStore((s) => s.rowEditState);
@@ -406,6 +408,24 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                         <div className={`truncate ${view.className ?? ''} ${editState.kind === 'deleted' ? 'line-through opacity-70' : ''}`}>
                           {view.text}
                         </div>
+                      )}
+                      {/* 值查看器入口（交互稿 §4.6）：binary/json 类型或超长文本；新增行无 RowKey 不开 */}
+                      {!isEditing && rowIndex < rows.length && viewerKindFor(type, value) !== null && (
+                        <button
+                          type="button"
+                          aria-label={`查看 ${colName} 完整值`}
+                          title="查看完整值"
+                          className={`absolute top-0 z-10 rounded-bl-sm bg-panel/80 px-1 text-[10px] leading-4 text-muted-foreground hover:text-foreground ${
+                            isDirty ? 'right-2.5' : 'right-0'
+                          }`}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openCellViewer(rowIndex, cellIdx);
+                          }}
+                        >
+                          ▤
+                        </button>
                       )}
                       {isDirty && (
                         <span
