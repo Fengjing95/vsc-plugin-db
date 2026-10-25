@@ -170,12 +170,13 @@ export function utf8ToBase64(text: string): string {
   return btoa(bin);
 }
 
-/** SVG → PNG 光栅化（2x 缩放；浏览器 canvas 路径，C-13 边界确认见交互稿 §13.9） */
+/** SVG → PNG 光栅化（2x 缩放；浏览器 canvas 路径，C-13 边界确认见交互稿 §13.9）。
+ *  必须走 data: URL——VSCode webview CSP 的 img-src 只放行 cspSource 与 data:，
+ *  blob: 会被拦截直接 onerror（P-67）；data: URL 的 SVG 无外部引用，canvas 不被污染 */
 export function rasterizeSvgToPng(svg: string, width: number, height: number, scale = 2): Promise<string> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     const img = new Image();
-    const cleanup = (): void => URL.revokeObjectURL(url);
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
@@ -188,16 +189,13 @@ export function rasterizeSvgToPng(svg: string, width: number, height: number, sc
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0, width, height);
         const data = canvas.toDataURL('image/png');
-        cleanup();
         resolve(data.slice(data.indexOf(',') + 1));
       } catch (err) {
-        cleanup();
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     };
     img.onerror = () => {
-      cleanup();
-      reject(new Error('SVG 光栅化失败'));
+      reject(new Error('SVG 光栅化失败（图片被 CSP 拦截或解码错误）'));
     };
     img.src = url;
   });
