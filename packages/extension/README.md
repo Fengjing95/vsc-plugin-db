@@ -15,6 +15,57 @@
 
 ---
 
+## ✨ Highlights (English)
+
+> UI text follows the VSCode display language (English / Chinese). Screenshots below were taken from the Chinese UI.
+
+**📊 The table is the workbench**
+Smoothly browse huge tables with virtual scrolling; double-click any cell to edit, review the parameterized SQL preview before commit, single-transaction commit with field-level optimistic locking that pinpoints conflicting rows; tables without a primary key are read-only by default.
+
+**⌨️ A SQL Console that completes — and brakes**
+Context-aware completion for databases / tables / columns and dialect keywords; `UPDATE`/`DELETE` without WHERE is blocked outright, with tiered confirmation on production; EXPLAIN results are auto-indented as a tree; per-statement duration / error / canceled status annotations inline.
+
+**🧱 Schema management without writing DDL**
+Visual create/alter/drop for tables and columns with statement preview and red-bar warnings for destructive operations; database-level operations out of the box: MySQL create/alter/drop database, PostgreSQL and SQL Server create/drop schema, MongoDB create/drop database.
+
+**📤 Million-row exports that never freeze the UI**
+Streaming export in six formats — CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX — runs in the background: track progress from the notification center, cancel anytime, run tasks concurrently, reveal the file when done.
+
+**🔌 Connections that just work**
+Per-driver dynamic connection forms; SSH tunneling (TOFU fingerprint verification) and SSL/TLS; passwords live only in the system keychain — **zero telemetry, nothing written to disk**.
+
+**🤖 AI assistant with its own key (BYOK)**
+Generate SQL from natural language (CodeLens / `Alt+\` inserts straight into the editor), explain a selection instantly, one-click fix suggestions for SQL errors (inline editor diff, applied only after confirmation) — plug in your own OpenAI-compatible service (DeepSeek / Moonshot / ollama and more); keys stay in the system keychain, only schema is sent by default — never data rows — and AI output still passes danger checks.
+
+## 🚀 Quick Start (English)
+
+1. After installing, click the **Database** icon in the activity bar → **＋ New Connection** (any of MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MongoDB / Redis)
+2. Click a table name to open the table view; use **New Query** in the tree to write SQL, `Ctrl+Enter` to run
+3. Optional: **Settings** in the view title bar → AI settings — configure your own OpenAI-compatible service to generate SQL from natural language
+
+## 🗺️ Support Matrix (English)
+
+| Capability | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Resource tree | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Table editing | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ Document edit | Read-only |
+| SQL Console / command console | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
+| Schema editing (tables / columns) | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| Database-level DDL | ✓ | ✓ Create/drop schema | ✓ Create/drop schema | ✓ Create/drop schema | — | ✓ | — |
+| SSL / SSH tunnel | ✓ | ✓ | ✓ | ✓ Tunnel | — | ✓ | ✓ |
+| Background export | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+> SQLite is limited to small-to-medium databases (≤ 100MB); MongoDB structural commands are not supported; SQL Server does not support `GO` batches or INSERT back-fill for tables with triggers; Oracle 19c+ (thin): empty string is NULL, very large integers have reduced precision in the Console, TCPS encryption not yet supported (see the [driver notes](https://github.com/Fengjing95/vsc-plugin-db/tree/main/packages/driver-mssql)); for the full picture see the [repo docs](https://github.com/Fengjing95/vsc-plugin-db/tree/main/docs).
+
+## 📦 Install (English)
+
+- Search `DB Kit` in the **VSCode Extensions panel**, or from the command line: `ext install db-explorer-dev.db-kit`
+- Or download the VSIX from [GitHub Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) for a manual install
+
+> 🌐 简体中文 documentation below / 完整英文介绍见 [README.en.md](https://github.com/Fengjing95/vsc-plugin-db/blob/main/README.en.md)。
+
+---
+
 <img alt="DB Kit 表格视图总览" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/overview-table.png" width="100%">
 
 左侧资源树一键展开库 / 表 / 列 / 键 / 索引；右侧表格视图的筛选、排序、搜索全部**参数化下推到数据库执行**——不拉全表，千万行级也只取你看到的那一页。
@@ -63,7 +114,7 @@ CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX 六种格式流式导出转�
 | 表格编辑 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
 | SQL Console / 命令控制台 | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
 | 结构编辑（表 / 列） | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
-| 库级 DDL | ✓ | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | — | ✓ | — |
+| 库级 DDL | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | ✓ 建/删 schema | — | ✓ | — |
 | SSL / SSH 隧道 | ✓ | ✓ | ✓ | ✓ 隧道 | — | ✓ | ✓ |
 | 后台导出 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
