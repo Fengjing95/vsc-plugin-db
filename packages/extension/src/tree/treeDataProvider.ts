@@ -160,7 +160,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     if (node.type === 'table' || node.type === 'view' || node.type === 'collection') {
       item.command = {
         command: 'dbExplorer.openTable',
-        title: '打开表格视图',
+        title: t('打开表格视图'),
         arguments: [node],
       };
     }
@@ -168,7 +168,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     if (node.type === 'query' && node.payload.file && this.queryFiles && node.payload.connId && node.payload.db) {
       item.command = {
         command: 'dbExplorer.queries.open',
-        title: '打开查询',
+        title: t('打开查询'),
         arguments: [node],
       };
     }
@@ -187,9 +187,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           description: [
             c.driverId,
             c.env ?? 'dev',
-            c.readOnly ? '只读' : undefined,
-            this.sessions?.hasActive(c.id) ? '事务进行中' : undefined,
-            this.connections.isConnected(c.id) ? '已连接' : '未连接',
+            c.readOnly ? t('只读') : undefined,
+            this.sessions?.hasActive(c.id) ? t('事务进行中') : undefined,
+            this.connections.isConnected(c.id) ? t('已连接') : t('未连接'),
           ]
             .filter(Boolean)
             .join(' · '),
@@ -294,7 +294,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           folders.push({
             id: `${node.id}:queries`,
             type: 'queries',
-            label: '查询',
+            label: t('查询'),
             collapsibleState: Collapsed,
             contextValue: 'queries',
             iconId: 'folder-library',
@@ -339,9 +339,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           ),
         ]);
         return [
-          this.folderNode(node, 'columns', '列', 'symbol-field', countLabel(cols.length)),
-          this.folderNode(node, 'keys', '键', 'key', countLabel(keys.length)),
-          this.folderNode(node, 'indexes', '索引', 'list-ordered', countLabel(indexes.length)),
+          this.folderNode(node, 'columns', t('列'), 'symbol-field', countLabel(cols.length)),
+          this.folderNode(node, 'keys', t('键'), 'key', countLabel(keys.length)),
+          this.folderNode(node, 'indexes', t('索引'), 'list-ordered', countLabel(indexes.length)),
         ];
       }
 
@@ -359,8 +359,8 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           ),
         ]);
         return [
-          this.folderNode(node, 'columns', '字段', 'symbol-field', countLabel(cols.length)),
-          this.folderNode(node, 'indexes', '索引', 'list-ordered', countLabel(indexes.length)),
+          this.folderNode(node, 'columns', t('字段'), 'symbol-field', countLabel(cols.length)),
+          this.folderNode(node, 'indexes', t('索引'), 'list-ordered', countLabel(indexes.length)),
         ];
       }
 

@@ -3,6 +3,7 @@ import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { DdlService } from '../services/ddlService';
+import { t } from '../services/i18n';
 import type { Logger } from '../services/logger';
 
 /**
@@ -30,7 +31,9 @@ export function openTableDesignPanel(
     void existing.reveal();
     return;
   }
-  const title = target.obj ? `设计表 · ${target.obj} @ ${target.db}` : `新建表 @ ${target.db}`;
+  const title = target.obj
+    ? t('设计表 · {0} @ {1}', [target.obj, target.db])
+    : t('新建表 @ {0}', [target.db]);
   const panel = vscode.window.createWebviewPanel(
     'dbExplorer.tableDesign',
     title,

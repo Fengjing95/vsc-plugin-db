@@ -3,6 +3,7 @@ import { type ChangeSetService, type DriverHost } from '@db-explorer/core';
 import { attachRpcHost } from '../rpc/rpcHost';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
+import { t } from '../services/i18n';
 import type { Logger } from '../services/logger';
 import { createResultExporter } from '../services/resultExporter';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
@@ -116,17 +117,19 @@ function warnUncommittedChanges(services: TablePanelServices, target: TableTarge
     services.viewStates.disposeView(target.viewId);
     return;
   }
+  const discardChanges = t('放弃变更');
+  const reopen = t('重新打开');
   void vscode.window
     .showWarningMessage(
-      `表 "${target.obj}" 有 ${total} 条未提交变更。关闭后修改仍保留，重新打开该表可继续提交。`,
-      '放弃变更',
-      '重新打开',
+      t('表 "{0}" 有 {1} 条未提交变更。关闭后修改仍保留，重新打开该表可继续提交。', [target.obj, total]),
+      discardChanges,
+      reopen,
     )
     .then((action) => {
-      if (action === '放弃变更') {
+      if (action === discardChanges) {
         services.changesets.disposeView(target.viewId);
         services.viewStates.disposeView(target.viewId);
-      } else if (action === '重新打开' && panelContext) {
+      } else if (action === reopen && panelContext) {
         void openTablePanel(panelContext, services, target);
       }
     });

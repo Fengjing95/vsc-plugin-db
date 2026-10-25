@@ -6,6 +6,7 @@ import type { AiSettingsStore } from '../services/aiSettings';
 import type { SettingsHub } from '../services/settingsHub';
 
 import type { Logger } from '../services/logger';
+import { t } from '../services/i18n';
 
 /**
  * 设置中心（交互稿 §16）：分类侧栏 + 内容区的总设置面板（AI 辅助 / 查询与导出 / 关于）。
@@ -29,7 +30,7 @@ export function openSettingsPanel(
   const viewId = 'settings';
   const created = vscode.window.createWebviewPanel(
     'dbExplorer.settings',
-    '设置',
+    t('设置'),
     vscode.ViewColumn.Active,
     {
       enableScripts: true,

@@ -4,6 +4,7 @@
  * （约定：含 vscode import 的模块不进单测，纯函数层保持可测）。
  */
 import { isAbsolute } from 'node:path';
+import { t } from './i18n';
 
 /** 文件名非法字符（跨平台：Windows 保留字符 + 路径分隔符 + 控制字符——消毒正是其用途） */
 // eslint-disable-next-line no-control-regex
@@ -82,7 +83,7 @@ export function querySummary(text: string): string {
     .map((l) => l.replace(/--.*$/, '').trim())
     .find((l) => l.length > 0);
   if (!line) {
-    return '(空)';
+    return t('(空)');
   }
   return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 }

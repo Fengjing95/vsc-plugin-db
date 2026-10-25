@@ -3,6 +3,7 @@ import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { DbDdlService } from '../services/dbDdlService';
+import { t } from '../services/i18n';
 import type { Logger } from '../services/logger';
 
 /**
@@ -30,7 +31,7 @@ export function openDatabaseDesignPanel(
     void existing.reveal();
     return;
   }
-  const title = target.kind === 'alter' ? `编辑库 · ${target.db}` : '新建库';
+  const title = target.kind === 'alter' ? t('编辑库 · {0}', [target.db ?? '']) : t('新建库');
   const panel = vscode.window.createWebviewPanel(
     'dbExplorer.databaseDesign',
     title,

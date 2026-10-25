@@ -29,6 +29,7 @@ import type { ConnectionManager } from '../services/connectionManager';
 import type { ChangeSetService } from '@db-explorer/core';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
 import type { Logger } from '../services/logger';
+import { t } from '../services/i18n';
 
 /** M5 Console 面板方法门面（console.*，rpcHost 完成 zod 校验后调用） */
 export interface ConsoleRpcFacade {
@@ -99,7 +100,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
     const requireEditable = async (connId: string, db: string, obj: string): Promise<void> => {
       const permission = await deps.editGuard!.getPermission(connId, db, obj);
       if (!permission.enabled) {
-        throw new DriverError('E_READONLY', permission.reason ?? '当前视图不可编辑');
+        throw new DriverError('E_READONLY', permission.reason ?? t('当前视图不可编辑'));
       }
     };
 
@@ -112,7 +113,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
       switch (req.method) {
         case RpcMethods.handshake: {
           HandshakeParamsSchema.parse(req.params ?? {});
-          let edit: EditPermission = { enabled: false, reason: '此视图不支持编辑' };
+          let edit: EditPermission = { enabled: false, reason: t('此视图不支持编辑') };
           if (
             deps.editGuard &&
             deps.changesets &&
@@ -128,7 +129,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
               );
             } catch (err) {
               deps.logger.warn('rpc', `编辑权限判定失败（视为只读）: ${String(err)}`);
-              edit = { enabled: false, reason: '编辑权限判定失败，请刷新重试' };
+              edit = { enabled: false, reason: t('编辑权限判定失败，请刷新重试') };
             }
           }
           respond(true, {
@@ -181,7 +182,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
               // 用户手写 SQL 片段错误：除 webview toast 外，经全局通知呈现
               // （VSCode 通知可点击展开完整详情，满足“看报错详细信息”）
               if (err instanceof DriverError && err.code === 'E_VALIDATION') {
-                void vscode.window.showErrorMessage(`筛选条件有误：${err.message}`);
+                void vscode.window.showErrorMessage(t('筛选条件有误：{0}', [err.message]));
               }
               throw err;
             }
@@ -213,7 +214,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             await requireEditable(p.connId, p.db, p.obj);
             const cs = deps.changesets!.snapshot(deps.viewId);
             if (cs.inserts.length + cs.updates.length + cs.deletes.length === 0) {
-              throw new DriverError('E_VALIDATION', '没有可提交的变更');
+              throw new DriverError('E_VALIDATION', t('没有可提交的变更'));
             }
             const conn = await deps.connections!.ensureConnected(p.connId);
             const items = await deps.host!.previewChanges(conn, p.db, p.obj, cs, {
@@ -231,12 +232,12 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             await requireEditable(p.connId, p.db, p.obj);
             const cs = deps.changesets!.snapshot(deps.viewId);
             if (cs.inserts.length + cs.updates.length + cs.deletes.length === 0) {
-              throw new DriverError('E_VALIDATION', '没有可提交的变更');
+              throw new DriverError('E_VALIDATION', t('没有可提交的变更'));
             }
             // DangerGuard（概要设计 §5.8）：prod 环境强制输入表名确认
             const confirmed = await deps.editGuard!.confirmApply(p.connId, p.obj);
             if (!confirmed) {
-              throw new DriverError('E_CANCELED', '已取消提交（表名不匹配或已取消）');
+              throw new DriverError('E_CANCELED', t('已取消提交（表名不匹配或已取消）'));
             }
             const conn = await deps.connections!.ensureConnected(p.connId);
             try {
@@ -288,7 +289,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             const p = GetDdlParamsSchema.parse(req.params);
             const conn = await deps.connections.ensureConnected(p.connId);
             if (typeof conn.getDdl !== 'function') {
-              throw new DriverError('E_UNSUPPORTED', '当前驱动未实现 DDL 查看');
+              throw new DriverError('E_UNSUPPORTED', t('当前驱动未实现 DDL 查看'));
             }
             respond(true, { result: { ddl: await conn.getDdl(p.db, p.obj) } });
             return;
@@ -303,7 +304,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
             const p = CellFetchParamsSchema.parse(req.params);
             const conn = await deps.connections.ensureConnected(p.connId);
             if (typeof conn.fetchCell !== 'function') {
-              throw new DriverError('E_UNSUPPORTED', '当前驱动未实现大字段按需拉取');
+              throw new DriverError('E_UNSUPPORTED', t('当前驱动未实现大字段按需拉取'));
             }
             respond(true, { result: { value: await conn.fetchCell(p.db, p.obj, p.rowKey, p.column) } });
             return;
@@ -426,7 +427,7 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
       }
 
       respond(false, {
-        error: { code: 'E_UNKNOWN_METHOD', message: `当前视图不支持 "${req.method}"` },
+        error: { code: 'E_UNKNOWN_METHOD', message: t('当前视图不支持 "{0}"', [req.method]) },
       });
     } catch (err) {
       respond(false, { error: toRpcError(err) });
@@ -440,7 +441,7 @@ function toRpcError(err: unknown): RpcError {
   }
   return {
     code: 'E_INTERNAL',
-    message: '操作失败，详情见输出面板 "Database Explorer"',
+    message: t('操作失败，详情见输出面板 "Database Explorer"'),
     detail: String(err),
   };
 }

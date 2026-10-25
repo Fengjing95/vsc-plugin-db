@@ -38,14 +38,14 @@
       "activitybar": [
         {
           "id": "dbExplorer-container",
-          "title": "数据库",
+          "title": "%viewsContainers.activitybar.title%",
           "icon": "media/database.svg"
         }
       ],
       "panel": [
         {
           "id": "dbExplorer-console-result",
-          "title": "SQL 结果",
+          "title": "%viewsContainers.panel.title%",
           "icon": "media/database.svg"
         }
       ]
@@ -54,14 +54,14 @@
       "dbExplorer-container": [
         {
           "id": "dbExplorer.connections",
-          "name": "连接",
+          "name": "%views.connections.name%",
           "type": "tree"
         }
       ],
       "dbExplorer-console-result": [
         {
           "id": "dbExplorer.consoleResult",
-          "name": "SQL 结果",
+          "name": "%views.consoleResult.name%",
           "type": "webview"
         }
       ]
@@ -69,248 +69,248 @@
     "commands": [
       {
         "command": "dbExplorer.focus",
-        "title": "聚焦数据库视图",
-        "category": "数据库"
+        "title": "%command.dbExplorer.focus.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.newConnection",
-        "title": "新建连接",
-        "category": "数据库",
+        "title": "%command.dbExplorer.newConnection.title%",
+        "category": "%command.category%",
         "icon": "$(add)"
       },
       {
         "command": "dbExplorer.editConnection",
-        "title": "编辑连接",
-        "category": "数据库",
+        "title": "%command.dbExplorer.editConnection.title%",
+        "category": "%command.category%",
         "icon": "$(edit)"
       },
       {
         "command": "dbExplorer.copyConnection",
-        "title": "复制连接",
-        "category": "数据库"
+        "title": "%command.dbExplorer.copyConnection.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.deleteConnection",
-        "title": "删除连接",
-        "category": "数据库",
+        "title": "%command.dbExplorer.deleteConnection.title%",
+        "category": "%command.category%",
         "icon": "$(trash)"
       },
       {
         "command": "dbExplorer.refresh",
-        "title": "刷新",
-        "category": "数据库",
+        "title": "%command.dbExplorer.refresh.title%",
+        "category": "%command.category%",
         "icon": "$(refresh)"
       },
       {
         "command": "dbExplorer.refreshNode",
-        "title": "刷新",
-        "category": "数据库",
+        "title": "%command.dbExplorer.refresh.title%",
+        "category": "%command.category%",
         "icon": "$(refresh)"
       },
       {
         "command": "dbExplorer.viewDdl",
-        "title": "查看 DDL",
-        "category": "数据库"
+        "title": "%command.dbExplorer.viewDdl.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.createDatabase",
-        "title": "新建库",
+        "title": "%command.dbExplorer.createDatabase.title%",
         "icon": "$(add)",
-        "category": "数据库"
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.alterDatabase",
-        "title": "编辑库",
+        "title": "%command.dbExplorer.alterDatabase.title%",
         "icon": "$(edit)",
-        "category": "数据库"
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.dropDatabase",
-        "title": "删除库",
-        "category": "数据库"
+        "title": "%command.dbExplorer.dropDatabase.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.createTable",
-        "title": "新建表",
-        "category": "数据库",
+        "title": "%command.dbExplorer.createTable.title%",
+        "category": "%command.category%",
         "icon": "$(add)"
       },
       {
         "command": "dbExplorer.alterTable",
-        "title": "修改表结构",
-        "category": "数据库",
+        "title": "%command.dbExplorer.alterTable.title%",
+        "category": "%command.category%",
         "icon": "$(edit)"
       },
       {
         "command": "dbExplorer.dropTable",
-        "title": "删除表",
-        "category": "数据库"
+        "title": "%command.dbExplorer.dropTable.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.generateCode",
-        "title": "由表结构生成代码",
-        "category": "数据库"
+        "title": "%command.dbExplorer.generateCode.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.copyName",
-        "title": "复制名称",
-        "category": "数据库"
+        "title": "%command.dbExplorer.copyName.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.addColumn",
-        "title": "新增列",
-        "category": "数据库",
+        "title": "%command.dbExplorer.addColumn.title%",
+        "category": "%command.category%",
         "icon": "$(add)"
       },
       {
         "command": "dbExplorer.editColumn",
-        "title": "编辑列",
-        "category": "数据库",
+        "title": "%command.dbExplorer.editColumn.title%",
+        "category": "%command.category%",
         "icon": "$(edit)"
       },
       {
         "command": "dbExplorer.dropColumn",
-        "title": "删除列",
-        "category": "数据库"
+        "title": "%command.dbExplorer.dropColumn.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.copyQualifiedName",
-        "title": "复制全限定名 (库.表.列)",
-        "category": "数据库"
+        "title": "%command.dbExplorer.copyQualifiedName.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.generateSelect",
-        "title": "生成 SELECT",
-        "category": "数据库"
+        "title": "%command.dbExplorer.generateSelect.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.openTable",
-        "title": "打开表格视图",
-        "category": "数据库",
+        "title": "%command.dbExplorer.openTable.title%",
+        "category": "%command.category%",
         "icon": "$(link-external)"
       },
       {
         "command": "dbExplorer.queries.create",
-        "title": "新增查询",
-        "category": "数据库",
+        "title": "%command.dbExplorer.queries.create.title%",
+        "category": "%command.category%",
         "icon": "$(add)"
       },
       {
         "command": "dbExplorer.queries.openDir",
-        "title": "打开查询目录",
-        "category": "数据库",
+        "title": "%command.dbExplorer.queries.openDir.title%",
+        "category": "%command.category%",
         "icon": "$(folder-opened)"
       },
       {
         "command": "dbExplorer.queries.delete",
-        "title": "删除查询",
-        "category": "数据库",
+        "title": "%command.dbExplorer.queries.delete.title%",
+        "category": "%command.category%",
         "icon": "$(trash)"
       },
       {
         "command": "dbExplorer.queries.rename",
-        "title": "重命名查询",
-        "category": "数据库",
+        "title": "%command.dbExplorer.queries.rename.title%",
+        "category": "%command.category%",
         "icon": "$(edit)"
       },
       {
         "command": "dbExplorer.queries.open",
-        "title": "打开查询",
-        "category": "数据库",
+        "title": "%command.dbExplorer.queries.open.title%",
+        "category": "%command.category%",
         "icon": "$(go-to-file)"
       },
       {
         "command": "dbExplorer.executeQuery",
-        "title": "执行 SQL",
-        "category": "数据库"
+        "title": "%command.dbExplorer.executeQuery.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.executeQueryAt",
-        "title": "执行语句（CodeLens 入口）",
-        "category": "数据库"
+        "title": "%command.dbExplorer.executeQueryAt.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.executeQueryAll",
-        "title": "执行全部语句",
-        "category": "数据库"
+        "title": "%command.dbExplorer.executeQueryAll.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.consoleSelectConnection",
-        "title": "SQL Console：选择连接/数据库",
-        "category": "数据库"
+        "title": "%command.dbExplorer.consoleSelectConnection.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.queryHistory",
-        "title": "SQL 执行历史",
-        "category": "数据库"
+        "title": "%command.dbExplorer.queryHistory.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.disconnectConnection",
-        "title": "断开连接",
-        "category": "数据库",
+        "title": "%command.dbExplorer.disconnectConnection.title%",
+        "category": "%command.category%",
         "icon": "$(debug-disconnect)"
       },
       {
         "command": "dbExplorer.saveQuery",
-        "title": "保存查询",
-        "category": "数据库"
+        "title": "%command.dbExplorer.saveQuery.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.openSavedQuery",
-        "title": "打开保存的查询",
-        "category": "数据库"
+        "title": "%command.dbExplorer.openSavedQuery.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.formatSql",
-        "title": "格式化 SQL",
-        "category": "数据库"
+        "title": "%command.dbExplorer.formatSql.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.showLog",
-        "title": "打开日志",
-        "category": "数据库"
+        "title": "%command.dbExplorer.showLog.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.showErDiagram",
-        "title": "查看 ER 图",
-        "category": "数据库",
+        "title": "%command.dbExplorer.showErDiagram.title%",
+        "category": "%command.category%",
         "icon": "$(graph-scatter)"
       },
       {
         "command": "dbExplorer.settings",
-        "title": "设置",
-        "category": "数据库",
+        "title": "%command.dbExplorer.settings.title%",
+        "category": "%command.category%",
         "icon": "$(settings-gear)"
       },
       {
         "command": "dbExplorer.ai.settings",
-        "title": "AI 设置",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.settings.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.ai.generateSql",
-        "title": "AI 生成 SQL",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.generateSql.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.ai.explainSql",
-        "title": "AI 解释 SQL",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.explainSql.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.ai.fixErrorAt",
-        "title": "AI 修复建议（CodeLens 入口）",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.fixErrorAt.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.ai.acceptFix",
-        "title": "AI 修复建议：保留更改",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.acceptFix.title%",
+        "category": "%command.category%"
       },
       {
         "command": "dbExplorer.ai.discardFix",
-        "title": "AI 修复建议：放弃",
-        "category": "数据库"
+        "title": "%command.dbExplorer.ai.discardFix.title%",
+        "category": "%command.category%"
       }
     ],
     "menus": {
@@ -544,22 +544,22 @@
         "dbExplorer.query.maxRows": {
           "type": "number",
           "default": 1000,
-          "description": "单次查询/表格取数行数上限"
+          "description": "%config.dbExplorer.query.maxRows%"
         },
         "dbExplorer.query.timeoutMs": {
           "type": "number",
           "default": 15000,
-          "description": "驱动调用默认超时（毫秒）"
+          "description": "%config.dbExplorer.query.timeoutMs%"
         },
         "dbExplorer.connection.connectTimeoutMs": {
           "type": "number",
           "default": 10000,
-          "description": "建连超时（毫秒，含 SSH 隧道建立）"
+          "description": "%config.dbExplorer.connection.connectTimeoutMs%"
         },
         "dbExplorer.export.chunkRows": {
           "type": "number",
           "default": 1000,
-          "description": "导出分页批量（行）"
+          "description": "%config.dbExplorer.export.chunkRows%"
         },
         "dbExplorer.export.defaultFormat": {
           "type": "string",
@@ -567,34 +567,45 @@
           "enum": [
             "csv",
             "json",
-            "xlsx"
+            "xlsx",
+            "ndjson",
+            "markdown",
+            "insert"
           ],
-          "description": "导出默认格式"
+          "enumDescriptions": [
+            "%config.dbExplorer.export.format.csv%",
+            "%config.dbExplorer.export.format.json%",
+            "%config.dbExplorer.export.format.xlsx%",
+            "%config.dbExplorer.export.format.ndjson%",
+            "%config.dbExplorer.export.format.markdown%",
+            "%config.dbExplorer.export.format.insert%"
+          ],
+          "description": "%config.dbExplorer.export.defaultFormat%"
         },
         "dbExplorer.queries.directory": {
           "type": "string",
           "default": "",
-          "description": "查询文件存储目录（树「查询」目录与保存查询；留空用扩展全局存储，不与工作区绑定；支持 ~/ 前缀，如 ~/Documents/db-queries）"
+          "description": "%config.dbExplorer.queries.directory%"
         },
         "dbExplorer.transaction.idleTimeoutMs": {
           "type": "number",
           "default": 300000,
-          "description": "交互式事务空闲超时（毫秒，超时自动 ROLLBACK，D-09/§4.6，默认 5 分钟）"
+          "description": "%config.dbExplorer.transaction.idleTimeoutMs%"
         },
         "dbExplorer.edit.allowNoPrimaryKey": {
           "type": "boolean",
           "default": false,
-          "description": "无主键表开启\"全列匹配\"编辑模式（WHERE 含全部列原值，含二进制列的表仍不可编辑，D-03）"
+          "description": "%config.dbExplorer.edit.allowNoPrimaryKey%"
         },
         "dbExplorer.ai.endpoint": {
           "type": "string",
           "default": "",
-          "description": "AI 服务地址（OpenAI 兼容 base URL，如 https://api.openai.com/v1；API 密钥在 AI 设置页配置、只存系统密钥库）"
+          "description": "%config.dbExplorer.ai.endpoint%"
         },
         "dbExplorer.ai.model": {
           "type": "string",
           "default": "",
-          "description": "AI 模型名（如 deepseek-chat）"
+          "description": "%config.dbExplorer.ai.model%"
         }
       }
     }

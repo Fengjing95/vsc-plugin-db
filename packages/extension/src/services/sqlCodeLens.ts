@@ -11,6 +11,7 @@
  */
 import * as vscode from 'vscode';
 import { splitSqlStatements } from '@db-explorer/core';
+import { t } from './i18n';
 import type { ExecutionAnnotations } from './sqlExecutionDecorations';
 import type { AiAssistService } from './aiAssistService';
 
@@ -38,12 +39,12 @@ export function registerSqlCodeLens(
         lenses.push(
           new vscode.CodeLens(range, {
             command: 'dbExplorer.executeQueryAt',
-            title: '$(play) 执行',
+            title: `$(play) ${t('执行')}`,
             arguments: [doc.uri, pos],
           }),
           new vscode.CodeLens(range, {
             command: 'dbExplorer.ai.generateSql',
-            title: '$(sparkle) 生成 SQL',
+            title: `$(sparkle) ${t('生成 SQL')}`,
             arguments: [doc.uri, pos],
           }),
         );
@@ -54,7 +55,7 @@ export function registerSqlCodeLens(
         lenses.push(
           new vscode.CodeLens(origin, {
             command: 'dbExplorer.ai.generateSql',
-            title: '$(sparkle) 生成 SQL',
+            title: `$(sparkle) ${t('生成 SQL')}`,
             arguments: [doc.uri, new vscode.Position(0, 0)],
           }),
         );
@@ -72,7 +73,7 @@ export function registerSqlCodeLens(
         lenses.push(
           new vscode.CodeLens(new vscode.Range(pos, pos), {
             command: 'dbExplorer.ai.generateSql',
-            title: '$(sparkle) 生成 SQL',
+            title: `$(sparkle) ${t('生成 SQL')}`,
             arguments: [doc.uri, pos],
           }),
         );
@@ -83,7 +84,7 @@ export function registerSqlCodeLens(
         lenses.push(
           new vscode.CodeLens(new vscode.Range(pos, pos), {
             command: 'dbExplorer.ai.fixErrorAt',
-            title: '$(sparkle) 修复建议',
+            title: `$(sparkle) ${t('修复建议')}`,
             arguments: [doc.uri, pos],
           }),
         );
@@ -96,12 +97,12 @@ export function registerSqlCodeLens(
         lenses.push(
           new vscode.CodeLens(range, {
             command: 'dbExplorer.ai.acceptFix',
-            title: '✓ 保留更改',
+            title: `✓ ${t('保留更改')}`,
             arguments: [],
           }),
           new vscode.CodeLens(range, {
             command: 'dbExplorer.ai.discardFix',
-            title: '✕ 放弃',
+            title: `✕ ${t('放弃')}`,
             arguments: [],
           }),
         );

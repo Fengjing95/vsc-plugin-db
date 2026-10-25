@@ -8,6 +8,7 @@ import {
   type CompletionItemDescriptor,
 } from '@db-explorer/core';
 import type { ConsoleService } from './consoleService';
+import { t } from './i18n';
 
 /**
  * Console 补全（概要设计 §5.5.3 / 评审 P1-1）：
@@ -61,7 +62,7 @@ export function registerConsoleCompletion(service: ConsoleService): vscode.Dispo
         // P1-1：未绑定 → 关键字 + 常用标准函数 + 通用片段（无连接元数据）
         return [
           ...BASE_KEYWORDS.map((k, i) => toItem({ label: k, kind: 'keyword' }, i)),
-          ...BASE_FUNCTIONS.map((f, i) => toItem({ label: f, kind: 'function', detail: '函数' }, i)),
+          ...BASE_FUNCTIONS.map((f, i) => toItem({ label: f, kind: 'function', detail: t('函数') }, i)),
           ...GENERIC_SNIPPETS.map((s, i) =>
             toItem({ label: s.label, kind: 'snippet', detail: s.description ?? s.body, insert: s.body }, i),
           ),

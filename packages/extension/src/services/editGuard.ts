@@ -11,6 +11,7 @@ import {
 } from '@db-explorer/core';
 import type { EditPermission, ViewUiState } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
+import { t } from './i18n';
 import type { Logger } from './logger';
 import type { MetadataCache } from '@db-explorer/core';
 
@@ -63,7 +64,7 @@ export class EditGuard {
     for (const sql of statements) {
       if (!isReadStatement(sql, dialectId)) {
         this.logger.warn('dangerGuard', '只读连接拒绝非读语句（fail-closed）');
-        throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许查询语句');
+        throw new DriverError('E_READONLY', t('连接已开启只读保护，仅允许查询语句'));
       }
     }
   }
@@ -93,7 +94,7 @@ export class EditGuard {
           : isProvablyReadRedisCommand(command);
       if (!readable) {
         this.logger.warn('dangerGuard', '只读连接拒绝非读命令（fail-closed）');
-        throw new DriverError('E_READONLY', '连接已开启只读保护，仅允许读命令');
+        throw new DriverError('E_READONLY', t('连接已开启只读保护，仅允许读命令'));
       }
     }
   }
@@ -101,17 +102,17 @@ export class EditGuard {
   private async compute(connId: string, db: string, obj: string): Promise<EditPermission> {
     const cfg = this.connections.getConfig(connId);
     if (!cfg) {
-      return { enabled: false, reason: '连接不存在' };
+      return { enabled: false, reason: t('连接不存在') };
     }
     if (cfg.readOnly) {
-      return { enabled: false, reason: '连接已开启只读保护' };
+      return { enabled: false, reason: t('连接已开启只读保护') };
     }
     const driver = this.connections.getDriver(connId);
     if (!driver) {
-      return { enabled: false, reason: '驱动未注册' };
+      return { enabled: false, reason: t('驱动未注册') };
     }
     if (!driver.capabilities.editable) {
-      return { enabled: false, reason: '当前驱动不支持表格编辑' };
+      return { enabled: false, reason: t('当前驱动不支持表格编辑') };
     }
     const conn = await this.connections.ensureConnected(connId);
     const columns = await this.cache.getColumns(connId, db, obj, () => conn.listColumns(db, obj));
@@ -122,14 +123,14 @@ export class EditGuard {
         .getConfiguration('dbExplorer.edit')
         .get<boolean>('allowNoPrimaryKey', false);
       if (!allow) {
-        return { enabled: false, reason: '无主键表默认只读（可在设置开启"全列匹配"后编辑）' };
+        return { enabled: false, reason: t('无主键表默认只读（可在设置开启"全列匹配"后编辑）') };
       }
       if (columns.some((c) => c.normalizedType === 'binary')) {
-        return { enabled: false, reason: '含二进制列的无主键表不可编辑（D-03）' };
+        return { enabled: false, reason: t('含二进制列的无主键表不可编辑（D-03）') };
       }
       return {
         enabled: true,
-        reason: '无主键表：全列匹配模式（WHERE 含全部列原值，请谨慎编辑）',
+        reason: t('无主键表：全列匹配模式（WHERE 含全部列原值，请谨慎编辑）'),
       };
     }
     return { enabled: true };
@@ -142,8 +143,8 @@ export class EditGuard {
       return true;
     }
     const input = await vscode.window.showInputBox({
-      title: '生产环境提交确认',
-      prompt: `即将向生产表 "${obj}" 提交变更，此操作将直接修改生产数据。请输入表名以确认`,
+      title: t('生产环境提交确认'),
+      prompt: t('即将向生产表 "{0}" 提交变更，此操作将直接修改生产数据。请输入表名以确认', [obj]),
       placeHolder: obj,
       ignoreFocusOut: true,
     });

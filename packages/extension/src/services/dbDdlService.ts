@@ -20,6 +20,7 @@ import {
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import { confirmNameMatch } from './ddlText';
+import { t } from './i18n';
 import { describeError, type Logger } from './logger';
 
 /**
@@ -34,6 +35,8 @@ import { describeError, type Logger } from './logger';
  * 方法在 driver 层（懒连接树菜单同口径，方法存在性裁剪菜单与执行）。
  */
 
+/** 回落最小表单（驱动未实现 getDatabaseFormSchema 时）；
+ *  label '库名' 暂不迁移——B3 批次表单键化统一处理（C-17 迁移规则） */
 const FALLBACK_FORM_SCHEMA: FormSchema = {
   fields: [{ key: 'name', label: '库名', type: 'string', required: true }],
 };
@@ -60,7 +63,7 @@ export class DbDdlService {
     const p = DbDdlLoadParamsSchema.parse(raw);
     const { driver, conn } = await this.requireDbDdlConnection(p.connId, 'buildCreateDatabase');
     if (!driver.getDatabaseFormSchema && typeof driver.buildCreateDatabase !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持新建库');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持新建库'));
     }
     let spec: DatabaseSpec | null = null;
     if (p.kind === 'alter') {
@@ -93,10 +96,10 @@ export class DbDdlService {
     const p = DbDdlExecuteParamsSchema.parse(raw);
     const cfg = this.deps.connections.getConfig(p.connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+      throw new DriverError('E_NOT_FOUND', t('连接不存在或已删除'));
     }
     if (cfg.readOnly) {
-      throw new DriverError('E_READONLY', '只读连接，库级操作被拒绝');
+      throw new DriverError('E_READONLY', t('只读连接，库级操作被拒绝'));
     }
     const { driver, conn } = await this.requireDbDdlConnection(p.connId, 'buildCreateDatabase');
     const statements = await this.buildStatements(driver, conn, p);
@@ -107,7 +110,7 @@ export class DbDdlService {
     if (p.kind === 'alter' || statements.some((s) => s.destructive)) {
       const ok = await this.confirmDdl(p.connId, p.spec.name, p.kind, statements);
       if (!ok) {
-        throw new DriverError('E_CANCELED', '已取消执行');
+        throw new DriverError('E_CANCELED', t('已取消执行'));
       }
     }
     let executed = 0;
@@ -143,25 +146,27 @@ export class DbDdlService {
   async dropDatabase(connId: string, db: string): Promise<boolean> {
     const cfg = this.deps.connections.getConfig(connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+      throw new DriverError('E_NOT_FOUND', t('连接不存在或已删除'));
     }
     if (cfg.readOnly) {
-      throw new DriverError('E_READONLY', '只读连接，库级操作被拒绝');
+      throw new DriverError('E_READONLY', t('只读连接，库级操作被拒绝'));
     }
     const driver = this.deps.connections.getDriver(connId);
     if (!driver || typeof driver.buildDropDatabase !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持删除库');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持删除库'));
     }
     if (!confirmNameMatch(db, await this.promptText(db))) {
       return false;
     }
     if ((cfg.env ?? null) === 'prod') {
+      // 按钮回执比较：构造与比较共用同一 const（C-17 迁移规则 3）
+      const delLabel = t('删除');
       const pick = await vscode.window.showWarningMessage(
-        `即将删除生产库 "${db}"（可能连带其下全部数据）。此操作不可撤销`,
+        t('即将删除生产库 "{0}"（可能连带其下全部数据）。此操作不可撤销', [db]),
         { modal: true },
-        '删除',
+        delLabel,
       );
-      if (pick !== '删除') {
+      if (pick !== delLabel) {
         return false;
       }
     }
@@ -180,7 +185,7 @@ export class DbDdlService {
     this.deps.logger.info('dbddl', `${connId} 删除库 "${db}" 完成（${Date.now() - started}ms）`);
     this.deps.cache.invalidateConnection(connId);
     this.deps.refreshTree();
-    void vscode.window.showInformationMessage(`库 "${db}" 已删除`);
+    void vscode.window.showInformationMessage(t('库 "{0}" 已删除', [db]));
     return true;
   }
 
@@ -192,23 +197,23 @@ export class DbDdlService {
   ): Promise<{ driver: IDatabaseDriver; conn: IConnection }> {
     const driver = this.deps.connections.getDriver(connId);
     if (!driver) {
-      throw new DriverError('E_NOT_FOUND', '驱动未注册');
+      throw new DriverError('E_NOT_FOUND', t('驱动未注册'));
     }
     const conn = await this.deps.connections.ensureConnected(connId);
     if (probe === 'buildCreateDatabase' && typeof driver.buildCreateDatabase !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持新建库');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持新建库'));
     }
     return { driver, conn };
   }
 
   private async currentMetaOf(conn: IConnection, db: string | undefined): Promise<DatabaseMeta> {
     if (!db) {
-      throw new DriverError('E_VALIDATION', '编辑库缺少目标库名');
+      throw new DriverError('E_VALIDATION', t('编辑库缺少目标库名'));
     }
     const dbs = await conn.listDatabases();
     const current = dbs.find((d) => d.name === db);
     if (!current) {
-      throw new DriverError('E_NOT_FOUND', `库 "${db}" 不存在（可能已被删除，请刷新后重试）`);
+      throw new DriverError('E_NOT_FOUND', t('库 "{0}" 不存在（可能已被删除，请刷新后重试）', [db]));
     }
     return current;
   }
@@ -221,12 +226,12 @@ export class DbDdlService {
   ): Promise<DdlStatement[]> {
     if (p.kind === 'create') {
       if (typeof driver.buildCreateDatabase !== 'function') {
-        throw new DriverError('E_UNSUPPORTED', '当前驱动不支持新建库');
+        throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持新建库'));
       }
       return driver.buildCreateDatabase(p.spec);
     }
     if (typeof driver.buildAlterDatabase !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持编辑库');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持编辑库'));
     }
     const current = await this.currentMetaOf(_conn, p.db);
     return driver.buildAlterDatabase(current.name, p.spec, current);
@@ -234,8 +239,8 @@ export class DbDdlService {
 
   private async promptText(db: string): Promise<string | undefined> {
     return vscode.window.showInputBox({
-      title: '删除库确认',
-      prompt: `即将删除库 "${db}"（可能连带其下全部数据）。此操作不可撤销，请输入库名以确认`,
+      title: t('删除库确认'),
+      prompt: t('即将删除库 "{0}"（可能连带其下全部数据）。此操作不可撤销，请输入库名以确认', [db]),
       placeHolder: db,
       ignoreFocusOut: true,
     });
@@ -251,18 +256,29 @@ export class DbDdlService {
     const destructive = statements.filter((s) => s.destructive);
     if (env === 'prod') {
       const input = await vscode.window.showInputBox({
-        title: '生产环境库级变更确认',
-        prompt: `即将对生产库 "${db}" 执行 ${statements.length} 条语句（其中 ${destructive.length} 条可能造成数据丢失）。请输入库名以确认`,
+        title: t('生产环境库级变更确认'),
+        prompt: t('即将对生产库 "{0}" 执行 {1} 条语句（其中 {2} 条可能造成数据丢失）。请输入库名以确认', [
+          db,
+          statements.length,
+          destructive.length,
+        ]),
         placeHolder: db,
         ignoreFocusOut: true,
       });
       return input?.trim() === db;
     }
+    // 条件拼接句拆完整句键（C-17 迁移规则 4）；按钮回执构造与比较共用同一 const（规则 3）
+    const kindLabel = kind === 'create' ? t('新建库') : t('编辑库');
+    const message =
+      destructive.length > 0
+        ? t('{0}：{1}（{2} 条语句，{3} 条可能造成数据丢失）', [kindLabel, db, statements.length, destructive.length])
+        : t('{0}：{1}（{2} 条语句）', [kindLabel, db, statements.length]);
+    const execLabel = t('执行');
     const pick = await vscode.window.showWarningMessage(
-      `${kind === 'create' ? '新建库' : '编辑库'}：${db}（${statements.length} 条语句${destructive.length > 0 ? `，${destructive.length} 条可能造成数据丢失` : ''}）`,
+      message,
       { modal: true, detail: statements.map((s) => s.sql).join('\n\n').slice(0, 2000) },
-      '执行',
+      execLabel,
     );
-    return pick === '执行';
+    return pick === execLabel;
   }
 }

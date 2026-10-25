@@ -24,6 +24,7 @@ import {
 import type { ConnectionManager } from './connectionManager';
 import { describeError, type Logger } from './logger';
 import { confirmNameMatch, quoteWith } from './ddlText';
+import { t } from './i18n';
 
 /**
  * 表结构编辑服务（M8-B2，概要 §5.9 / 交互稿 §12）：
@@ -109,10 +110,10 @@ export class DdlService {
     const p = DdlExecuteParamsSchema.parse(raw);
     const cfg = this.deps.connections.getConfig(p.connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+      throw new DriverError('E_NOT_FOUND', t('连接不存在或已删除'));
     }
     if (cfg.readOnly) {
-      throw new DriverError('E_READONLY', '只读连接，表结构执行被拒绝');
+      throw new DriverError('E_READONLY', t('只读连接，表结构执行被拒绝'));
     }
     const conn = await this.requireDdlConnection(p.connId);
     const { kind, statements } = await this.buildStatements(conn, p);
@@ -123,7 +124,7 @@ export class DdlService {
     if (kind === 'alter' || statements.some((s) => s.destructive)) {
       const ok = await this.confirmDdl(p.connId, p.obj ?? p.spec.name, kind, statements);
       if (!ok) {
-        throw new DriverError('E_CANCELED', '已取消执行');
+        throw new DriverError('E_CANCELED', t('已取消执行'));
       }
     }
     let executed = 0;
@@ -167,15 +168,15 @@ export class DdlService {
   async dropColumn(connId: string, db: string, obj: string, column: string): Promise<boolean> {
     const cfg = this.deps.connections.getConfig(connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+      throw new DriverError('E_NOT_FOUND', t('连接不存在或已删除'));
     }
     if (cfg.readOnly) {
-      throw new DriverError('E_READONLY', '只读连接，写操作被拒绝');
+      throw new DriverError('E_READONLY', t('只读连接，写操作被拒绝'));
     }
     const conn = await this.requireDdlConnection(connId);
     const current = await this.baselineOf(conn, db, obj);
     if (!current.columns.some((c) => c.name === column)) {
-      throw new DriverError('E_NOT_FOUND', `列 "${column}" 不存在（表结构可能已变更，请刷新后重试）`);
+      throw new DriverError('E_NOT_FOUND', t('列 "{0}" 不存在（表结构可能已变更，请刷新后重试）', [column]));
     }
     const target: TableSpec = {
       ...current,
@@ -205,7 +206,7 @@ export class DdlService {
     this.deps.logger.info('ddl', `${connId}/${db}.${obj} 删除列 ${column} 完成（${Date.now() - started}ms）`);
     this.deps.cache.invalidateDb(connId, db);
     this.deps.refreshTree();
-    void vscode.window.showInformationMessage(`列 "${column}" 已删除`);
+    void vscode.window.showInformationMessage(t('列 "{0}" 已删除', [column]));
     return true;
   }
 
@@ -218,10 +219,10 @@ export class DdlService {
   ): Promise<boolean> {
     const cfg = this.deps.connections.getConfig(connId);
     if (!cfg) {
-      throw new DriverError('E_NOT_FOUND', '连接不存在或已删除');
+      throw new DriverError('E_NOT_FOUND', t('连接不存在或已删除'));
     }
     if (cfg.readOnly) {
-      throw new DriverError('E_READONLY', '只读连接，写操作被拒绝');
+      throw new DriverError('E_READONLY', t('只读连接，写操作被拒绝'));
     }
     if (!confirmNameMatch(obj, await this.promptText(action, obj))) {
       return false;
@@ -239,15 +240,21 @@ export class DdlService {
     this.deps.logger.info('ddl', `${connId}/${db}.${obj} ${action}完成（${Date.now() - started}ms）`);
     this.deps.cache.invalidateDb(connId, db);
     this.deps.refreshTree();
-    void vscode.window.showInformationMessage(`表 "${obj}" 已删除`);
+    void vscode.window.showInformationMessage(t('表 "{0}" 已删除', [obj]));
     return true;
   } // ── 确认流（§6 / 交互稿 §12.2）────────────────────────────
 
-  /** 树直操作确认文案（§6）：输入名称完全匹配才放行 */
+  /** 树直操作确认文案（§6）：输入名称完全匹配才放行。
+   *  action 联合类型（'删除表' | '删除列'）是内部标识 + 原中文显示文案双重身份——
+   *  实参与日志保持原样（日志不翻译），仅在此处映射为 t() 显示文案（C-17 迁移规则 5） */
   private async promptText(action: '删除表' | '删除列', name: string): Promise<string | undefined> {
+    const actionLabel = action === '删除表' ? t('删除表') : t('删除列');
+    const isTable = action === '删除表';
     return vscode.window.showInputBox({
-      title: `${action}确认`,
-      prompt: `即将${action === '删除表' ? '删除表及其全部数据' : '删除该列及其数据'}："${name}"。此操作不可撤销，请输入${action === '删除表' ? '表名' : '列名'}以确认`,
+      title: t('{0}确认', [actionLabel]),
+      prompt: isTable
+        ? t('即将删除表及其全部数据："{0}"。此操作不可撤销，请输入表名以确认', [name])
+        : t('即将删除该列及其数据："{0}"。此操作不可撤销，请输入列名以确认', [name]),
       placeHolder: name,
       ignoreFocusOut: true,
     });
@@ -263,19 +270,30 @@ export class DdlService {
     const destructive = statements.filter((s) => s.destructive);
     if (env === 'prod') {
       const input = await vscode.window.showInputBox({
-        title: '生产环境结构变更确认',
-        prompt: `即将对生产表 "${obj}" 执行 ${statements.length} 条结构变更语句（其中 ${destructive.length} 条可能造成数据丢失）。请输入表名以确认`,
+        title: t('生产环境结构变更确认'),
+        prompt: t('即将对生产表 "{0}" 执行 {1} 条结构变更语句（其中 {2} 条可能造成数据丢失）。请输入表名以确认', [
+          obj,
+          statements.length,
+          destructive.length,
+        ]),
         placeHolder: obj,
         ignoreFocusOut: true,
       });
       return input?.trim() === obj;
     }
+    // 条件拼接句拆完整句键（C-17 迁移规则 4）；按钮回执构造与比较共用同一 const（规则 3）
+    const kindLabel = kind === 'create' ? t('创建表') : t('修改表结构');
+    const message =
+      destructive.length > 0
+        ? t('{0}：{1}（{2} 条语句，{3} 条可能造成数据丢失）', [kindLabel, obj, statements.length, destructive.length])
+        : t('{0}：{1}（{2} 条语句）', [kindLabel, obj, statements.length]);
+    const execLabel = t('执行');
     const pick = await vscode.window.showWarningMessage(
-      `${kind === 'create' ? '创建表' : '修改表结构'}：${obj}（${statements.length} 条语句${destructive.length > 0 ? `，${destructive.length} 条可能造成数据丢失` : ''}）`,
+      message,
       { modal: true, detail: statements.map((s) => s.sql).join('\n\n').slice(0, 2000) },
-      '执行',
+      execLabel,
     );
-    return pick === '执行';
+    return pick === execLabel;
   }
 
   // ── 内部 ─────────────────────────────────────────────────
@@ -283,7 +301,7 @@ export class DdlService {
   private async requireDdlConnection(connId: string): Promise<IConnection> {
     const conn = await this.deps.connections.ensureConnected(connId);
     if (!conn.buildCreateTable || !conn.buildAlterTable) {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持表结构编辑');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持表结构编辑'));
     }
     return conn;
   }

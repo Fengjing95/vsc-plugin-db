@@ -4,6 +4,7 @@ import type { DriverHost } from '@db-explorer/core';
 import type { ExportFormat } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import { safeFileName } from './csvJson';
+import { t } from './i18n';
 import type { Logger } from './logger';
 import { ExportTaskRunner, type ExportTaskBase } from './exportTasks';
 
@@ -101,13 +102,13 @@ async function pickTargetFile(
     csv: { CSV: ['csv'] },
     json: { JSON: ['json'] },
     xlsx: { Excel: ['xlsx'] },
-    ndjson: { 'NDJSON（换行分隔 JSON）': ['ndjson'] },
+    ndjson: { [t('NDJSON（换行分隔 JSON）')]: ['ndjson'] },
     markdown: { Markdown: ['md'] },
-    insert: { 'SQL（INSERT）': ['sql'] },
+    insert: { [t('SQL（INSERT）')]: ['sql'] },
   };
   const target = await vscode.window.showSaveDialog({
     defaultUri,
-    saveLabel: '导出',
+    saveLabel: t('导出'),
     filters: filters[format],
   });
   return target?.fsPath;

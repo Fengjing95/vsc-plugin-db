@@ -11,6 +11,7 @@ import {
   type AiPromptContext,
 } from '@db-explorer/core';
 import type { AiFixErrorResult, ConsoleAi } from '@db-explorer/protocol';
+import { t } from './i18n';
 import { describeError, type Logger } from './logger';
 import type { ConnectionManager } from './connectionManager';
 import type { ConsoleService } from './consoleService';
@@ -168,7 +169,7 @@ export class AiAssistService {
       editor.setDecorations(this.addDecoration, [
         {
           range: new vscode.Range(doc.positionAt(addStart), doc.positionAt(addStart + fix.suggestedSql.length)),
-          hoverMessage: 'AI 修复建议（绿色段）——行首选择「保留更改 / 放弃」',
+          hoverMessage: t('AI 修复建议（绿色段）——行首选择「保留更改 / 放弃」'),
         },
       ]);
     }
@@ -251,7 +252,7 @@ export class AiAssistService {
     const current = doc.getText(range);
     if (!current.startsWith(fix.originalSql) || !current.endsWith(fix.suggestedSql)) {
       this.clearInlineFix();
-      void vscode.window.showInformationMessage('文档已修改，修复建议已失效——请重新执行后再试。');
+      void vscode.window.showInformationMessage(t('文档已修改，修复建议已失效——请重新执行后再试。'));
       return;
     }
     const applied = editor
@@ -296,10 +297,11 @@ export class AiAssistService {
     label: string,
   ): void {
     const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
+    const discardBtn = t('放弃这次修改');
     void vscode.window
-      .showInformationMessage(`${label}（Ctrl+Z 可撤销）`, '放弃这次修改')
+      .showInformationMessage(t('{0}（Ctrl+Z 可撤销）', [label]), discardBtn)
       .then((pick) => {
-        if (pick !== '放弃这次修改') {
+        if (pick !== discardBtn) {
           return;
         }
         try {
@@ -309,7 +311,7 @@ export class AiAssistService {
             doc.positionAt(doc.offsetAt(start) + appliedText.length),
           );
           if (norm(doc.getText(appliedRange)) !== norm(appliedText)) {
-            void vscode.window.showInformationMessage('后续编辑已介入，无法自动放弃——请用 Ctrl+Z 逐步撤销。');
+            void vscode.window.showInformationMessage(t('后续编辑已介入，无法自动放弃——请用 Ctrl+Z 逐步撤销。'));
             return;
           }
           void editor.edit((builder) => builder.replace(appliedRange, originalText)).then((ok) => {
@@ -318,7 +320,7 @@ export class AiAssistService {
             }
           });
         } catch {
-          void vscode.window.showInformationMessage('编辑器已关闭，无法自动放弃——重新打开后用 Ctrl+Z。');
+          void vscode.window.showInformationMessage(t('编辑器已关闭，无法自动放弃——重新打开后用 Ctrl+Z。'));
         }
       });
   }
@@ -327,18 +329,19 @@ export class AiAssistService {
     if (await this.settings.isConfigured()) {
       return true;
     }
+    const setUp = t('去配置');
     const pick = await vscode.window.showInformationMessage(
-      'AI 功能需要先配置模型服务（API 地址 / 模型 / API 密钥）。',
-      '去配置',
+      t('AI 功能需要先配置模型服务（API 地址 / 模型 / API 密钥）。'),
+      setUp,
     );
-    if (pick === '去配置') {
+    if (pick === setUp) {
       this.openSettingsPanel();
     }
     return false;
   }
 
   private notConfigured(): DriverError {
-    return new DriverError('E_AI_NOT_CONFIGURED', 'AI 功能需要先配置模型服务（API 地址 / 模型 / API 密钥）');
+    return new DriverError('E_AI_NOT_CONFIGURED', t('AI 功能需要先配置模型服务（API 地址 / 模型 / API 密钥）'));
   }
 
   /** 统一错误呈现：取消静默、未配置引导、其余 error Toast（交互稿 §15.5） */
@@ -347,15 +350,16 @@ export class AiAssistService {
       return; // 用户取消不提示
     }
     if (DriverError.is(err) && err.code === 'E_AI_NOT_CONFIGURED' && where === 'toast') {
-      void vscode.window.showInformationMessage(err.message, '去配置').then((pick) => {
-        if (pick === '去配置') {
+      const setUp = t('去配置');
+      void vscode.window.showInformationMessage(err.message, setUp).then((pick) => {
+        if (pick === setUp) {
           this.openSettingsPanel();
         }
       });
       return;
     }
     const text = err instanceof Error ? err.message : String(err);
-    void vscode.window.showErrorMessage(`AI 请求失败：${text}`);
+    void vscode.window.showErrorMessage(t('AI 请求失败：{0}', [text]));
   }
 
   // ── 上下文（绑定库 schema 摘要；>50 表圈选，会话级记忆） ───────────────
@@ -363,7 +367,7 @@ export class AiAssistService {
   /** undefined = 用户在圈选步骤取消 */
   private async loadAiContext(info?: ConsoleBindingInfo): Promise<LoadedContext | undefined> {
     if (!info) {
-      return { context: { tables: [], columns: [] }, label: '未绑定连接（不携带表结构）' };
+      return { context: { tables: [], columns: [] }, label: t('未绑定连接（不携带表结构）') };
     }
     const cfg = this.connections.getConfig(info.connId);
     const label = `${cfg?.name ?? info.connId}${info.db ? ` · ${info.db}` : ''}`;
@@ -397,8 +401,8 @@ export class AiAssistService {
       const qp = vscode.window.createQuickPick();
       qp.canSelectMany = true;
       qp.matchOnDescription = true;
-      qp.title = `选择提供给 AI 的表（当前库共 ${context.tables.length} 张）`;
-      qp.placeholder = '键入过滤，Enter 确认所选（至少一张）——所选表结构将发送给 AI 服务';
+      qp.title = t('选择提供给 AI 的表（当前库共 {0} 张）', [context.tables.length]);
+      qp.placeholder = t('键入过滤，Enter 确认所选（至少一张）——所选表结构将发送给 AI 服务');
       qp.items = context.tables.map((t) => ({ label: t.name, description: t.comment }));
       const remembered = this.tablePickMemory.get(key);
       if (remembered) {
@@ -415,7 +419,7 @@ export class AiAssistService {
       qp.onDidAccept(() => {
         const names = qp.selectedItems.map((i) => i.label);
         if (names.length === 0) {
-          qp.placeholder = '至少选择一张表（Esc 取消）';
+          qp.placeholder = t('至少选择一张表（Esc 取消）');
           return;
         }
         this.tablePickMemory.set(key, names);
@@ -432,7 +436,7 @@ export class AiAssistService {
   async generateSql(uri?: vscode.Uri, position?: vscode.Position): Promise<void> {
     const doc = uri ? await vscode.workspace.openTextDocument(uri) : vscode.window.activeTextEditor?.document;
     if (!doc || doc.languageId !== 'sql') {
-      void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+      void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
       return;
     }
     if (!(await this.ensureConfiguredOrGuide())) {
@@ -443,7 +447,7 @@ export class AiAssistService {
       ? { connId: binding.connId, db: binding.db, consoleId: binding.consoleId }
       : undefined;
     if (info && this.connections.getDriver(info.connId)?.capabilities.supportsSQL === false) {
-      void vscode.window.showInformationMessage('AI 生成仅支持 SQL 数据源。');
+      void vscode.window.showInformationMessage(t('AI 生成仅支持 SQL 数据源。'));
       return;
     }
     const loaded = await this.loadAiContext(info);
@@ -451,8 +455,8 @@ export class AiAssistService {
       return; // 圈选取消
     }
     const nl = await this.askPrompt(
-      `生成 SQL${info ? ` · ${loaded.label}` : ''}`,
-      '描述你要的查询，Enter 生成、Esc 取消',
+      info ? t('生成 SQL · {0}', [loaded.label]) : t('生成 SQL'),
+      t('描述你要的查询，Enter 生成、Esc 取消'),
     );
     if (!nl) {
       return;
@@ -478,11 +482,11 @@ export class AiAssistService {
     const anchorPos = doc.positionAt(anchorOffset);
     // 编辑器内 loading（锚点行尾 spinner 装饰，渲染不入文件）+ 通知进度（右下角常驻可见、
     // 可取消、思考过程滚动显示——实机反馈 #1/#2）
-    this.showEditorStatus(editor, anchorPos, 'AI 正在生成…');
+    this.showEditorStatus(editor, anchorPos, t('AI 正在生成…'));
     let sql = '';
     try {
       sql = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'AI 正在生成 SQL…', cancellable: true },
+        { location: vscode.ProgressLocation.Notification, title: t('AI 正在生成 SQL…'), cancellable: true },
         async (_progress, token) => {
           const controller = new AbortController();
           token.onCancellationRequested(() => controller.abort());
@@ -499,7 +503,7 @@ export class AiAssistService {
       this.clearEditorStatus(editor);
     }
     if (!sql) {
-      void vscode.window.showInformationMessage('AI 未返回可用的 SQL，可重试。');
+      void vscode.window.showInformationMessage(t('AI 未返回可用的 SQL，可重试。'));
       return;
     }
     const offset = anchored ? anchorOffset : doc.offsetAt(editor.selection.active);
@@ -514,7 +518,7 @@ export class AiAssistService {
       'ai',
       `AI 生成完成：${provider.modelId} · ${sql.length} 字符 → ${doc.uri.fsPath}${anchored ? '（语句前插入）' : '（光标处）'}`,
     );
-    this.offerDiscard(editor, doc.positionAt(offset), '', insertText, `已插入 AI 生成的 SQL（${sql.length} 字符）`);
+    this.offerDiscard(editor, doc.positionAt(offset), '', insertText, t('已插入 AI 生成的 SQL（{0} 字符）', [sql.length]));
   }
 
   private askPrompt(title: string, placeholder: string): Promise<string | undefined> {
@@ -547,7 +551,7 @@ export class AiAssistService {
   async explainActiveSql(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') {
-      void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+      void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
       return;
     }
     if (!(await this.ensureConfiguredOrGuide())) {
@@ -559,7 +563,7 @@ export class AiAssistService {
       return; // 未选择连接
     }
     if (this.connections.getDriver(state.connId)?.capabilities.supportsSQL === false) {
-      void vscode.window.showInformationMessage('AI 解释仅支持 SQL 数据源。');
+      void vscode.window.showInformationMessage(t('AI 解释仅支持 SQL 数据源。'));
       return;
     }
     let sql: string | undefined;
@@ -569,7 +573,7 @@ export class AiAssistService {
       sql = statementAtOffset(splitSqlStatements(doc.getText()), doc.offsetAt(editor.selection.active))?.text;
     }
     if (!sql || !sql.trim()) {
-      void vscode.window.showInformationMessage('未找到可解释的 SQL：选中一段 SQL，或把光标放在语句内。');
+      void vscode.window.showInformationMessage(t('未找到可解释的 SQL：选中一段 SQL，或把光标放在语句内。'));
       return;
     }
     const loaded = await this.loadAiContext({ connId: state.connId, db: state.db, consoleId: state.consoleId });
@@ -588,14 +592,14 @@ export class AiAssistService {
   async retryExplain(consoleId: string): Promise<void> {
     const last = this.lastExplains.get(consoleId);
     if (!last) {
-      throw new DriverError('E_NOT_FOUND', '没有可重试的 AI 解释');
+      throw new DriverError('E_NOT_FOUND', t('没有可重试的 AI 解释'));
     }
     if (!(await this.settings.isConfigured())) {
       throw this.notConfigured();
     }
     const loaded = await this.loadAiContext(last.info);
     if (!loaded) {
-      throw new DriverError('E_CANCELED', '已取消');
+      throw new DriverError('E_CANCELED', t('已取消'));
     }
     await this.runExplain(consoleId, last.info, last.sql, loaded);
   }
@@ -677,11 +681,11 @@ export class AiAssistService {
   async fixError(consoleId: string, seq: number): Promise<AiFixErrorResult> {
     const info = this.console.consoleInfoFor(consoleId);
     if (!info) {
-      throw new DriverError('E_NOT_FOUND', 'Console 不存在（可能已关闭）');
+      throw new DriverError('E_NOT_FOUND', t('Console 不存在（可能已关闭）'));
     }
     const item = this.console.errorItemFor(consoleId, seq);
     if (!item || !item.error) {
-      throw new DriverError('E_VALIDATION', '该执行项不是错误或已不存在');
+      throw new DriverError('E_VALIDATION', t('该执行项不是错误或已不存在'));
     }
     // 定位主路径（实机反馈 #3 日志定因）：有快照时**直接用快照里的 uri 打开文档**——
     // 反查重建的 Uri.file(fsPath) 与执行时 doc.uri.toString() 在含空格/特殊字符路径上
@@ -689,13 +693,13 @@ export class AiAssistService {
     const origin = this.console.itemOriginFor(consoleId, seq);
     const fallbackUri = origin ? undefined : this.console.documentUriForConsole(consoleId);
     if (!origin && !fallbackUri) {
-      throw new DriverError('E_VALIDATION', '该错误无文档来源，无法生成修复建议');
+      throw new DriverError('E_VALIDATION', t('该错误无文档来源，无法生成修复建议'));
     }
     if (!(await this.settings.isConfigured())) {
       throw this.notConfigured();
     }
     if (this.connections.getDriver(info.connId)?.capabilities.supportsSQL === false) {
-      throw new DriverError('E_UNSUPPORTED', 'AI 修复仅支持 SQL 数据源');
+      throw new DriverError('E_UNSUPPORTED', t('AI 修复仅支持 SQL 数据源'));
     }
     const doc = await vscode.workspace.openTextDocument(
       origin ? vscode.Uri.parse(origin.uriString) : (fallbackUri as vscode.Uri),
@@ -709,13 +713,13 @@ export class AiAssistService {
       );
       throw new DriverError(
         'E_VALIDATION',
-        '无法在当前文档中定位原语句（文档可能已修改或已关闭重建）——请基于当前文档重新执行后再试',
+        t('无法在当前文档中定位原语句（文档可能已修改或已关闭重建）——请基于当前文档重新执行后再试'),
       );
     }
     const provider = await this.settings.resolveProvider();
     const loaded = await this.loadAiContext({ connId: info.connId, db: info.db, consoleId });
     if (!loaded) {
-      throw new DriverError('E_CANCELED', '已取消');
+      throw new DriverError('E_CANCELED', t('已取消'));
     }
     const { system, user } = buildFixPrompt({
       sql: item.sql,
@@ -735,7 +739,7 @@ export class AiAssistService {
     const suggestedSql = extractSqlFromResponse(response);
     if (!suggestedSql) {
       this.logger.error('ai', `AI 修复失败：模型未返回 SQL（响应 ${response.length} 字符）`);
-      throw new DriverError('E_AI_REQUEST_FAILED', 'AI 未返回可用的 SQL，可重试');
+      throw new DriverError('E_AI_REQUEST_FAILED', t('AI 未返回可用的 SQL，可重试'));
     }
     // 进入内联预览（C 方案二修）：建议 SQL **真实插入**到原语句尾分号之后（另起两行）——
     // 红块（原语句，删除线）+ 绿块（新语句，多行语法高亮）真实对照；「保留更改」= 建议
@@ -751,7 +755,7 @@ export class AiAssistService {
     const insertedText = `\n\n${suggestedSql}`;
     const appliedInsert = await editor.edit((builder) => builder.insert(doc.positionAt(insertOffset), insertedText));
     if (!appliedInsert) {
-      throw new DriverError('E_INTERNAL', '编辑器插入失败，请重试');
+      throw new DriverError('E_INTERNAL', t('编辑器插入失败，请重试'));
     }
     const fixId = `fix-${Date.now()}-${++this.fixSeq}`;
     this.pendingFix = {
@@ -769,12 +773,14 @@ export class AiAssistService {
     this.pendingFixChangeEmitter.fire();
     this.logger.info('ai', `AI 修复建议生成（内联预览）：${consoleId} #${seq} → ${doc.uri.fsPath}（原 ${item.sql.length} 字符 / 建议 ${suggestedSql.length} 字符）`);
     // 通知冗余入口（编辑器标签被盖住时也可操作；不 await——预览态持续到用户操作，P-37 无 finally 依赖）
+    const keepBtn = t('保留更改');
+    const discardBtn = t('放弃');
     void vscode.window
-      .showInformationMessage('已生成修复建议，请在编辑器中选择保留或放弃', '保留更改', '放弃')
+      .showInformationMessage(t('已生成修复建议，请在编辑器中选择保留或放弃'), keepBtn, discardBtn)
       .then((pick) => {
-        if (pick === '保留更改') {
+        if (pick === keepBtn) {
           void this.acceptInlineFix();
-        } else if (pick === '放弃') {
+        } else if (pick === discardBtn) {
           void this.discardInlineFix();
         }
       });
@@ -827,12 +833,12 @@ export class AiAssistService {
     }
     const stmt = statementAtOffset(splitSqlStatements(doc.getText()), doc.offsetAt(position));
     if (!stmt) {
-      void vscode.window.showInformationMessage('该位置已无语句（文档可能刚被编辑）。');
+      void vscode.window.showInformationMessage(t('该位置已无语句（文档可能刚被编辑）。'));
       return;
     }
     const item = this.console.findErrorItemBySql(state.consoleId, stmt.text);
     if (!item) {
-      void vscode.window.showInformationMessage('该语句最近的执行没有错误记录——编辑后请重新执行再试。');
+      void vscode.window.showInformationMessage(t('该语句最近的执行没有错误记录——编辑后请重新执行再试。'));
       return;
     }
     try {
@@ -841,7 +847,9 @@ export class AiAssistService {
       if (DriverError.is(err) && err.code === 'E_AI_ABORTED') {
         return;
       }
-      void vscode.window.showErrorMessage(`AI 修复建议失败：${err instanceof Error ? err.message : String(err)}`);
+      void vscode.window.showErrorMessage(
+        t('AI 修复建议失败：{0}', [err instanceof Error ? err.message : String(err)]),
+      );
     }
   }
 

@@ -1,4 +1,5 @@
 import { DriverError, Emitter, type ISession, type QueryRequest, type ResultSet } from '@db-explorer/core';
+import { t } from './i18n';
 import { describeError, sqlDigest, type Logger } from './logger';
 
 /**
@@ -44,11 +45,11 @@ export class SessionManager {
   /** 开启事务会话（Console BEGIN）：重复开启/能力缺失给出可读错误 */
   async begin(connId: string): Promise<void> {
     if (this.active.has(connId)) {
-      throw new DriverError('E_VALIDATION', '已有进行中的事务（单连接最多 1 个，可 COMMIT/ROLLBACK 结束）');
+      throw new DriverError('E_VALIDATION', t('已有进行中的事务（单连接最多 1 个，可 COMMIT/ROLLBACK 结束）'));
     }
     const conn = await this.host.ensureConnected(connId);
     if (typeof conn.openSession !== 'function') {
-      throw new DriverError('E_UNSUPPORTED', '当前驱动不支持交互式事务（BEGIN/COMMIT/ROLLBACK）');
+      throw new DriverError('E_UNSUPPORTED', t('当前驱动不支持交互式事务（BEGIN/COMMIT/ROLLBACK）'));
     }
     const session = await conn.openSession();
     const entry: ActiveSession = { session, timer: setTimeout(() => undefined, 0) };
@@ -61,7 +62,7 @@ export class SessionManager {
   async execute(connId: string, req: QueryRequest): Promise<ResultSet[]> {
     const entry = this.active.get(connId);
     if (!entry) {
-      throw new DriverError('E_VALIDATION', '没有进行中的事务');
+      throw new DriverError('E_VALIDATION', t('没有进行中的事务'));
     }
     this.arm(connId, entry);
     const started = Date.now();
@@ -88,11 +89,11 @@ export class SessionManager {
   }
 
   async commit(connId: string): Promise<void> {
-    await this.end(connId, 'commit', '事务已提交');
+    await this.end(connId, 'commit', t('事务已提交'));
   }
 
   async rollback(connId: string): Promise<void> {
-    await this.end(connId, 'rollback', '事务已回滚');
+    await this.end(connId, 'rollback', t('事务已回滚'));
   }
 
   dispose(): void {
@@ -108,7 +109,7 @@ export class SessionManager {
   private async end(connId: string, op: 'commit' | 'rollback', label: string): Promise<void> {
     const entry = this.active.get(connId);
     if (!entry) {
-      throw new DriverError('E_VALIDATION', '没有进行中的事务');
+      throw new DriverError('E_VALIDATION', t('没有进行中的事务'));
     }
     clearTimeout(entry.timer);
     this.active.delete(connId);
@@ -118,7 +119,7 @@ export class SessionManager {
       await Promise.resolve(entry.session.dispose()).catch(() => undefined);
       this.changeEmitter.fire();
     }
-    this.notify(`${label}（连接 ${connId.slice(0, 8)}…）`);
+    this.notify(t('{0}（连接 {1}…）', [label, connId.slice(0, 8)]));
   }
 
   /** 重置空闲定时器：超时自动 ROLLBACK（§4.6 防遗忘底线） */
@@ -135,7 +136,7 @@ export class SessionManager {
         .then(() => Promise.resolve(entry.session.dispose()).catch(() => undefined))
         .then(() => {
           this.changeEmitter.fire();
-          this.notify(`事务空闲超过 ${Math.round(this.idleTimeoutMs() / 60_000)} 分钟，已自动回滚`);
+          this.notify(t('事务空闲超过 {0} 分钟，已自动回滚', [Math.round(this.idleTimeoutMs() / 60_000)]));
         });
     }, this.idleTimeoutMs());
   }

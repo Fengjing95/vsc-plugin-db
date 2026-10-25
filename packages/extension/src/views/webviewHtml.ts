@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { messagesFor } from '@db-explorer/protocol';
+import { t } from '../services/i18n';
 import { injectWebviewHtml } from './webviewHtmlInject';
 
 export type { WebviewBootstrap, WebviewPage } from './webviewHtmlInject';
@@ -27,8 +28,8 @@ export function buildWebviewHtml(
   const htmlPath = path.join(root, 'index.html');
   if (!fs.existsSync(htmlPath)) {
     return `<!doctype html><html><body style="font-family: sans-serif; padding: 24px">
-      <h3>未找到 Webview 构建产物</h3>
-      <p>请先在仓库根目录执行 <code>pnpm build</code>（会先构建 webview-ui 再打包扩展）。</p>
+      <h3>${t('未找到 Webview 构建产物')}</h3>
+      <p>${t('请先在仓库根目录执行 {0}（会先构建 webview-ui 再打包扩展）。', ['<code>pnpm build</code>'])}</p>
     </body></html>`;
   }
   const raw = fs.readFileSync(htmlPath, 'utf8');

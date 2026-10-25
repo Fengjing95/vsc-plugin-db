@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import { Client } from 'ssh2';
 import { DriverError, type ConnectionConfig } from '@db-explorer/core';
 import type { FormFieldPayload } from '@db-explorer/protocol';
+import { t } from './i18n';
 import type { KeyValueStore } from './connectionStore';
 
 /**
@@ -26,35 +27,41 @@ export interface SshTunnelConfig {
   insecureHostKey?: boolean;
 }
 
-/** 连接表单的 SSH 字段组（驱动 FormSchema 合并进「高级」分组；sshPassword 不入 options → SecretStorage） */
-export const SSH_FORM_FIELDS: FormFieldPayload[] = [
-  // section/toggle（M8 表单方案 A）：SSH 隧道小节——开关在标题行，开启后才显示以下配置
-  { key: 'sshEnabled', label: 'SSH 隧道', type: 'boolean', default: false, group: '高级', section: 'SSH 隧道' },
-  { key: 'sshHost', label: 'SSH 主机', type: 'string', placeholder: '跳板机地址', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
-  { key: 'sshPort', label: 'SSH 端口', type: 'number', default: 22, validator: 'port', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
-  { key: 'sshUsername', label: 'SSH 用户名', type: 'string', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
-  { key: 'sshPassword', label: 'SSH 密码', type: 'password', group: '高级', section: 'SSH 隧道', toggle: 'sshEnabled' },
-  {
-    key: 'sshPrivateKeyPath',
-    label: 'SSH 私钥路径（可选）',
-    type: 'string',
-    placeholder: '~/.ssh/id_rsa',
-    group: '高级',
-    section: 'SSH 隧道',
-    toggle: 'sshEnabled',
-    hint: '本机私钥文件路径；暂不支持带口令的私钥',
-  },
-  {
-    key: 'sshInsecureHostKey',
-    label: '跳过主机指纹校验',
-    type: 'boolean',
-    default: false,
-    group: '高级',
-    section: 'SSH 隧道',
-    toggle: 'sshEnabled',
-    hint: '⚠ 风险：不校验跳板机主机指纹，连接可被中间人劫持。默认首连录入指纹（TOFU），变更将拒绝',
-  },
-];
+/**
+ * 连接表单的 SSH 字段组（驱动 FormSchema 合并进「高级」分组；sshPassword 不入 options → SecretStorage）。
+ * 惰性函数（C-17/D-25）：模块加载先于 activate 注入 l10n 后端，label/placeholder/section/hint 须在调用时求值；
+ * group 仅作分组判别（webview 按真值分流，不渲染原文），保持字面量。
+ */
+export function getSshFormFields(): FormFieldPayload[] {
+  return [
+    // section/toggle（M8 表单方案 A）：SSH 隧道小节——开关在标题行，开启后才显示以下配置
+    { key: 'sshEnabled', label: t('SSH 隧道'), type: 'boolean', default: false, group: '高级', section: t('SSH 隧道') },
+    { key: 'sshHost', label: t('SSH 主机'), type: 'string', placeholder: t('跳板机地址'), group: '高级', section: t('SSH 隧道'), toggle: 'sshEnabled' },
+    { key: 'sshPort', label: t('SSH 端口'), type: 'number', default: 22, validator: 'port', group: '高级', section: t('SSH 隧道'), toggle: 'sshEnabled' },
+    { key: 'sshUsername', label: t('SSH 用户名'), type: 'string', group: '高级', section: t('SSH 隧道'), toggle: 'sshEnabled' },
+    { key: 'sshPassword', label: t('SSH 密码'), type: 'password', group: '高级', section: t('SSH 隧道'), toggle: 'sshEnabled' },
+    {
+      key: 'sshPrivateKeyPath',
+      label: t('SSH 私钥路径（可选）'),
+      type: 'string',
+      placeholder: '~/.ssh/id_rsa',
+      group: '高级',
+      section: t('SSH 隧道'),
+      toggle: 'sshEnabled',
+      hint: t('本机私钥文件路径；暂不支持带口令的私钥'),
+    },
+    {
+      key: 'sshInsecureHostKey',
+      label: t('跳过主机指纹校验'),
+      type: 'boolean',
+      default: false,
+      group: '高级',
+      section: t('SSH 隧道'),
+      toggle: 'sshEnabled',
+      hint: t('⚠ 风险：不校验跳板机主机指纹，连接可被中间人劫持。默认首连录入指纹（TOFU），变更将拒绝'),
+    },
+  ];
+}
 
 /** 表单 options → cfg.ssh 槽位（connSave 用；sshPassword 已由 secretKeys 拦截不入 options） */
 export function sshConfigFromOptions(options: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -97,7 +104,7 @@ export function sshConfigOf(cfg: ConnectionConfig): SshTunnelConfig | undefined 
   }
   const host = typeof raw.host === 'string' ? raw.host.trim() : '';
   if (!host) {
-    throw new DriverError('E_VALIDATION', 'SSH 隧道已启用但未填写 SSH 主机');
+    throw new DriverError('E_VALIDATION', t('SSH 隧道已启用但未填写 SSH 主机'));
   }
   const port = Number(raw.port ?? 22);
   return {
@@ -159,27 +166,30 @@ export function toSshError(err: unknown, mismatch?: { stored: string; actual: st
   if (mismatch) {
     return new DriverError(
       'E_CONN',
-      `SSH 主机指纹已变更（可能为中间人攻击或跳板机重装）：期望 ${mismatch.stored.slice(0, 12)}…，实际 ${mismatch.actual.slice(0, 12)}…。确认无误后可在连接的高级选项开启「跳过主机指纹校验」`,
+      t(
+        'SSH 主机指纹已变更（可能为中间人攻击或跳板机重装）：期望 {0}…，实际 {1}…。确认无误后可在连接的高级选项开启「跳过主机指纹校验」',
+        [mismatch.stored.slice(0, 12), mismatch.actual.slice(0, 12)],
+      ),
       { detail },
     );
   }
   if (/authentication/i.test(raw) || e.level === 'client-authentication') {
-    return new DriverError('E_AUTH', 'SSH 认证失败：请检查 SSH 用户名/密码或私钥', { detail });
+    return new DriverError('E_AUTH', t('SSH 认证失败：请检查 SSH 用户名/密码或私钥'), { detail });
   }
   if (/verification failed|host key/i.test(raw)) {
-    return new DriverError('E_CONN', 'SSH 主机指纹校验失败', { detail });
+    return new DriverError('E_CONN', t('SSH 主机指纹校验失败'), { detail });
   }
   if (/private key|encoding|encrypted/i.test(raw)) {
-    return new DriverError('E_VALIDATION', 'SSH 私钥无法使用：检查路径与格式（暂不支持带口令私钥）', { detail });
+    return new DriverError('E_VALIDATION', t('SSH 私钥无法使用：检查路径与格式（暂不支持带口令私钥）'), { detail });
   }
   if (/timed out/i.test(raw)) {
-    return new DriverError('E_CONN', 'SSH 连接超时：无法在限定时间内连上跳板机', { detail });
+    return new DriverError('E_CONN', t('SSH 连接超时：无法在限定时间内连上跳板机'), { detail });
   }
   if (
     (e.code !== undefined && ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EHOSTUNREACH', 'EAI_AGAIN'].includes(e.code)) ||
     /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH/.test(raw)
   ) {
-    return new DriverError('E_CONN', '无法连接 SSH 跳板机（网络不可达或拒绝连接）', { detail });
+    return new DriverError('E_CONN', t('无法连接 SSH 跳板机（网络不可达或拒绝连接）'), { detail });
   }
   return new DriverError('E_INTERNAL', raw, { detail });
 }
@@ -208,7 +218,7 @@ export async function openSshTunnel(opts: OpenSshTunnelOptions): Promise<SshTunn
     try {
       privateKey = await fs.promises.readFile(cfg.privateKeyPath);
     } catch {
-      throw new DriverError('E_VALIDATION', `SSH 私钥无法读取：${cfg.privateKeyPath}`);
+      throw new DriverError('E_VALIDATION', t('SSH 私钥无法读取：{0}', [cfg.privateKeyPath]));
     }
   }
 
@@ -255,7 +265,7 @@ export async function openSshTunnel(opts: OpenSshTunnelOptions): Promise<SshTunn
     await new Promise<void>((resolve, reject) => {
       client.once('ready', () => resolve());
       client.once('error', (err: Error) => reject(toSshError(err, mismatch)));
-      client.once('close', () => reject(new DriverError('E_CONN', 'SSH 连接在就绪前关闭')));
+      client.once('close', () => reject(new DriverError('E_CONN', t('SSH 连接在就绪前关闭'))));
       // connect 可同步抛（如用户名缺失 'Invalid username'），需映射为 DriverError
       try {
         client.connect(config);

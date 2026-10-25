@@ -25,6 +25,7 @@ import {
 } from '@db-explorer/protocol';
 import { csvRow, markdownHeader, markdownRow, ndjsonRow, toJsonObject } from './csvJson';
 import type { ConnectionManager } from './connectionManager';
+import { t } from './i18n';
 import { describeError, type Logger } from './logger';
 import { revealConsoleResultView, pushToConsolePanel } from '../views/consolePanel';
 import type { ConsoleHistory } from './consoleHistory';
@@ -154,10 +155,10 @@ export class ConsoleService implements vscode.Disposable {
     );
 
     this.statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
-    this.statusItem.name = 'SQL Console 连接';
+    this.statusItem.name = t('SQL Console 连接');
     this.statusItem.command = 'dbExplorer.consoleSelectConnection';
-    this.statusItem.tooltip = 'SQL Console：点击选择连接/数据库';
-    this.statusItem.text = '$(database) 未绑定连接';
+    this.statusItem.tooltip = t('SQL Console：点击选择连接/数据库');
+    this.statusItem.text = `$(database) ${t('未绑定连接')}`;
     this.statusItem.show();
 
     this.disposables.push(
@@ -267,7 +268,7 @@ export class ConsoleService implements vscode.Disposable {
   async selectConnectionForActiveEditor(): Promise<void> {
     const doc = vscode.window.activeTextEditor?.document;
     if (!doc || doc.languageId !== 'sql') {
-      void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+      void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
       return;
     }
     const picked = await this.pickConnection();
@@ -336,23 +337,23 @@ export class ConsoleService implements vscode.Disposable {
     }
     const picked = await vscode.window.showQuickPick(
       databases.map((d) => ({ label: d, db: d })),
-      { title: '选择数据库', placeHolder: '本次执行使用的库（将更新 Console 绑定）' },
+      { title: t('选择数据库'), placeHolder: t('本次执行使用的库（将更新 Console 绑定）') },
     );
     return picked?.db;
   }
 
   private async pickConnection(): Promise<{ connId: string; db: string | null } | undefined> {    const configs = await this.connections.listConfigs();
     if (configs.length === 0) {
-      void vscode.window.showInformationMessage('尚无连接，请先新建连接。');
+      void vscode.window.showInformationMessage(t('尚无连接，请先新建连接。'));
       return undefined;
     }
     const picked = await vscode.window.showQuickPick(
       configs.map((c) => ({
         label: c.name,
-        description: [c.driverId, c.env, c.readOnly ? '只读' : undefined].filter(Boolean).join(' · '),
+        description: [c.driverId, c.env, c.readOnly ? t('只读') : undefined].filter(Boolean).join(' · '),
         connId: c.id,
       })),
-      { title: '选择连接', placeHolder: 'SQL Console 绑定的连接' },
+      { title: t('选择连接'), placeHolder: t('SQL Console 绑定的连接') },
     );
     if (!picked) {
       return undefined;
@@ -365,7 +366,7 @@ export class ConsoleService implements vscode.Disposable {
       conn = await this.connections.ensureConnected(picked.connId);
     } catch (err) {
       void vscode.window.showErrorMessage(
-        `连接失败：${err instanceof Error ? err.message : String(err)}`,
+        t('连接失败：{0}', [err instanceof Error ? err.message : String(err)]),
       );
       return undefined;
     }
@@ -379,8 +380,8 @@ export class ConsoleService implements vscode.Disposable {
     let db: string | null = defaultDb;
     if (databases.length > 0) {
       const dbPicked = await vscode.window.showQuickPick(
-        [{ label: '(不指定库)', db: null as string | null }, ...databases.map((d) => ({ label: d, db: d as string | null }))],
-        { title: '选择数据库', placeHolder: '执行 SQL 时使用的默认库' },
+        [{ label: t('(不指定库)'), db: null as string | null }, ...databases.map((d) => ({ label: d, db: d as string | null }))],
+        { title: t('选择数据库'), placeHolder: t('执行 SQL 时使用的默认库') },
       );
       if (!dbPicked) {
         return undefined;
@@ -488,14 +489,16 @@ export class ConsoleService implements vscode.Disposable {
     this.statusItem.show();
     const state = this.bindingForDocument(doc);
     if (!state) {
-      this.statusItem.text = '$(circle-slash) SQL 未绑定连接';
-      this.statusItem.tooltip = '点击选择连接/数据库后即可执行';
+      this.statusItem.text = `$(circle-slash) ${t('SQL 未绑定连接')}`;
+      this.statusItem.tooltip = t('点击选择连接/数据库后即可执行');
       return;
     }
     const cfg = this.connections.getConfig(state.connId);
     const label = cfg?.name ?? state.connId;
     this.statusItem.text = `$(database) ${label}${state.db ? ` · ${state.db}` : ''} $(chevron-down)`;
-    this.statusItem.tooltip = `${label}${state.db ? ` / ${state.db}` : ''} · ${doc.fileName}（点击切换连接/库）`;
+    this.statusItem.tooltip = t('{0}（点击切换连接/库）', [
+      `${label}${state.db ? ` / ${state.db}` : ''} · ${doc.fileName}`,
+    ]);
   }
 
   // ── 执行（§7.2）──────────────────────────────────────────
@@ -504,7 +507,7 @@ export class ConsoleService implements vscode.Disposable {
   async executeActiveEditor(scope: 'cursor' | 'all'): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'sql') {
-      void vscode.window.showInformationMessage('当前编辑器不是 SQL 文档。');
+      void vscode.window.showInformationMessage(t('当前编辑器不是 SQL 文档。'));
       return;
     }
     await this.executeDocument(editor, scope);
@@ -600,7 +603,7 @@ export class ConsoleService implements vscode.Disposable {
   async executeSql(consoleId: string, sql: string): Promise<void> {
     const state = this.consoles.get(consoleId);
     if (!state) {
-      throw new DriverError('E_NOT_FOUND', 'Console 不存在（可能已关闭）');
+      throw new DriverError('E_NOT_FOUND', t('Console 不存在（可能已关闭）'));
     }
     await this.runStatements(state, this.splitRanges(state.connId, sql).map((s) => s.text));
   }
@@ -626,11 +629,11 @@ export class ConsoleService implements vscode.Disposable {
     origin?: ExecutionOrigin,
   ): Promise<void> {
     if (texts.length === 0) {
-      void vscode.window.showInformationMessage('没有可执行的语句。');
+      void vscode.window.showInformationMessage(t('没有可执行的语句。'));
       return;
     }
     if (state.controller) {
-      void vscode.window.showInformationMessage('已有执行在进行中，可先取消。');
+      void vscode.window.showInformationMessage(t('已有执行在进行中，可先取消。'));
       return;
     }
     // 新执行开始：撤销上一轮悬挂横幅
@@ -647,12 +650,12 @@ export class ConsoleService implements vscode.Disposable {
     let db = (override ? override.db : state.db) ?? undefined;
     const cfg = this.connections.getConfig(connId);
     if (!cfg) {
-      void vscode.window.showErrorMessage(`连接 "${connId}" 不存在，请重新绑定。`);
+      void vscode.window.showErrorMessage(t('连接 "{0}" 不存在，请重新绑定。', [connId]));
       return;
     }
     const driver = this.connections.getDriver(connId);
     if (!driver) {
-      void vscode.window.showErrorMessage('驱动未注册。');
+      void vscode.window.showErrorMessage(t('驱动未注册。'));
       return;
     }
     // 命令模式（驱动规范 §5.3 / 评审 P1-6）：supportsSQL=false 仍提供命令控制台，
@@ -665,7 +668,7 @@ export class ConsoleService implements vscode.Disposable {
       conn = await this.connections.ensureConnected(connId);
     } catch (err) {
       void vscode.window.showErrorMessage(
-        `连接失败：${err instanceof Error ? err.message : String(err)}`,
+        t('连接失败：{0}', [err instanceof Error ? err.message : String(err)]),
       );
       return;
     }
@@ -677,7 +680,7 @@ export class ConsoleService implements vscode.Disposable {
     if (!commandMode && db === undefined) {
       const picked = await this.pickDatabaseForConsole(conn);
       if (picked === undefined) {
-        void vscode.window.showInformationMessage('未选择数据库，已取消执行（可点击状态栏绑定库）。');
+        void vscode.window.showInformationMessage(t('未选择数据库，已取消执行（可点击状态栏绑定库）。'));
         return;
       }
       if (picked !== null) {
@@ -724,12 +727,15 @@ export class ConsoleService implements vscode.Disposable {
       const offending = texts.filter((_, i) => assessments[i].dangerous).join('\n');
       const env = cfg.env ?? null;
       if (env === 'prod') {
+        const runAnyway = t('仍要执行');
         const pick = await vscode.window.showWarningMessage(
-          `生产环境危险${commandMode ? '命令' : '语句'}：${dangerReasons.join('；')}`,
+          commandMode
+            ? t('生产环境危险命令：{0}', [dangerReasons.join('；')])
+            : t('生产环境危险语句：{0}', [dangerReasons.join('；')]),
           { modal: true, detail: offending },
-          '仍要执行',
+          runAnyway,
         );
-        if (pick !== '仍要执行') {
+        if (pick !== runAnyway) {
           this.logger.warn('dangerGuard', 'prod 危险语句已拦截（不落历史）');
           return; // 拦截不落历史（§7.4）
         }
@@ -751,7 +757,9 @@ export class ConsoleService implements vscode.Disposable {
       const hasSession = texts.some((t) => isSessionStateStatement(t));
       if (hasSession) {
         void vscode.window.showErrorMessage(
-          '语句中包含会话状态语句（SET @x / USE / 临时表），当前驱动不支持多语句执行，会话状态无法保留。请逐条执行。',
+          t(
+            '语句中包含会话状态语句（SET @x / USE / 临时表），当前驱动不支持多语句执行，会话状态无法保留。请逐条执行。',
+          ),
         );
         return;
       }
@@ -821,7 +829,7 @@ export class ConsoleService implements vscode.Disposable {
       this.pushRun(state);
 
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: commandMode ? '执行命令…' : '执行 SQL…', cancellable: true },
+        { location: vscode.ProgressLocation.Window, title: commandMode ? t('执行命令…') : t('执行 SQL…'), cancellable: true },
         async (_progress, token) => {
           token.onCancellationRequested(() => controller.abort());
           for (let i = 0; i < texts.length; i++) {
@@ -848,22 +856,22 @@ export class ConsoleService implements vscode.Disposable {
               let resultSets: import('@db-explorer/core').ResultSet[];
               if (useTarget !== undefined) {
                 if (useTarget === null) {
-                  throw new DriverError('E_VALIDATION', '无法解析 USE 语句的目标库名');
+                  throw new DriverError('E_VALIDATION', t('无法解析 USE 语句的目标库名'));
                 }
                 state.db = useTarget;
                 db = useTarget;
                 this.bindingsChangedEmitter.fire();
                 this.updateStatusBar();
-                resultSets = [txnMessageRs(`已切换到数据库 ${useTarget}（Console 绑定已更新）`)];
+                resultSets = [txnMessageRs(t('已切换到数据库 {0}（Console 绑定已更新）', [useTarget]))];
               } else if (txnVerb === 'begin') {
                 await this.sessions.begin(connId);
-                resultSets = [txnMessageRs('事务已开启（COMMIT 提交 / ROLLBACK 回滚；空闲超时自动回滚）')];
+                resultSets = [txnMessageRs(t('事务已开启（COMMIT 提交 / ROLLBACK 回滚；空闲超时自动回滚）'))];
               } else if (txnVerb === 'commit') {
                 await this.sessions.commit(connId);
-                resultSets = [txnMessageRs('事务已提交')];
+                resultSets = [txnMessageRs(t('事务已提交'))];
               } else if (txnVerb === 'rollback') {
                 await this.sessions.rollback(connId);
-                resultSets = [txnMessageRs('事务已回滚')];
+                resultSets = [txnMessageRs(t('事务已回滚'))];
               } else if (!commandMode && this.sessions.hasActive(connId)) {
                 resultSets = await this.sessions.execute(connId, { sql: sqlText, db, maxRows, timeoutMs });
               } else {
@@ -932,10 +940,10 @@ export class ConsoleService implements vscode.Disposable {
         run.status = DriverError.is(err) && err.code === 'E_CANCELED' ? 'canceled' : 'error';
       }
       if (DriverError.is(err) && err.code === 'E_CANCELED') {
-        void vscode.window.showInformationMessage('已取消'); // E_CANCELED 静默提示（§7.2）
+        void vscode.window.showInformationMessage(t('已取消')); // E_CANCELED 静默提示（§7.2）
       } else {
         void vscode.window.showErrorMessage(
-          `执行失败：${err instanceof Error ? err.message : String(err)}`,
+          t('执行失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     } finally {
@@ -1006,9 +1014,9 @@ export class ConsoleService implements vscode.Disposable {
     if (last.error) {
       summary = `${last.error.code}: ${last.error.message.slice(0, 60)}`;
     } else if (last.resultSet) {
-      summary = `${last.resultSet.rowCount} 行`;
+      summary = t('{0} 行', [last.resultSet.rowCount]);
     } else if (last.affectedRows !== undefined) {
-      summary = `${last.affectedRows} 行受影响`;
+      summary = t('{0} 行受影响', [last.affectedRows]);
     }
     const sqlText = run.items.map((i) => i.sql).join('\n');
     await this.history.record({
@@ -1191,27 +1199,27 @@ export class ConsoleService implements vscode.Disposable {
     const state = this.consoles.get(consoleId);
     const rs = state?.run?.items.find((i) => i.seq === itemSeq)?.resultSet;
     if (!rs) {
-      throw new DriverError('E_VALIDATION', '该结果不可导出');
+      throw new DriverError('E_VALIDATION', t('该结果不可导出'));
     }
     if (format === 'insert') {
-      throw new DriverError('E_VALIDATION', 'Console 结果无单一目标表，INSERT 导出请在表格视图使用');
+      throw new DriverError('E_VALIDATION', t('Console 结果无单一目标表，INSERT 导出请在表格视图使用'));
     }
     const wsFolder = vscode.workspace.workspaceFolders?.[0];
     const ext = format === 'markdown' ? 'md' : format;
     const defaultDir = wsFolder ? vscode.Uri.file(`${wsFolder.uri.fsPath}/.db-export`) : undefined;
     const defaultUri = defaultDir
-      ? vscode.Uri.joinPath(defaultDir, `结果-${itemSeq}.${ext}`)
+      ? vscode.Uri.joinPath(defaultDir, t('结果-{0}.{1}', [itemSeq, ext]))
       : undefined;
     const filters: Record<string, Record<string, string[]>> = {
       csv: { CSV: ['csv'] },
       json: { JSON: ['json'] },
       xlsx: { Excel: ['xlsx'] },
-      ndjson: { 'NDJSON（换行分隔 JSON）': ['ndjson'] },
+      ndjson: { [t('NDJSON（换行分隔 JSON）')]: ['ndjson'] },
       markdown: { Markdown: ['md'] },
     };
     const target = await vscode.window.showSaveDialog({
       defaultUri,
-      saveLabel: '导出',
+      saveLabel: t('导出'),
       filters: filters[format],
     });
     if (!target) {

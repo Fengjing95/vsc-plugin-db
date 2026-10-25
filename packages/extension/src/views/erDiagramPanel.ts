@@ -4,6 +4,7 @@ import type { ErGraphScope } from '@db-explorer/core';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { ErService } from '../services/erService';
+import { t } from '../services/i18n';
 import type { Logger } from '../services/logger';
 
 /**
@@ -33,7 +34,7 @@ export function openErDiagramPanel(
     void existing.reveal();
     return;
   }
-  const title = `ER 图 · ${target.db}`;
+  const title = t('ER 图 · {0}', [target.db]);
   const panel = vscode.window.createWebviewPanel(
     'dbExplorer.erDiagram',
     title,

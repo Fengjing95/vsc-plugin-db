@@ -12,6 +12,7 @@ import {
 } from '@db-explorer/protocol';
 import type { ConnectionManager } from './connectionManager';
 import { csvRow, insertStatement, markdownHeader, markdownRow, ndjsonRow, toJsonObject } from './csvJson';
+import { t } from './i18n';
 import { writeXlsxFile } from './xlsxWriter';
 
 /**
@@ -96,7 +97,7 @@ export class ExportTaskRunner {
     controller: AbortController,
   ): Promise<void> {
     const progress = await this.deps.ui.showProgress(
-      `导出 ${p.obj} (${p.format.toUpperCase()})…`,
+      t('导出 {0} ({1})…', [p.obj, p.format.toUpperCase()]),
       () => controller.abort(),
     );
     try {
@@ -115,7 +116,7 @@ export class ExportTaskRunner {
           bytes: 0,
           error: { code: e.code, message: e.message },
         });
-        void this.deps.ui.showMessage('error', `导出失败：${e.message}`);
+        void this.deps.ui.showMessage('error', t('导出失败：{0}', [e.message]));
         return;
       }
       // 成功/取消终态：先关进度、出任务表，再发回执（完成 Toast 等待用户交互不阻塞任何清理）
@@ -131,12 +132,14 @@ export class ExportTaskRunner {
         return;
       }
       this.deps.log(`[export] ${exportId} 完成：${result.rows} 行 / ${result.bytes} 字节`, 'info');
+      // 按钮回执比较：构造与比较共用同一 const（C-17 迁移规则 3）
+      const revealLabel = t('定位文件');
       const action = await this.deps.ui.showMessage(
         'info',
-        `已导出 ${result.rows} 行 → ${path.basename(result.filePath)}`,
-        '定位文件',
+        t('已导出 {0} 行 → {1}', [result.rows, path.basename(result.filePath)]),
+        revealLabel,
       );
-      if (action === '定位文件') {
+      if (action === revealLabel) {
         this.deps.ui.revealFile(result.filePath);
       }
     } finally {
