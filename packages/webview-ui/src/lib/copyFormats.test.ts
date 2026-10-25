@@ -21,6 +21,10 @@ describe('toSqlLiteral（值编码契约 §4.4 口径）', () => {
   it('字符串单引号转义', () => {
     expect(toSqlLiteral("it's")).toBe(`'it''s'`);
   });
+  it('JSON 对象 → JSON 文本字面量（对象不落 [object Object]，P-53 同族）', () => {
+    expect(toSqlLiteral({ k: 1 })).toBe(`'{"k":1}'`);
+    expect(toSqlLiteral([1, 'a'])).toBe(`'[1,"a"]'`);
+  });
 });
 
 describe('rowsToInList', () => {

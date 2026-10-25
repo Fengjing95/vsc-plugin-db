@@ -232,6 +232,10 @@ describe('方法参数校验', () => {
     expect(ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'result' }).format).toBe('csv');
     // M7/D-14：xlsx 成为合法导出格式
     expect(ExportRunParamsSchema.parse({ ...base, format: 'xlsx', scope: 'result' }).format).toBe('xlsx');
+    // 单元格查看器批次②：NDJSON / Markdown / SQL INSERT 文件导出（§5.7 P2 收口）
+    expect(ExportRunParamsSchema.parse({ ...base, format: 'ndjson', scope: 'result' }).format).toBe('ndjson');
+    expect(ExportRunParamsSchema.parse({ ...base, format: 'markdown', scope: 'result' }).format).toBe('markdown');
+    expect(ExportRunParamsSchema.parse({ ...base, format: 'insert', scope: 'result' }).format).toBe('insert');
     expect(() => ExportRunParamsSchema.parse({ ...base, format: 'pdf', scope: 'result' })).toThrow();
     expect(() => ExportRunParamsSchema.parse({ ...base, format: 'csv', scope: 'all' })).toThrow();
   });

@@ -14,7 +14,7 @@ import {
  * AI 密钥不在此（只进 SecretStorage，走 ai.* RPC）。
  */
 
-const EXPORT_FORMATS = ['csv', 'json', 'xlsx'] as const;
+const EXPORT_FORMATS = ['csv', 'json', 'xlsx', 'ndjson', 'markdown', 'insert'] as const;
 
 export class SettingsHub {
   constructor(private readonly extensionVersion: string) {}
@@ -64,7 +64,7 @@ export class SettingsHub {
     }
     if (type === 'enum') {
       if (typeof raw !== 'string' || !EXPORT_FORMATS.includes(raw as (typeof EXPORT_FORMATS)[number])) {
-        throw new DriverError('E_VALIDATION', `${key} 仅支持 csv / json / xlsx`);
+        throw new DriverError('E_VALIDATION', `${key} 仅支持 csv / json / xlsx / ndjson / markdown / insert`);
       }
       return raw;
     }

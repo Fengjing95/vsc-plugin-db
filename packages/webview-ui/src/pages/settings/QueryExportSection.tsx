@@ -140,6 +140,9 @@ export function QueryExportSection(): React.JSX.Element {
           <option value="csv">CSV</option>
           <option value="json">JSON</option>
           <option value="xlsx">Excel (xlsx)</option>
+          <option value="ndjson">NDJSON（换行分隔 JSON）</option>
+          <option value="markdown">Markdown</option>
+          <option value="insert">SQL (INSERT)</option>
         </select>
       </div>
 
