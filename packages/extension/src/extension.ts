@@ -21,7 +21,7 @@ import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { createExecutionAnnotations } from './services/sqlExecutionDecorations';
 import { EditGuard, ViewStateStore } from './services/editGuard';
-import { setL10nBackend } from './services/i18n';
+import { createL10nFileBackend, setL10nBackend } from './services/i18n';
 import { Logger } from './services/logger';
 import { LoggingDriverHost } from './services/loggingDriverHost';
 import { QueryFilesService } from './services/queryFiles';
@@ -35,9 +35,11 @@ import { AiAssistService } from './services/aiAssistService';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  // i18n（D-25 / C-17）：中文源文案即键，en 翻译在 l10n/bundle.l10n.en.json；
-  // 必须先于任何 t() 调用（含惰性求值前的模块级常量改惰性后无先取问题）
-  setL10nBackend((message, args) => vscode.l10n.t(message, ...args));
+  // i18n（D-25 / C-17，P-72 修订）：中文源文案即键，词典文件随包分发（l10n/bundle.l10n.<lang>.json）。
+  // 不走 vscode.l10n 的 bundle 加载——英文显示语言下 VSCode 不加载 en 词典（microsoft/vscode#168127，
+  // 官方假定「源文案=英文」）；门面自行按显示语言读文件，缺词典回落原文。
+  // 必须先于任何 t() 调用（模块级 UI 文案常量已惰性化，无先取问题）
+  setL10nBackend(createL10nFileBackend(context.extensionPath, vscode.env.language));
   const registry = new DriverRegistry();
   // mock：契约测试/DoD 基准驱动（capabilities.internal=true）——不暴露类型选择、不再种子示例连接；
   // 保留注册使历史 mock 连接（globalState 已存）仍可打开
