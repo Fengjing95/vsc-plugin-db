@@ -57,7 +57,7 @@ code --install-extension db-kit-<版本>.vsix
 - SQLite 驱动限中小库（建议 ≤ 100MB，整库内存 + 写批次原子落盘）；同步执行不可取消
 - MongoDB 编辑为字段级 `$set` 乐观锁、逐条失败即停（无事务语义）；结构类 mongosh 命令（建索引/改集合等）不支持
 - Redis 为只读浏览 + 命令控制台（无可回滚事务，未开编辑）
-- e2e 与独立 perf 基准未建（契约套件 + 四道门禁覆盖）
+- 独立 perf 基准未建（契约套件 + 四道门禁覆盖）
 - 无遥测；密码只存 VSCode SecretStorage，不落盘、不入日志
 
 完整口径见 [概要设计 §14 遗留问题](docs/概要设计.md) 与 [CHANGELOG.md](CHANGELOG.md)。

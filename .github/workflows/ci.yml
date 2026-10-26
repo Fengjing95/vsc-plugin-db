@@ -266,3 +266,54 @@ jobs:
             echo '```'
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # M11-e2e（D-26 / 遗留 #8）：关键用户旅程 e2e——@vscode/test-electron 拉真实 VSCode 桌面二进制，
+  # 驱动仅 sqlite（进程内零网络），CDP + bridge 扩展驱动 UI。独立 job 观察（不进 release 门控，
+  # 跑稳两批再议是否升级为发版门禁）；Linux headless 必须 xvfb-run，runner 内置 --no-sandbox
+  e2e:
+    runs-on: ubuntu-latest
+    # 首跑含 VSCode 下载（~150MB）+ 语言包安装 + 双 locale 全旅程；缓存命中后分钟级
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 缓存 = VSCode 二进制 + zh 语言包 + languagepacks.json 种子（全部落在 .vscode-test）。
+      # key 用人工版本锚：stable 是移动目标，陈旧缓存只会让 e2e 跑旧版 stable（可接受），
+      # stable 大版本漂移破坏选择器时手工 bump vN 强制刷新
+      - name: 缓存 VSCode 二进制与 zh 语言包
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: e2e-vscode-stable-cache-v1
+
+      - name: 构建扩展与 webview
+        run: pnpm build
+
+      - name: e2e 全旅程（en + zh-cn）
+        run: xvfb-run -a pnpm --filter db-kit-e2e e2e
+
+      # 失败工件（D-26 决议 5）：截图 + webview 帧摘要（e2e/artifacts）+ 完整 profile/workbench 日志（/tmp/dbkit-e2e）
+      - name: 收集 e2e 临时目录（失败工件）
+        if: failure()
+        run: |
+          mkdir -p e2e/artifacts/ci-tmp-runs
+          cp -r /tmp/dbkit-e2e/* e2e/artifacts/ci-tmp-runs/ 2>/dev/null || true
+
+      - name: 上传失败工件
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: e2e/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
