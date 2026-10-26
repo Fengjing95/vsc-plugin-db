@@ -1,4 +1,4 @@
-import { findWebviewFrame, pickQuickOption } from '../cdp';
+import { dismissNotifications, findWebviewFrame, pickQuickOption } from '../cdp';
 import type { JourneyFn } from './j1';
 
 /**
@@ -8,6 +8,7 @@ import type { JourneyFn } from './j1';
  */
 export const journey2: JourneyFn = async (ctx) => {
   const { page, bridge, fixture, labels } = ctx;
+  await dismissNotifications(page);
 
   // 1. 打开预置 SELECT 文档（vscode.open 经 bridge，$uri 参数在桥侧还原为 Uri）
   await bridge.execute('vscode.open', { $uri: fixture.selectSqlUri });

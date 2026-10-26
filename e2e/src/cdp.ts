@@ -107,3 +107,13 @@ export async function pickQuickOption(page: Page, optionText: string, timeoutMs 
   await row.click();
   await widget.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => undefined);
 }
+
+/** 关闭右下角通知气泡（profile 已设 notifications.showToast=false，此为兜底——
+ *  settings 预置先于首启读取，仍防宿主版本差异/新通知形态遮挡点击） */
+export async function dismissNotifications(page: Page): Promise<void> {
+  const toasts = page.locator('.notifications-toasts .notification-list-item .clear-notification-action');
+  const count = await toasts.count();
+  for (let i = 0; i < Math.min(count, 5); i++) {
+    await toasts.first().click().catch(() => undefined);
+  }
+}

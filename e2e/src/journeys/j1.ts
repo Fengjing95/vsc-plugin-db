@@ -1,5 +1,5 @@
 import type { BridgeClient } from '../bridgeClient';
-import { findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
+import { dismissNotifications, findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
 import type { Fixture } from '../fixture';
 import { commitCountLabel, uiLabels } from '../labels';
 
@@ -24,12 +24,14 @@ export type JourneyFn = (ctx: JourneyCtx) => Promise<void>;
 export const journey1: JourneyFn = async (ctx) => {
   const { page, bridge, fixture, labels } = ctx;
 
-  // 0. 首启 onboarding 模态兜底（settings.json 已关，但实验浮层可能仍现）：Esc / 主按钮关掉
+  // 0. 首启 onboarding 模态兜底（settings.json 已关，但实验浮层可能仍现）：Esc / 主按钮关掉；
+  //    通知气泡兜底清理（遮挡点击的 flake 源，见 dismissNotifications）
   const overlay = page.locator('.onboarding-a-overlay');
   if ((await overlay.count()) > 0) {
     await page.keyboard.press('Escape').catch(() => undefined);
     await overlay.locator('button').last().click().catch(() => undefined);
   }
+  await dismissNotifications(page);
 
   // 1. 打开资源树视图（命令 = workbench.view.extension.<containerId>，与语言无关）
   const opened = await bridge.execute('workbench.view.extension.dbExplorer-container');
@@ -39,11 +41,13 @@ export const journey1: JourneyFn = async (ctx) => {
   await ctx.page.locator(`.action-label[aria-label="${labels.newConnection}"]`).first().click();
   const form = await findWebviewFrame(page, (b) => b.page === 'connectionForm');
 
-  // 3. 填表：驱动卡片（role=radio + displayName）→ 名称 → sqlite path（type=file 控件手输口径）
+  // 3. 填表：驱动卡片（role=radio + displayName）→ 名称 → sqlite path（type=file 控件手输口径）。
+  //    保存前再清一次气泡（通知可能在表单填写期间弹出）
   await form.getByRole('radio', { name: 'SQLite' }).click();
   await form.locator('#conn-name').fill('e2e-sqlite');
   await form.locator('#conn-field-path').fill(fixture.dbPath);
-  await form.getByRole('button', { name: labels.save }).click();
+  await dismissNotifications(page);
+  await form.getByRole('button', { name: labels.save, exact: true }).click();
 
   // 4. 保存成功 → 表单面板自关 + 树出现连接节点
   await waitTreeRow(page, 'e2e-sqlite', 30_000);

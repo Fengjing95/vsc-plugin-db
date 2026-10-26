@@ -1,4 +1,4 @@
-import { findWebviewFrame } from '../cdp';
+import { dismissNotifications, findWebviewFrame } from '../cdp';
 import type { JourneyFn } from './j1';
 
 /**
@@ -9,6 +9,7 @@ import type { JourneyFn } from './j1';
  */
 export const journey3: JourneyFn = async (ctx) => {
   const { page, bridge, labels, requestedLocale } = ctx;
+  await dismissNotifications(page);
   const state = await bridge.state();
   const expectZh = requestedLocale.startsWith('zh');
   if (expectZh && !state.language.startsWith('zh')) {

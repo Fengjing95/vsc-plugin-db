@@ -213,10 +213,16 @@ export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
   if (opts.locale.startsWith('zh')) {
     writeFileSync(join(userDataDir, 'argv.json'), JSON.stringify({ locale: opts.locale }));
   }
-  // 首启 onboarding/welcome 模态会拦截一切点击（onboarding-a-overlay aria-modal）——profile 预置关闭
+  // 首启 onboarding/welcome 模态会拦截一切点击（onboarding-a-overlay aria-modal）——profile 预置关闭；
+  // notifications.showToast=false 同理：通知气泡（如 shell 环境解析超时提示）会遮挡右下角控件（实测 flake 源）
   writeFileSync(
     join(userDataDir, 'User', 'settings.json'),
-    JSON.stringify({ 'workbench.startupEditor': 'none', 'extensions.ignoreRecommendations': true, 'update.mode': 'none' }),
+    JSON.stringify({
+      'workbench.startupEditor': 'none',
+      'extensions.ignoreRecommendations': true,
+      'update.mode': 'none',
+      'notifications.showToast': false,
+    }),
   );
 
   const extensionsDir = await ensureLocaleExtensions(opts.locale, executablePath);
