@@ -2,6 +2,12 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [0.7.1] - 2026-10-26
+
+### 修复
+
+- **英文界面未生效**（0.7.0 回归定级）：VSCode 在显示语言为英文时**不加载**扩展的 `bundle.l10n.en.json`（官方按「源文案 = 英文」假定设计，microsoft/vscode#168127）——命令面板/资源树/通知等约 310 处 extension 侧文案在英文环境恒回落中文；manifest 层（视图标题/菜单，`package.nls.en.json`）不受影响，造成「标题英文、内容中文」的分裂。修复：extension 侧不再依赖 `vscode.l10n` 的 bundle 加载，门面按显示语言自行读取随包词典文件（`l10n/bundle.l10n.<lang>.json`，语言码回退 `en-us`→`en`；zh 源语言零文件依赖，未翻译语言静默回落原文）。Webview / 官网 / README 不受此问题影响（各自词典链路不同）
+
 ## [0.7.0] - 2026-10-25
 
 i18n 中英双语（概要 §14 #7 收口，ADR D-25）：UI / 官网 / GitHub·Marketplace README 三面四件套。
