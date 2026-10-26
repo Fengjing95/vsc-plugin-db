@@ -7,10 +7,17 @@ import { connectWorkbench } from './cdp';
 import { createFixture } from './fixture';
 import { uiLabels } from './labels';
 import { ARTIFACTS_ROOT, EXTENSION_DIR } from './paths';
-import { launchVSCode, pickPort, waitForCdpPort } from './vscodeApp';
+import { launchVSCode, harvestLanguagePackCache, pickPort, waitForCdpPort } from './vscodeApp';
 import { journey1 } from './journeys/j1';
+import { journey2 } from './journeys/j2';
+import { journey3 } from './journeys/j3';
 
-const journeys: Record<string, (ctx: import('./journeys/j1').JourneyCtx) => Promise<void>> = { j1: journey1 };
+// 旅程有状态依赖（J1 建连接、J2 建绑定），必须按序全跑；--journey 过滤仅用于调试
+const journeys: Record<string, (ctx: import('./journeys/j1').JourneyCtx) => Promise<void>> = {
+  j1: journey1,
+  j2: journey2,
+  j3: journey3,
+};
 
 function parseArgs(): { locales: string[]; keep: boolean; only: string[] } {
   const locales: string[] = [];
@@ -21,7 +28,7 @@ function parseArgs(): { locales: string[]; keep: boolean; only: string[] } {
     else if (a.startsWith('--locale=')) locales.push(a.split('=')[1]);
     else if (a.startsWith('--journey=')) only = a.split('=')[1].split(',');
   }
-  return { locales: locales.length > 0 ? locales : ['zh-cn'], keep, only: only.length > 0 ? only : Object.keys(journeys) };
+  return { locales: locales.length > 0 ? locales : ['en', 'zh-cn'], keep, only: only.length > 0 ? only : Object.keys(journeys) };
 }
 
 /** 清理历史工件目录，保留最近 keep 个 */
@@ -101,6 +108,7 @@ async function runOnce(locale: string, only: string[], keep: boolean): Promise<R
       page: workbench.page,
       bridge,
       fixture,
+      requestedLocale: locale,
       locale: effectiveLocale,
       runDir,
       labels: uiLabels(effectiveLocale),
@@ -123,8 +131,11 @@ async function runOnce(locale: string, only: string[], keep: boolean): Promise<R
     console.error('[e2e] VSCode 输出尾部:', app.outputTail().slice(-2000));
     throw err;
   } finally {
+    console.log('[e2e] 收尾：关闭浏览器与 VSCode…');
     await workbench?.close().catch(() => undefined);
     await app.kill();
+    console.log('[e2e] 收尾完成');
+    if (locale.startsWith('zh')) harvestLanguagePackCache(join(runDir, 'user-data'), locale);
     const allPassed = result.failed.length === 0 && result.passed.length === only.length;
     if (!keep && allPassed) {
       rmSync(runDir, { recursive: true, force: true });
@@ -146,6 +157,7 @@ async function main(): Promise<void> {
   const results: RunResult[] = [];
   for (const locale of locales) {
     results.push(await runOnce(locale, only, keep));
+    console.log(`[e2e] locale=${locale} 轮次结束`);
   }
 
   const totalFailed = results.reduce((n, r) => n + r.failed.length, 0);

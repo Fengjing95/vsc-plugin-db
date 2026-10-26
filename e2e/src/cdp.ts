@@ -95,3 +95,15 @@ export async function waitTreeRow(page: Page, text: string, timeoutMs = 20_000):
   await row.waitFor({ state: 'visible', timeout: timeoutMs });
   return row;
 }
+
+/** VSCode QuickPick 选择：过滤输入 + 点选目标行（连接选择/库选择等原生 quick input） */
+export async function pickQuickOption(page: Page, optionText: string, timeoutMs = 20_000): Promise<void> {
+  const widget = page.locator('.quick-input-widget');
+  await widget.waitFor({ state: 'visible', timeout: timeoutMs });
+  const input = widget.locator('.quick-input-box input');
+  await input.fill(optionText);
+  const row = widget.locator(`.monaco-list-row:has-text("${optionText}")`).first();
+  await row.waitFor({ state: 'visible', timeout: 10_000 });
+  await row.click();
+  await widget.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => undefined);
+}

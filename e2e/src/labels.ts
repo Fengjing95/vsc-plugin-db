@@ -15,6 +15,12 @@ export interface UiLabels {
   previewSql: string;
   /** 预览 Modal 确认按钮（webview table.preview.confirm） */
   previewConfirm: string;
+  /** Console 危险横幅文本前缀（webview console.bannerDetected） */
+  bannerDetected: string;
+  /** Console 横幅「仍要执行」按钮（webview console.runAnyway） */
+  runAnyway: string;
+  /** 通用取消按钮（webview common.cancel） */
+  cancel: string;
 }
 
 export function uiLabels(locale: string): UiLabels {
@@ -27,6 +33,9 @@ export function uiLabels(locale: string): UiLabels {
       openTableView: '打开表格视图',
       previewSql: '预览提交 SQL',
       previewConfirm: '确认提交',
+      bannerDetected: '检测到可能影响全表的语句',
+      runAnyway: '仍要执行',
+      cancel: '取消',
     };
   }
   return {
@@ -37,6 +46,9 @@ export function uiLabels(locale: string): UiLabels {
     openTableView: 'Open Table View',
     previewSql: 'Preview SQL',
     previewConfirm: 'Commit',
+    bannerDetected: 'A statement that may affect the whole table was detected',
+    runAnyway: 'Run Anyway',
+    cancel: 'Cancel',
   };
 }
 

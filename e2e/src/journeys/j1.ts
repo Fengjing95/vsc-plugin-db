@@ -7,6 +7,9 @@ export interface JourneyCtx {
   page: Workbench['page'];
   bridge: BridgeClient;
   fixture: Fixture;
+  /** 请求的 locale（--locale 参数，J3 双语断言以此为准） */
+  requestedLocale: string;
+  /** 生效语言（bridge 上报的 vscode.env.language；无语言包时 zh-cn 请求会回落 en，见 P-77） */
   locale: string;
   runDir: string;
   labels: ReturnType<typeof uiLabels>;

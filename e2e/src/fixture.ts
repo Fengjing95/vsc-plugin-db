@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { REPO_ROOT } from './paths';
 
 /** sql.js 引擎的最小类型面（仅 fixture 生成所需）。注意 initSqlJs() 解析为 { Database: class }，
@@ -45,15 +46,26 @@ export interface Fixture {
   dbPath: string;
   /** 作为 VSCode 打开的工作区目录（含 .db 文件） */
   workspaceDir: string;
+  /** 旅程② SQL 文档（J2：SELECT 正常执行 / UPDATE 无 WHERE 触发危险横幅） */
+  selectSqlUri: string;
+  updateSqlUri: string;
 }
 
 const CREATE_TABLE =
   'CREATE TABLE dbkit_e2e (id INTEGER PRIMARY KEY, name TEXT NOT NULL, city TEXT, payload TEXT, created_at TEXT)';
 
+const SELECT_SQL = 'SELECT id, name, city FROM dbkit_e2e ORDER BY id;\n';
+/** 无 WHERE 的 UPDATE：sqlDanger 判定危险 → Console 横幅（J2 拦截语义） */
+const UPDATE_NO_WHERE_SQL = "UPDATE dbkit_e2e SET city = 'e2e-banner-x';\n";
+
 export async function createFixture(runDir: string): Promise<Fixture> {
   const workspaceDir = join(runDir, 'workspace');
   mkdirSync(workspaceDir, { recursive: true });
   const dbPath = join(workspaceDir, 'e2e.db');
+  const selectSqlPath = join(workspaceDir, 'j2-select.sql');
+  const updateSqlPath = join(workspaceDir, 'j2-update.sql');
+  writeFileSync(selectSqlPath, SELECT_SQL);
+  writeFileSync(updateSqlPath, UPDATE_NO_WHERE_SQL);
 
   const Database = await loadSqlJs();
   const db = new Database();
@@ -66,5 +78,10 @@ export async function createFixture(runDir: string): Promise<Fixture> {
     );
   }
   writeFileSync(dbPath, Buffer.from(db.export()));
-  return { dbPath, workspaceDir };
+  return {
+    dbPath,
+    workspaceDir,
+    selectSqlUri: pathToFileURL(selectSqlPath).toString(),
+    updateSqlUri: pathToFileURL(updateSqlPath).toString(),
+  };
 }
