@@ -1,0 +1,14 @@
+{
+  "name": "db-kit-e2e-bridge",
+  "displayName": "DB Kit e2e Bridge (test only)",
+  "private": true,
+  "version": "0.0.0",
+  "publisher": "db-explorer-dev",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ]
+}

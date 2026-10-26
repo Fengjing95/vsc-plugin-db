@@ -17,3 +17,7 @@ packages/extension/CHANGELOG.md
 website/public/assets/
 # 官网 Playground 构建期产物（website/scripts/build-playground.mjs 从 packages/webview-ui/dist 生成，不入库）
 website/public/playground/
+# e2e 运行工件（M11-e2e：截图/临时 profile/runDir，runner 每轮生成，失败时保留供排查）
+e2e/artifacts/
+# e2e bridge 扩展产物（e2e/build.mjs 从 src/bridge 打包；package.json 是源，不入库防漂）
+e2e/test-extension/extension.js
