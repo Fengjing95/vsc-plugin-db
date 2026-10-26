@@ -9,7 +9,7 @@
 
 UI text follows the VSCode display language (English / Chinese). Screenshots in the docs were taken from the Chinese UI.
 
-DB Kit provides a unified, pluggable entry point for database access inside VSCode, covering the full chain of "browse structure → query data → edit data → write SQL". It supports six kinds of external data sources — MySQL, PostgreSQL, SQL Server, SQLite, MongoDB, Redis — plus the built-in Mock demo source; it ships as a single-file VSIX with zero native dependencies.
+DB Kit provides a unified, pluggable entry point for database access inside VSCode, covering the full chain of "browse structure → query data → edit data → write SQL". It supports seven kinds of external data sources — MySQL, PostgreSQL, SQL Server, Oracle, SQLite, MongoDB, Redis — and ships as a single-file VSIX with zero native dependencies.
 
 ## Architecture Overview
 
@@ -19,27 +19,27 @@ The presentation layer (native views + Webview) calls the Extension Host service
 
 ## Feature Matrix
 
-| Capability | MySQL | PostgreSQL | SQL Server | SQLite | MongoDB | Redis | Mock (built-in) |
+| Capability | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
 |---|---|---|---|---|---|---|---|
-| Resource tree | databases/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | single database/tables/columns | databases/collections/field catalog | key-type catalog/keys | demo databases |
-| Data browsing (filter/sort/search push down + pagination) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ typed display | ✓ |
-| Table editing (change set + optimistic locking + transactional commit) | ✓ | ✓ | ✓ | ✓ | ✓ document edit | — (read-only) | ✓ |
-| SQL Console (completion / history / dangerous-statement blocking) | ✓ | ✓ | ✓ | ✓ | mongosh command console | command console | ✓ |
-| Interactive transactions (idle-timeout rollback) | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
-| Table schema editor (create/alter tables, columns) | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
-| Database-level DDL (create/edit/drop database) | ✓ | ✓ create/drop schema | ✓ create/drop schema | — (single database) | ✓ create/drop database | — (fixed database count) | — |
-| SSL / SSH tunnel (TOFU fingerprint) | ✓ | ✓ | ✓ | — | ✓ | ✓ / TLS | — |
+| Resource tree | databases/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | single database/tables/columns | databases/collections/field catalog | key-type catalog/keys |
+| Data browsing (filter/sort/search push down + pagination) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ typed display |
+| Table editing (change set + optimistic locking + transactional commit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ document edit | — (read-only) |
+| SQL Console (completion / history / dangerous-statement blocking) | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh command console | command console |
+| Interactive transactions (idle-timeout rollback) | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| Table schema editor (create/alter tables, columns) | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| Database-level DDL (create/edit/drop database) | ✓ | ✓ create/drop schema | ✓ create/drop schema | ✓ create/drop schema | — (single database) | ✓ create/drop database | — (fixed database count) |
+| SSL / SSH tunnel (TOFU fingerprint) | ✓ | ✓ | ✓ | ✓ tunnel | — | ✓ | ✓ / TLS |
 | Export (CSV/JSON/XLSX/NDJSON/Markdown/SQL INSERT, cancellable background tasks) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Conformance tests (run for real in CI) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ always runs |
+| Conformance tests (run for real in CI) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-More capabilities: View DDL, Generate Code from Schema (TS/Java/Go/Prisma), copy as multiple formats, Format SQL, saved queries with the in-tree query folder, EXPLAIN tree indentation, inline execution-result annotations, per-statement CodeLens execution, and the operation log (`dbExplorer.showLog`).
+More capabilities: AI assistant (BYOK: natural-language → SQL, SQL explanation, error fix suggestions), cell viewer for long text / JSON / binary, ER diagram viewer with SVG/PNG export, View DDL, Generate Code from Schema (TS/Java/Go/Prisma), copy as multiple formats, Format SQL, saved queries with the in-tree query folder, EXPLAIN tree indentation, inline execution-result annotations, per-statement CodeLens execution, and the operation log (`dbExplorer.showLog`).
 
 ## Install
 
-**VSIX (recommended, GitHub Release)**: download `db-explorer-0.1.0.vsix` from [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) → "…" at the top right of the VSCode Extensions view → **Install from VSIX…**; or from the command line:
+**VSIX (recommended, GitHub Release)**: download the latest `db-kit-<version>.vsix` from [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) → "…" at the top right of the VSCode Extensions view → **Install from VSIX…**; or from the command line:
 
 ```bash
-code --install-extension db-explorer-0.1.0.vsix
+code --install-extension db-kit-<version>.vsix
 ```
 
 **Run from source (development)**: see the [Development](#development) section below.
@@ -47,7 +47,7 @@ code --install-extension db-explorer-0.1.0.vsix
 ## Quick Start
 
 1. The **Database** icon in the activity bar → **＋ New Connection** in the view title bar (any of MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MongoDB / Redis);
-2. Expand the connection → database → `Tables` → click a table name to open the table view (column-header sorting, filter builder, global search, column show/hide and pagination are all pushed down server-side);
+2. Expand the connection → database → `Tables` → click a table name to open the table view (column-header sorting, the free-form WHERE/ORDER BY condition bar, global search, column show/hide and pagination are all pushed down server-side);
 3. Edit: double-click / `Enter` / `F2` to edit a cell → **Commit Changes (N)** in the toolbar → parameterized SQL preview → single-transaction commit, with conflicts pinpointed to the offending rows; right-click to switch between NULL and empty string;
 4. Write SQL: **New Query** in the tree query folder or any `.sql` file → `Ctrl+Enter` to run (`Ctrl+Shift+Enter` for all), with a result panel of multi-result-set tabs + EXPLAIN tree indentation; UPDATE/DELETE without WHERE and dangerous operations against production databases are guarded by tiered confirmation;
 5. Export: **Export** in the table toolbar → pick the format and scope → runs in the background (progress in the notification center, cancellable, tasks run concurrently).
@@ -69,7 +69,7 @@ For the full picture see [Design Overview §14 open issues](docs/概要设计.md
 | Document | Description |
 |---|---|
 | [AGENTS.md](AGENTS.md) | **Must-read for agents/new members**: engineering constraints (quality gates / protocol / security) and the pitfall catalog with fixes |
-| [概要设计 (Design Overview, Chinese)](docs/概要设计.md) | Product boundary, architecture, module-level design, ADR decision records (D-01~D-20) |
+| [概要设计 (Design Overview, Chinese)](docs/概要设计.md) | Product boundary, architecture, module-level design, ADR decision records (D-01~D-25) |
 | [驱动开发规范 (Driver Development Guide, Chinese)](docs/驱动开发规范.md) | Full `IDatabaseDriver` contract, error codes, value encoding, loading mechanism |
 | [交互设计稿 (Interaction Design Spec, Chinese)](docs/交互设计稿.md) | Wireframes, state machines, keyboard and copy rules for every surface |
 | [技术选型 (Technology Selection, Chinese)](docs/技术选型.md) | T-01~T-14 candidate comparison and decisions |
@@ -99,7 +99,7 @@ packages/
 ├── protocol/             # Webview ↔ Host RPC message definitions (zod single source)
 ├── extension/            # VSCode extension body (tree / commands / connection management / form & table Webview hosts / export / logging)
 ├── webview-ui/           # React + Vite + Tailwind v4 + shadcn/ui (table / form / Console / schema / database design pages)
-├── driver-mock/          # built-in demo driver (in-memory: 50k-row big database + 1000×20 wide table, green conformance baseline)
+├── driver-mock/          # built-in baseline driver (in-memory: 50k-row big database + 1000×20 wide table; green conformance baseline, not exposed in the connection form)
 ├── driver-mysql/         # MySQL driver (mysql2)
 ├── driver-postgres/      # PostgreSQL driver (pg, D-15 schemas in the tree)
 ├── driver-redis/         # Redis driver (node-redis, SCAN cursor pagination + command console)
@@ -116,7 +116,7 @@ packages/
 - All driver calls go through the `DriverHost` intermediary (uniform timeout / cancellation / logging); the process-isolation fallback is ready (D-05: repeated reviews kept it in-process)
 - Filtering/sorting must push down to the SQL layer (parameterized); full-table fetch for in-memory filtering is forbidden; full-table `COUNT(*)` is not executed by default
 - Passwords live only in SecretStorage; error codes are unified (`DriverErrorCode`) and the UI matches codes without parsing text
-- See [Design Overview chapter 11 ADR](docs/概要设计.md) (Chinese) for details (D-01~D-20)
+- See [Design Overview chapter 11 ADR](docs/概要设计.md) (Chinese) for details (D-01~D-25)
 
 ## License
 

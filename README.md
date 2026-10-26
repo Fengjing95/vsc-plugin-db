@@ -7,7 +7,7 @@
 >
 > 🌐 **产品官网**：[dbkit.easyremember.cn](https://dbkit.easyremember.cn/)（源码在 [website/](website/)，部署于腾讯云 EdgeOne）
 
-在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖「看结构 → 查数据 → 改数据 → 写 SQL」的完整链路。支持 MySQL、PostgreSQL、SQL Server、SQLite、MongoDB、Redis 六类外部数据源 + 内置 Mock 演示源，单文件 VSIX 分发、零原生依赖。
+在 VSCode 内提供统一的、可插拔的数据库访问入口，覆盖「看结构 → 查数据 → 改数据 → 写 SQL」的完整链路。支持 MySQL、PostgreSQL、SQL Server、Oracle、SQLite、MongoDB、Redis 七类外部数据源，单文件 VSIX 分发、零原生依赖。
 
 ## 架构总览
 
@@ -17,27 +17,27 @@
 
 ## 功能总览
 
-| 能力 | MySQL | PostgreSQL | SQL Server | SQLite | MongoDB | Redis | Mock（内置） |
+| 能力 | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
 |---|---|---|---|---|---|---|---|
-| 资源树 | 库/表/视图/列/键/索引 | schema/表/视图/列/键/索引 | schema/表/视图/列/键/索引 | 单库/表/列 | 库/collection/字段目录 | Key 类型目录/键 | 演示库 |
-| 数据浏览（筛选/排序/搜索下推 + 分页） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 类型化展示 | ✓ |
-| 表格编辑（ChangeSet + 乐观锁 + 事务提交） | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | —（只读） | ✓ |
-| SQL Console（补全/历史/危险拦截） | ✓ | ✓ | ✓ | ✓ | mongosh 命令控制台 | 命令控制台 | ✓ |
-| 交互式事务（空闲超时回滚） | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
-| 表结构编辑器（建/改表、列） | ✓ | ✓ | ✓ | ✓ | — | — | ✓ |
-| 库级 DDL（新建/编辑/删除库） | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | —（单库） | ✓ 建/删库 | —（库数固定） | — |
-| SSL / SSH 隧道（TOFU 指纹） | ✓ | ✓ | ✓ | — | ✓ | ✓ / TLS | — |
+| 资源树 | 库/表/视图/列/键/索引 | schema/表/视图/列/键/索引 | schema/表/视图/列/键/索引 | schema/表/视图/列/键/索引 | 单库/表/列 | 库/collection/字段目录 | Key 类型目录/键 |
+| 数据浏览（筛选/排序/搜索下推 + 分页） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 类型化展示 |
+| 表格编辑（ChangeSet + 乐观锁 + 事务提交） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | —（只读） |
+| SQL Console（补全/历史/危险拦截） | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh 命令控制台 | 命令控制台 |
+| 交互式事务（空闲超时回滚） | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| 表结构编辑器（建/改表、列） | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| 库级 DDL（新建/编辑/删除库） | ✓ | ✓ 建/删 schema | ✓ 建/删 schema | ✓ 建/删 schema | —（单库） | ✓ 建/删库 | —（库数固定） |
+| SSL / SSH 隧道（TOFU 指纹） | ✓ | ✓ | ✓ | ✓ 隧道 | — | ✓ | ✓ / TLS |
 | 导出（CSV/JSON/XLSX/NDJSON/Markdown/SQL INSERT，后台任务可取消） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 契约测试（CI 实跑） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 恒跑 |
+| 契约测试（CI 实跑） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-其他能力：查看 DDL、由表结构生成代码（TS/Java/Go/Prisma）、复制为多种格式、SQL 格式化、保存查询与树内查询目录、EXPLAIN 树形缩进、行内执行结果注记、CodeLens 逐语句执行、操作日志（`dbExplorer.showLog`）。
+其他能力：AI 助手（BYOK：自然语言生成 SQL / SQL 解释 / 错误修复建议）、单元格大文本 / JSON / 二进制查看器、ER 图查看与导出（SVG/PNG）、查看 DDL、由表结构生成代码（TS/Java/Go/Prisma）、复制为多种格式、SQL 格式化、保存查询与树内查询目录、EXPLAIN 树形缩进、行内执行结果注记、CodeLens 逐语句执行、操作日志（`dbExplorer.showLog`）。
 
 ## 安装
 
-**VSIX（推荐，GitHub Release）**：从 [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) 下载 `db-explorer-0.1.0.vsix` → VSCode 扩展视图右上角「…」→ **Install from VSIX…**；或命令行：
+**VSIX（推荐，GitHub Release）**：从 [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) 下载最新 `db-kit-<版本>.vsix` → VSCode 扩展视图右上角「…」→ **Install from VSIX…**；或命令行：
 
 ```bash
-code --install-extension db-explorer-0.1.0.vsix
+code --install-extension db-kit-<版本>.vsix
 ```
 
 **从源码运行（开发）**：见下文[开发](#开发)一节。
@@ -45,7 +45,7 @@ code --install-extension db-explorer-0.1.0.vsix
 ## 快速上手
 
 1. 活动栏「数据库」图标 → 视图标题栏 **＋ 新建连接**（MySQL / PostgreSQL / SQL Server / Oracle / SQLite / MongoDB / Redis 任一）；
-2. 展开连接 → 库 → `表` → 单击表名打开表格视图（列头排序、筛选构造器、全局搜索、列显隐、分页均为服务端下推）；
+2. 展开连接 → 库 → `表` → 单击表名打开表格视图（列头排序、WHERE / ORDER BY 自由条件栏、全局搜索、列显隐、分页均为服务端下推）；
 3. 编辑：双击/`Enter`/`F2` 编辑单元格 → 工具栏「提交变更(N)」→ 参数化 SQL 预览 → 单事务提交，冲突定位错误行；NULL↔空串右键切换；
 4. 写 SQL：树查询目录「新增查询」或任意 `.sql` 文件 → `Ctrl+Enter` 执行（`Ctrl+Shift+Enter` 全部），结果面板多结果集 Tab + EXPLAIN 树形缩进；无 WHERE 的 UPDATE/DELETE 与生产库危险操作有分级确认护栏；
 5. 导出：表格工具栏「导出」→ 选格式与范围 → 后台执行（通知中心进度、可取消、多任务并发）。
@@ -67,7 +67,7 @@ code --install-extension db-explorer-0.1.0.vsix
 | 文档 | 说明 |
 |---|---|
 | [AGENTS.md](AGENTS.md) | **Agent/新成员必读**：工程约束（门禁/协议/安全）与踩坑解法库 |
-| [概要设计](docs/概要设计.md) | 产品边界、架构、模块详设、ADR 决策记录（D-01~D-20） |
+| [概要设计](docs/概要设计.md) | 产品边界、架构、模块详设、ADR 决策记录（D-01~D-25） |
 | [驱动开发规范](docs/驱动开发规范.md) | `IDatabaseDriver` 契约全集、错误码、值编码、加载机制 |
 | [交互设计稿](docs/交互设计稿.md) | 各界面线框、状态机、键盘与文案规范 |
 | [技术选型](docs/技术选型.md) | T-01~T-14 候选对比与决策 |
@@ -97,7 +97,7 @@ packages/
 ├── protocol/             # Webview ↔ Host RPC 消息定义（zod 单一来源）
 ├── extension/            # VSCode 插件主体（树/命令/连接管理/表单与表格 Webview 宿主/导出/日志）
 ├── webview-ui/           # React + Vite + Tailwind v4 + shadcn/ui（表格/表单/Console/表结构/库设计页）
-├── driver-mock/          # 内置演示驱动（内存：5 万行 big 库 + 1000×20 宽表，契约绿基线）
+├── driver-mock/          # 内置基准驱动（内存：5 万行 big 库 + 1000×20 宽表；契约绿基线，不在连接表单暴露）
 ├── driver-mysql/         # MySQL 驱动（mysql2）
 ├── driver-postgres/      # PostgreSQL 驱动（pg，D-15 schema 上树）
 ├── driver-redis/         # Redis 驱动（node-redis，SCAN 游标分页 + 命令控制台）
@@ -114,7 +114,7 @@ packages/
 - 全部驱动调用经 `DriverHost` 中转（统一超时/取消/日志），进程隔离预案就绪（D-05 多轮复核维持进程内）
 - 筛选/排序必须在 SQL 层下推（参数化），禁止取全表内存过滤；默认不执行全表 `COUNT(*)`
 - 密码只存 SecretStorage；错误码统一（`DriverErrorCode`），UI 只认码不解析文本
-- 详见 [概要设计 第 11 章 ADR](docs/概要设计.md)（D-01~D-20）
+- 详见 [概要设计 第 11 章 ADR](docs/概要设计.md)（D-01~D-25）
 
 ## License
 
