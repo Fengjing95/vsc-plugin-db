@@ -108,6 +108,9 @@ function seedVersionMatches(extRoot: string): boolean {
   }
 }
 
+/** Linux headless（xvfb-run 之外仍需要的 chromium 旗标）——主启动与无头引导两处同用 */
+const LINUX_FLAGS = process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'] : [];
+
 /** 无头自举：语言包缓存（user-data/languagepacks.json）由主进程启动时生成，但 NLS 解析先于缓存
  *  写入（首轮恒 en）。seed 缺失/过期时拉起一次性 VSCode（无 CDP/桥），轮询缓存文件出现即收割。
  *  失败不抛错：runner 侧有自愈重试兜底（首轮 zh 回落 en 失败 → finally 收割缓存为种子 → 重跑即绿），
@@ -130,6 +133,8 @@ async function bootstrapLanguagePackSeed(executablePath: string, extRoot: string
       '--disable-updates',
       '--disable-crash-reporter',
       '--skip-release-notes',
+      // CI 首跑踩：引导缺 Linux 旗标 → Chromium sandbox 起不来 → 120s 无任何产物（profile 只剩我建的 User/）
+      ...LINUX_FLAGS,
     ],
     {
       env: { ...process.env, VSCODE_EXTENSIONS: extRoot },
@@ -233,12 +238,17 @@ export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
   if (opts.locale.startsWith('zh')) {
     writeFileSync(join(userDataDir, 'argv.json'), JSON.stringify({ locale: opts.locale }));
   }
-  // 首启 onboarding/welcome 模态会拦截一切点击（onboarding-a-overlay aria-modal）——profile 预置关闭；
-  // notifications.showToast=false 同理：通知气泡（如 shell 环境解析超时提示）会遮挡右下角控件（实测 flake 源）
+  // 首启 onboarding/welcome 模态会拦截一切点击（onboarding-a-overlay aria-modal）——profile 预置关闭
+  // （startupEditor none + walkthrough 不自动开 + 实验关：Linux zh 轮实测模态仍可能晚于旅程开头出现，
+  // 旅程侧另有 dismissOverlays 兜底）；notifications.showToast=false 同理：通知气泡（如 shell 环境
+  // 解析超时提示）会遮挡右下角控件（实测 flake 源）
   writeFileSync(
     join(userDataDir, 'User', 'settings.json'),
     JSON.stringify({
       'workbench.startupEditor': 'none',
+      'workbench.welcomePage.walkthroughs.openOnInstall': false,
+      'workbench.enableExperiments': false,
+      'workbench.tips.enabled': false,
       'extensions.ignoreRecommendations': true,
       'update.mode': 'none',
       'notifications.showToast': false,
@@ -261,12 +271,9 @@ export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
     '--disable-crash-reporter',
     '--skip-release-notes',
     `--remote-debugging-port=${opts.cdpPort}`,
+    ...LINUX_FLAGS,
     opts.workspaceDir,
   ];
-  if (process.platform === 'linux') {
-    // CI headless（xvfb-run 之外仍需要的 chromium 旗标）
-    args.push('--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage');
-  }
 
   // ELECTRON_RUN_AS_NODE 若从 VSCode 终端继承会让 VSCode 以纯 node 启动（@vscode/test-electron 同款防御）。
   // VSCODE_EXTENSIONS 与 --extensions-dir 双通道：主进程的 NLS/语言包解析不认 --extensions-dir 旗标

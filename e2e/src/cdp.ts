@@ -117,3 +117,27 @@ export async function dismissNotifications(page: Page): Promise<void> {
     await toasts.first().click().catch(() => undefined);
   }
 }
+
+/** 关闭首启 onboarding 模态（`.onboarding-a-overlay`，aria-modal，拦截一切点击）。
+ *  模态可能晚于旅程开头渲染（Linux zh 轮实测：旅程开头检测为空、点击时已在）——先给它 settleMs
+ *  出现窗口，再按 Esc / 点关闭类按钮，循环直至消失；每次关键 workbench 点击前调用。 */
+export async function dismissOverlays(page: Page, settleMs = 2500): Promise<void> {
+  const overlay = page.locator('.onboarding-a-overlay.visible, .onboarding-a-overlay[aria-modal="true"]');
+  await overlay.first().waitFor({ state: 'visible', timeout: settleMs }).catch(() => undefined);
+  for (let i = 0; i < 4; i++) {
+    if ((await overlay.count()) === 0) break;
+    await page.keyboard.press('Escape').catch(() => undefined);
+    // 关闭/跳过类按钮（zh/en）优先，退而点最后一个按钮（主操作通常也会关掉模态）
+    const closeBtn = overlay
+      .locator('button, a[role="button"]')
+      .filter({ hasText: /skip|close|dismiss|跳过|关闭|稍后|later|got it|开始|get started|不再显示|don't show/i })
+      .first();
+    if ((await closeBtn.count()) > 0) {
+      await closeBtn.click({ timeout: 2000 }).catch(() => undefined);
+    } else {
+      await overlay.locator('button').last().click({ timeout: 2000 }).catch(() => undefined);
+    }
+    await overlay.first().waitFor({ state: 'hidden', timeout: 2000 }).catch(() => undefined);
+  }
+  await dismissNotifications(page);
+}

@@ -1,5 +1,5 @@
 import type { BridgeClient } from '../bridgeClient';
-import { dismissNotifications, findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
+import { dismissNotifications, dismissOverlays, findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
 import type { Fixture } from '../fixture';
 import { commitCountLabel, uiLabels } from '../labels';
 
@@ -24,20 +24,17 @@ export type JourneyFn = (ctx: JourneyCtx) => Promise<void>;
 export const journey1: JourneyFn = async (ctx) => {
   const { page, bridge, fixture, labels } = ctx;
 
-  // 0. 首启 onboarding 模态兜底（settings.json 已关，但实验浮层可能仍现）：Esc / 主按钮关掉；
-  //    通知气泡兜底清理（遮挡点击的 flake 源，见 dismissNotifications）
-  const overlay = page.locator('.onboarding-a-overlay');
-  if ((await overlay.count()) > 0) {
-    await page.keyboard.press('Escape').catch(() => undefined);
-    await overlay.locator('button').last().click().catch(() => undefined);
-  }
-  await dismissNotifications(page);
+  // 0. 首启 onboarding 模态 / 通知气泡兜底（settings.json 已关，但模态可能晚于此处渲染，
+  //    Linux zh 轮实测——dismissOverlays 自带出现窗口等待 + 循环关闭）
+  await dismissOverlays(page);
 
   // 1. 打开资源树视图（命令 = workbench.view.extension.<containerId>，与语言无关）
   const opened = await bridge.execute('workbench.view.extension.dbExplorer-container');
   if (!opened.ok) throw new Error(`打开资源树视图失败: ${opened.error}`);
 
-  // 2. 视图标题栏「新建连接」→ 连接表单 webview（VSCode 1.14x 的 action-label 走 aria-label，无 title 属性）
+  // 2. 视图标题栏「新建连接」→ 连接表单 webview（VSCode 1.14x 的 action-label 走 aria-label，无 title 属性）。
+  //    点击前再清一次模态（打开视图容器可能触发它渲染）
+  await dismissOverlays(page, 1000);
   await ctx.page.locator(`.action-label[aria-label="${labels.newConnection}"]`).first().click();
   const form = await findWebviewFrame(page, (b) => b.page === 'connectionForm');
 

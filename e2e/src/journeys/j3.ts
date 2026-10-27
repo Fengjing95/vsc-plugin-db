@@ -1,4 +1,4 @@
-import { dismissNotifications, findWebviewFrame } from '../cdp';
+import { dismissOverlays, findWebviewFrame } from '../cdp';
 import type { JourneyFn } from './j1';
 
 /**
@@ -9,7 +9,7 @@ import type { JourneyFn } from './j1';
  */
 export const journey3: JourneyFn = async (ctx) => {
   const { page, bridge, labels, requestedLocale } = ctx;
-  await dismissNotifications(page);
+  await dismissOverlays(page, 1000);
   const state = await bridge.state();
   const expectZh = requestedLocale.startsWith('zh');
   if (expectZh && !state.language.startsWith('zh')) {
@@ -25,6 +25,7 @@ export const journey3: JourneyFn = async (ctx) => {
 
   // manifest 层：%key% 按显示语言解析（en → package.nls.en.json / zh → 默认 nls.json）
   await bridge.execute('workbench.view.extension.dbExplorer-container');
+  await dismissOverlays(page, 1000);
   await page.locator(`.action-label[aria-label="${labels.newConnection}"]`).first().waitFor({ state: 'visible', timeout: 20_000 });
 
   // webview 层：连接表单按钮（词典经 __BOOTSTRAP__.messages 注入——P-72 修复的回归哨兵）
