@@ -1,4 +1,4 @@
-import { createPool, type Pool, type PoolConnection } from 'mysql2/promise';
+import { createConnection, createPool, type Pool, type PoolConnection } from 'mysql2/promise';
 // 方言词表（M8 优化全量化：关键字/函数/补全片段，含窗口函数/CTE/UPSERT/JSON 面）
 import { COMPLETION_SNIPPETS, DATA_TYPES, FUNCTIONS, KEYWORDS } from './completion';
 import {
@@ -52,7 +52,7 @@ const capabilities: DriverCapabilities = {
   supportsInteractiveTransaction: true, // M7：openSession（SessionManager 空闲超时回收，§4.6/D-09）
   supportsMultipleDatabases: true,
   supportsMultiStatement: false, // 收紧注入面；Console 按单语句执行
-  supportsCancel: false, // mysql2 无法可靠中止已下发语句，契约如实声明
+  supportsCancel: true, // abort/超时 → 专用临时连接 KILL QUERY <threadId>，ER_QUERY_INTERRUPTED(1317) → E_CANCELED（CI mysql service 实跑取消组）
   supportsDdl: true,
   supportsDdlEditor: true, // M8-B2：buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：buildCreateDatabase/buildAlterDatabase/buildDropDatabase
@@ -122,7 +122,7 @@ export class MysqlConnection implements IConnection {
   /** 连接默认库（池建立时的 database）：Console 绑定库 ≠ 默认库时按 req.db 切库执行 */
   private readonly defaultDb: string | undefined;
 
-  constructor(private readonly cfg: ConnectionConfig, secret: string) {
+  constructor(private readonly cfg: ConnectionConfig, private readonly secret: string) {
     const o = cfg.options;
     this.connectionId = cfg.id;
     this.defaultDb = o.database ? String(o.database) : undefined;
@@ -327,19 +327,51 @@ export class MysqlConnection implements IConnection {
   }
 
   async query(req: QueryRequest): Promise<ResultSet[]> {
-    // Console 绑定库（QueryRequest.db，规范 §4）≠ 连接默认库 → 池内专用连接 USE 后执行；
-    // 相同（或未绑定）直接走池，避免每语句多一次 USE 往返
-    if (!req.db || req.db === this.defaultDb) {
-      return runQueryOn(this.pool, req);
+    // 预中止检查点（驱动规范 §7）：signal 已中止 → 不碰池直接拒绝
+    if (req.signal?.aborted) {
+      throw new DriverError('E_CANCELED', '查询已取消');
     }
+    // Console 绑定库（QueryRequest.db，规范 §4）≠ 连接默认库 → 池内专用连接 USE 后执行；
+    // 相同（或未绑定）走池直查。取消/超时需要连接级 threadId（KILL QUERY 定位在途语句），
+    // 统一走 getConnection 持有专用连接执行——原快路径 pool.query 语义等价，仅多一次显式租借
     const conn = await this.pool.getConnection();
     try {
-      await conn.query(`USE ${quoteMysqlIdentifier(req.db)}`);
-      return await runQueryOn(conn, req);
+      if (req.db && req.db !== this.defaultDb) {
+        await conn.query(`USE ${quoteMysqlIdentifier(req.db)}`);
+      }
+      return await runQueryOn(conn, req, {
+        threadId: poolConnectionThreadId(conn),
+        cancelServer: this.killQuery,
+      });
     } finally {
-      conn.release();
+      await releaseAfterSettle(conn);
     }
   }
+
+  /** SQL 级服务端取消（pg cancelBackend 同构）：专用临时连接下发 `KILL QUERY <threadId>`——只杀
+   *  语句不断连接（KILL CONNECTION 会断开在途连接本身，违反「取消后连接可复用」契约前提）。取消为
+   *  低频路径，连接随用随建随关；查询可能已自然结束（ER_NO_SUCH_THREAD）或缺 KILL 权限 → 尽力吞错。
+   *  C-10：连接参数含密钥，仅闭包内使用、永不入日志 */
+  private readonly killQuery = (threadId: number): void => {
+    const o = this.cfg.options;
+    createConnection({
+      host: String(o.host ?? '127.0.0.1'),
+      port: Number(o.port ?? 3306),
+      user: String(o.username ?? ''),
+      password: this.secret,
+      connectTimeout: Number(o.connectTimeout ?? 10_000),
+      ssl: o.ssl ? { rejectUnauthorized: true } : undefined,
+    })
+      .then(async (c) => {
+        try {
+          await c.query(`KILL QUERY ${Number(threadId)}`);
+        } catch {
+          // 尽力取消：threadId 可能已退出（ER_NO_SUCH_THREAD）
+        }
+        await c.end().catch(() => undefined);
+      })
+      .catch(() => undefined);
+  };
 
   previewChanges(db: string, obj: string, cs: ChangeSet): Promise<PreviewItem[]> {
     return Promise.resolve(buildChangeStatements(db, obj, cs));
@@ -549,14 +581,16 @@ export class MysqlConnection implements IConnection {
   }
 }
 
-/** 单连接上的查询执行（池连接与会话连接共用同一 ResultSet 构建路径） */
+/** 单连接上的查询执行（池连接与会话连接共用同一 ResultSet 构建路径）；
+ *  cancel 提供连接级取消信息（query 主链路专用，会话路径不传——事务内语句无取消语义） */
 async function runQueryOn(
   executor: { query(opts: { sql: string; values?: unknown[] }): Promise<[unknown, unknown]> },
   req: QueryRequest,
+  cancel?: { threadId?: number; cancelServer?: (threadId: number) => void },
 ): Promise<ResultSet[]> {
   try {
     const started = Date.now();
-    const [rows, fields] = await executor.query({ sql: req.sql, values: req.params ?? [] });
+    const [rows, fields] = await executeCancelable(executor, req, cancel);
     const executionMs = Date.now() - started;
 
     if (Array.isArray(rows)) {
@@ -593,6 +627,89 @@ async function runQueryOn(
   } catch (err) {
     throw toDriverError(err);
   }
+}
+
+/**
+ * 语句级取消/超时执行（驱动规范 §7，pg runCancelableOn 同构）：
+ * - signal 已中止 → SQL 下发前立即 E_CANCELED（预中止检查点）
+ * - 在途：abort → 专用临时连接 `KILL QUERY <threadId>`（只杀语句不杀连接）；在途语句随后回包
+ *   ER_QUERY_INTERRUPTED(1317) → E_CANCELED（sql.ts 错误映射表）；客户端先以 E_CANCELED 拒绝，
+ *   服务端迟到回包被 settle 链吞掉（P-30/P-46 同族，防未处理 rejection 毒化进程）
+ * - deadline（timeoutMs，Console 默认 15s）→ 同上 + E_TIMEOUT
+ * 取消竞态（P-46/P-54 同族）：1317 回包可能晚于客户端结算 → executor 上的 cancelSettle 交给
+ * releaseAfterSettle 在归还前有界等待，避免被杀语句的回包/事件落在已复用连接上
+ */
+export async function executeCancelable(
+  executor: { query(opts: { sql: string; values?: unknown[] }): Promise<[unknown, unknown]> },
+  req: QueryRequest,
+  cancel?: { threadId?: number; cancelServer?: (threadId: number) => void },
+): Promise<[unknown, unknown]> {
+  if (req.signal?.aborted) {
+    throw new DriverError('E_CANCELED', '查询已取消');
+  }
+  const pending = executor.query({ sql: req.sql, values: req.params ?? [] });
+  if (!req.signal && !(req.timeoutMs > 0)) {
+    return pending; // 快路径：无 signal 且无 deadline，不包 settle 链
+  }
+  const requestCancel = (): void => {
+    // 记录在途结算 promise：releaseAfterSettle 归还前有界等待（1317 实际毫秒级到达）
+    (executor as { cancelSettle?: Promise<unknown> }).cancelSettle = pending.catch(() => undefined);
+    if (cancel?.threadId !== undefined && cancel.cancelServer) {
+      cancel.cancelServer(cancel.threadId);
+    }
+  };
+  return new Promise<[unknown, unknown]>((resolve, reject) => {
+    let settled = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = (): void => {
+      requestCancel();
+      settleReject(new DriverError('E_CANCELED', '查询已取消'));
+    };
+    const settleReject = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
+      if (deadline) clearTimeout(deadline);
+      req.signal?.removeEventListener('abort', onAbort);
+      reject(err);
+    };
+    const settleResolve = (value: [unknown, unknown]): void => {
+      if (settled) return;
+      settled = true;
+      if (deadline) clearTimeout(deadline);
+      req.signal?.removeEventListener('abort', onAbort);
+      resolve(value);
+    };
+    if (req.signal) {
+      req.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    const timeoutMs = req.timeoutMs ?? 0;
+    if (timeoutMs > 0) {
+      deadline = setTimeout(() => {
+        requestCancel();
+        settleReject(new DriverError('E_TIMEOUT', '语句执行超时，已请求服务端取消'));
+      }, timeoutMs);
+    }
+    pending.then(settleResolve, settleReject);
+  });
+}
+
+/** 归还前的取消结算等待（2s 有界，pg withClient 同构）：1317 被本驱动 settle 链消费、连接回 ready
+ *  态后再还池，消除「被杀语句回包落在已复用连接」的竞态（P-46/P-54 同族） */
+async function releaseAfterSettle(conn: PoolConnection): Promise<void> {
+  const settle = (conn as { cancelSettle?: Promise<unknown> }).cancelSettle;
+  if (settle) {
+    (conn as { cancelSettle?: Promise<unknown> }).cancelSettle = undefined;
+    await Promise.race([settle, new Promise((r) => setTimeout(r, 2_000))]);
+  }
+  conn.release();
+}
+
+/** mysql2 内部属性：在途语句所在线程 id（KILL QUERY 的目标）。promise 包装的 typings 未声明
+ *  threadId，兼容 PoolConnection 自身与底层 connection 两种挂载点（Loose cast） */
+function poolConnectionThreadId(conn: PoolConnection): number | undefined {
+  const c = conn as unknown as { threadId?: unknown; connection?: { threadId?: unknown } };
+  const id = Number(c.threadId ?? c.connection?.threadId);
+  return Number.isFinite(id) && id > 0 ? id : undefined;
 }
 
 function commentOrUndefined(v: unknown): string | undefined {

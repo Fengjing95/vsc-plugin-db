@@ -279,6 +279,8 @@ export function toDriverError(err: unknown): DriverError {
       return new DriverError('E_UNSUPPORTED', '该语句/特性不被当前服务器支持', { detail });
     case 'ER_LOCK_WAIT_TIMEOUT':
       return new DriverError('E_TIMEOUT', '锁等待超时，事务可能被其他会话占用', { detail });
+    case 'ER_QUERY_INTERRUPTED': // KILL QUERY 中断在途语句（1317，驱动规范 §7 取消链路）
+      return new DriverError('E_CANCELED', '查询已取消', { detail });
     default:
       if (e.code !== undefined && CONN_CODES.has(e.code)) {
         return new DriverError('E_CONN', '无法连接到数据库服务器（网络不可达或拒绝连接）', {
