@@ -14,6 +14,19 @@ export interface LaunchOptions {
   locale: string;
 }
 
+/** CLI 入口路径跨平台解析：macOS exe 在 .app/Contents/MacOS/ → Contents/Resources/app/out/cli.js；
+ * Linux exe 在 VSCode-linux-x64/ 根 → resources/app/out/cli.js（CI 首跑踩：mac 布局硬编码 Linux 必挂） */
+function resolveCliJs(executablePath: string): string {
+  const candidates = [
+    join(executablePath, '..', '..', 'Resources', 'app', 'out', 'cli.js'),
+    join(executablePath, '..', 'resources', 'app', 'out', 'cli.js'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  throw new Error(`cli.js 未找到（候选: ${candidates.join(', ')}）`);
+}
+
 /** zh 基线依赖中文语言包（P-77：无语言包时 --locale=zh-cn 被 VSCode 回落为 en）——
  * 一次性装入缓存目录（marketplace 拉取；CI 走 actions/cache），安装失败明确报错不静默跳过 */
 const ZH_PACK_ID = 'ms-ceintl.vscode-language-pack-zh-hans';
@@ -35,7 +48,7 @@ export async function ensureLocaleExtensions(locale: string, executablePath: str
     mkdirSync(tmpUserData, { recursive: true });
     // CLI 入口 = ELECTRON_RUN_AS_NODE + out/cli.js（bin/code 包装脚本同款直启 Electron 主进程不处理
     // --install-extension，实测 spawn error/无输出）
-    const cliJs = join(executablePath, '..', '..', 'Resources', 'app', 'out', 'cli.js');
+    const cliJs = resolveCliJs(executablePath);
     const exitCode = await new Promise<number>((resolve) => {
       const cli = spawn(
         executablePath,
@@ -196,13 +209,18 @@ export interface VscodeApp {
 export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
   let executablePath = await downloadAndUnzipVSCode({ cachePath: VSCODE_CACHE_DIR, version: 'stable' });
   // @vscode/test-electron 对 macOS stable 返回 Contents/MacOS/Electron，实际二进制是 Code（1.143 实测）——
-  // 存在性校验后回退，避免 spawn ENOENT
+  // 存在性校验后按平台候选回退，避免 spawn ENOENT
   if (!existsSync(executablePath)) {
-    const fallback = join(executablePath, '..', '..', 'MacOS', 'Code');
-    if (existsSync(fallback)) {
+    const platformRoot = join(executablePath, '..', '..');
+    const candidates =
+      process.platform === 'darwin'
+        ? [join(platformRoot, 'MacOS', 'Code'), join(platformRoot, 'MacOS', 'Electron')]
+        : [join(platformRoot, 'code'), join(platformRoot, 'vscode'), join(platformRoot, 'bin', 'code')];
+    const fallback = candidates.find((c) => existsSync(c));
+    if (fallback) {
       executablePath = fallback;
     } else {
-      throw new Error(`VSCode 可执行文件不存在: ${executablePath}（回退 ${fallback} 亦缺失）`);
+      throw new Error(`VSCode 可执行文件不存在: ${executablePath}（候选 ${candidates.join(', ')} 均缺失）`);
     }
   }
   const userDataDir = join(opts.runDir, 'user-data');

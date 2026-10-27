@@ -300,7 +300,32 @@ jobs:
         run: pnpm build
 
       - name: e2e 全旅程（en + zh-cn）
-        run: xvfb-run -a pnpm --filter db-kit-e2e e2e
+        run: |
+          set -o pipefail
+          xvfb-run -a pnpm --filter db-kit-e2e e2e 2>&1 | tee /tmp/e2e-output.txt
+
+      # 与主 job 同款匿名诊断链路：Actions 日志需登录，摘要/注记匿名可读
+      - name: 失败输出转运行摘要与注记
+        if: failure()
+        run: |
+          {
+            echo '## e2e 失败输出（尾部 300 行）'
+            echo '<details open><summary>展开</summary>'
+            echo ''
+            echo '```text'
+            tail -n 300 /tmp/e2e-output.txt 2>/dev/null || echo '（无输出文件）'
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/e2e-output.txt ]; then
+            tail -n 150 /tmp/e2e-output.txt > /tmp/e2e-tail.txt
+            echo "::error::e2e 输出尾部共 $(wc -l < /tmp/e2e-tail.txt | tr -d ' ') 行，分块见后续注记（另有 artifact e2e-artifacts）"
+            split -l 25 /tmp/e2e-tail.txt /tmp/e2e-chunk_
+            for f in /tmp/e2e-chunk_*; do
+              echo "::error::$(sed 's/%/%25/g; s/\r/%0D/g; :a;N;$!ba;s/\n/%0A/g' "$f")"
+            done
+            rm -f /tmp/e2e-chunk_*
+          fi
 
       # 失败工件（D-26 决议 5）：截图 + webview 帧摘要（e2e/artifacts）+ 完整 profile/workbench 日志（/tmp/dbkit-e2e）
       - name: 收集 e2e 临时目录（失败工件）
