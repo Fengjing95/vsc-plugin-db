@@ -1,0 +1,20 @@
+{
+  "name": "db-kit-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "DB Kit e2e 关键旅程（M11-e2e / 遗留 #8）：@vscode/test-electron 拉起真实 VSCode 桌面二进制，驱动仅 sqlite（进程内零网络），CDP 驱动 workbench 与 webview",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "e2e": "node dist/runner.cjs"
+  },
+  "devDependencies": {
+    "@db-explorer/driver-sqlite": "workspace:*",
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.0",
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.50.0",
+    "typescript": "^5.6.0"
+  }
+}

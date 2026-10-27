@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "e2e": "pnpm build && pnpm --filter db-kit-e2e build && pnpm --filter db-kit-e2e e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

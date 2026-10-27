@@ -3,7 +3,9 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.vsix', 'packages/extension/media/**', '.agents/**', 'website/public/playground/**'] },
+  // .vscode-test：@vscode/test-electron 下载的 VSCode 完整应用树（数千 JS 文件）——入 ignores，
+  // 否则 eslint . 全扫 OOM（M11-e2e 实测）；e2e/artifacts 为运行工件
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.vsix', 'packages/extension/media/**', '.agents/**', 'website/public/playground/**', '.vscode-test/**', 'e2e/artifacts/**', 'e2e/test-extension/extension.js'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -22,6 +24,7 @@ export default tseslint.config(
       globals: {
         process: 'readonly',
         console: 'readonly',
+        URL: 'readonly',
       },
     },
   },

@@ -59,7 +59,7 @@ code --install-extension db-kit-<version>.vsix
 - The SQLite driver is limited to small-to-medium databases (≤ 100MB recommended; whole database in memory + atomic flush per write batch); synchronous execution cannot be canceled
 - MongoDB editing uses field-level `$set` optimistic locking, applies one by one and stops at the first failure (no transaction semantics); structural mongosh commands (create index / alter collection etc.) are not supported
 - Redis offers read-only browsing + a command console (no rollback-able transactions; editing not enabled)
-- e2e and a standalone perf benchmark are not in place (covered by the conformance suite + the four quality gates)
+- A standalone perf benchmark is not in place (covered by the conformance suite + the four quality gates)
 - No telemetry; passwords live only in VSCode SecretStorage — never written to disk, never logged
 
 For the full picture see [Design Overview §14 open issues](docs/概要设计.md) (Chinese) and [CHANGELOG.md](CHANGELOG.md).
