@@ -299,6 +299,14 @@ jobs:
       - name: 构建扩展与 webview
         run: pnpm build
 
+      # pnpm build 只含 webview+extension（根脚本白名单）——e2e bundle 独立构建；
+      # P-55 防复发：构建后断言产物在位（首跑即抓到 dist/runner.cjs 缺失 Module not found）
+      - name: 构建 e2e bundle
+        run: |
+          pnpm --filter db-kit-e2e build
+          test -f e2e/dist/runner.cjs
+          test -f e2e/test-extension/extension.js
+
       - name: e2e 全旅程（en + zh-cn）
         run: |
           set -o pipefail
