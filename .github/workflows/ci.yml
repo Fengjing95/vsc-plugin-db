@@ -289,12 +289,14 @@ jobs:
 
       # 缓存 = VSCode 二进制 + zh 语言包 + languagepacks.json 种子（全部落在 .vscode-test）。
       # key 用人工版本锚：stable 是移动目标，陈旧缓存只会让 e2e 跑旧版 stable（可接受），
-      # stable 大版本漂移破坏选择器时手工 bump vN 强制刷新
+      # stable 大版本漂移破坏选择器时手工 bump vN 强制刷新。
+      # v1 恒命中会让后续安装成果（语言包/种子）永不保存（actions/cache 命中即跳过 post 保存）——
+      # 首个有效 run 后 v1→v2 已升版
       - name: 缓存 VSCode 二进制与 zh 语言包
         uses: actions/cache@v4
         with:
           path: .vscode-test
-          key: e2e-vscode-stable-cache-v1
+          key: e2e-vscode-stable-cache-v2
 
       - name: 构建扩展与 webview
         run: pnpm build

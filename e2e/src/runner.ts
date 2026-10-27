@@ -7,7 +7,7 @@ import { connectWorkbench } from './cdp';
 import { createFixture } from './fixture';
 import { uiLabels } from './labels';
 import { ARTIFACTS_ROOT, EXTENSION_DIR } from './paths';
-import { launchVSCode, harvestLanguagePackCache, pickPort, waitForCdpPort } from './vscodeApp';
+import { launchVSCode, harvestLanguagePackCache, pickPort, waitForCdpPort, LANGUAGE_PACK_SEED } from './vscodeApp';
 import { journey1 } from './journeys/j1';
 import { journey2 } from './journeys/j2';
 import { journey3 } from './journeys/j3';
@@ -156,7 +156,14 @@ async function main(): Promise<void> {
 
   const results: RunResult[] = [];
   for (const locale of locales) {
-    results.push(await runOnce(locale, only, keep));
+    let r = await runOnce(locale, only, keep);
+    // zh 自愈重试（P-80）：NLS 解析先于 languagepacks.json 写入，首轮恒回落 en（j3 失败）——
+    // finally 已收割本轮主进程生成的缓存为种子，重跑一轮即生效。Linux CI 上无头引导不可用时的兜底路径
+    if (r.failed.length > 0 && locale.startsWith('zh') && existsSync(LANGUAGE_PACK_SEED)) {
+      console.log('[e2e] zh 轮失败且语言包种子已在（首轮缓存慢一拍）——自愈重跑一轮');
+      r = await runOnce(locale, only, keep);
+    }
+    results.push(r);
     console.log(`[e2e] locale=${locale} 轮次结束`);
   }
 

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
@@ -40,9 +40,12 @@ export async function ensureLocaleExtensions(locale: string, executablePath: str
     return empty;
   }
   const extRoot = join(base, 'extensions');
-  // CLI 安装布局 = <id>-<version> 顶层目录（1.14x 实测；旧布局 <id>/<version> 同样认）
-  const packInstalled = existsSync(extRoot) && readdirSync(extRoot).some((d) => d === ZH_PACK_ID || d.startsWith(`${ZH_PACK_ID}-`));
-  if (!packInstalled) {    mkdirSync(extRoot, { recursive: true });
+  // CLI 安装布局 = 平铺 <id>-<version> 顶层目录（1.14x）——**保持原样**：这版扩展扫描器就按平铺扫，
+  // 挪成嵌套 <id>/<version>/ 会让扫描器把 <id>/ 当扩展目录读 package.json 报错、语言包静默失效
+  // （sharedprocess.log「Unable to read file …/<id>/package.json」实测定因）
+  const packInstalled = existsSync(extRoot) && readdirSync(extRoot).some((d) => d.startsWith(`${ZH_PACK_ID}-`));
+  if (!packInstalled) {
+    mkdirSync(extRoot, { recursive: true });
     console.log(`[e2e] 安装中文语言包（首次，marketplace 拉取）: ${ZH_PACK_ID}`);
     const tmpUserData = join(base, 'cli-user-data');
     mkdirSync(tmpUserData, { recursive: true });
@@ -75,22 +78,21 @@ export async function ensureLocaleExtensions(locale: string, executablePath: str
         finish(-1);
       });
       cli.once('close', () => {
-        if (!readdirSync(extRoot).some((d) => d === ZH_PACK_ID || d.startsWith(`${ZH_PACK_ID}-`))) {
+        if (!readdirSync(extRoot).some((d) => d.startsWith(`${ZH_PACK_ID}-`))) {
           console.error(`[e2e] 语言包安装输出: ${out.slice(-1500)}`);
         }
       });
     });
-    const installedAfter = readdirSync(extRoot).some((d) => d === ZH_PACK_ID || d.startsWith(`${ZH_PACK_ID}-`));
+    const installedAfter = readdirSync(extRoot).some((d) => d.startsWith(`${ZH_PACK_ID}-`));
     if (!installedAfter) {
       throw new Error(`中文语言包安装失败（exit=${exitCode}）——marketplace 不可达或引擎不兼容，zh 旅程无法运行`);
     }
   }
-  normalizePackLayout(extRoot);
   await bootstrapLanguagePackSeed(executablePath, extRoot);
   return extRoot;
 }
 
-/** 语言包缓存种子过期检测：translations 路径内嵌 pack 版本目录，与已装 pack 版本不一致即重建 */
+/** 语言包缓存种子过期检测：translations 路径内嵌 pack 目录名（平铺 <id>-<version>），与已装目录不一致即重建 */
 function seedVersionMatches(extRoot: string): boolean {
   if (!existsSync(LANGUAGE_PACK_SEED)) return false;
   try {
@@ -99,16 +101,17 @@ function seedVersionMatches(extRoot: string): boolean {
     };
     const seedPath = seed['zh-cn']?.translations?.vscode;
     if (!seedPath) return false;
-    const versionDir = seedPath.split(`${ZH_PACK_ID}/`)[1]?.split('/')[0];
-    const installed = readdirSync(join(extRoot, ZH_PACK_ID));
-    return versionDir !== undefined && installed.includes(versionDir);
+    const installed = readdirSync(extRoot).filter((d) => d.startsWith(`${ZH_PACK_ID}-`));
+    return installed.some((dir) => seedPath.includes(`/${dir}/`));
   } catch {
     return false;
   }
 }
 
 /** 无头自举：语言包缓存（user-data/languagepacks.json）由主进程启动时生成，但 NLS 解析先于缓存
- *  写入（首轮恒 en）。seed 缺失/过期时拉起一次性 VSCode（无 CDP/桥），轮询缓存文件出现即收割。 */
+ *  写入（首轮恒 en）。seed 缺失/过期时拉起一次性 VSCode（无 CDP/桥），轮询缓存文件出现即收割。
+ *  失败不抛错：runner 侧有自愈重试兜底（首轮 zh 回落 en 失败 → finally 收割缓存为种子 → 重跑即绿），
+ *  失败时附带现场诊断（Linux CI 首跑实测引导不可用，注记里必须能看到为什么）。 */
 async function bootstrapLanguagePackSeed(executablePath: string, extRoot: string): Promise<void> {
   if (seedVersionMatches(extRoot)) return;
   const base = join(VSCODE_CACHE_DIR, 'e2e-ext');
@@ -121,16 +124,20 @@ async function bootstrapLanguagePackSeed(executablePath: string, extRoot: string
     [
       `--user-data-dir=${bootUserData}`,
       `--extensions-dir=${extRoot}`,
+      `--shared-data-dir=${join(bootUserData, 'shared-data')}`,
       '--locale=zh-cn',
       '--disable-workspace-trust',
       '--disable-updates',
       '--disable-crash-reporter',
       '--skip-release-notes',
     ],
-    { env: { ...process.env, VSCODE_EXTENSIONS: extRoot }, stdio: ['ignore', 'ignore', 'ignore'] },
+    {
+      env: { ...process.env, VSCODE_EXTENSIONS: extRoot },
+      stdio: ['ignore', 'ignore', 'ignore'],
+    },
   );
   const cacheFile = join(bootUserData, LANGUAGE_PACK_CACHE);
-  const deadline = Date.now() + 90_000;
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     if (existsSync(cacheFile)) break;
     if (child.exitCode !== null || child.signalCode !== null) break;
@@ -141,18 +148,31 @@ async function bootstrapLanguagePackSeed(executablePath: string, extRoot: string
   for (let i = 0; i < 50 && child.exitCode === null && child.signalCode === null; i++) {
     await new Promise((r) => setTimeout(r, 100));
   }
-  if (!child.killed && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   if (existsSync(cacheFile)) {
     mkdirSync(join(LANGUAGE_PACK_SEED, '..'), { recursive: true });
     copyFileSync(cacheFile, LANGUAGE_PACK_SEED);
     console.log('[e2e] 语言包缓存种子就绪');
-  } else {
-    throw new Error('语言包缓存引导失败（90s 内未生成 languagepacks.json）——zh 基线无法运行');
+    return;
   }
+  // 诊断现场：主进程日志尾部 + profile 根文件列表（CI 注记可见）
+  const mainLog = join(bootUserData, 'logs');
+  let logTail = '';
+  try {
+    for (const stamp of readdirSync(mainLog)) {
+      const f = join(mainLog, stamp, 'main.log');
+      if (existsSync(f)) logTail = readFileSync(f, 'utf8').slice(-1200);
+    }
+  } catch {
+    // 目录不存在
+  }
+  console.warn(`[e2e] 语言包缓存引导失败（120s 未生成 languagepacks.json）——降级为首轮回落 en + 自愈重试；`);
+  console.warn(`[e2e] 引导 profile 根: ${(() => { try { return readdirSync(bootUserData).join(', '); } catch { return '不存在'; } })()}`);
+  if (logTail) console.warn(`[e2e] 引导 main.log 尾部: ${logTail}`);
 }
 
 const LANGUAGE_PACK_CACHE = 'languagepacks.json';
-const LANGUAGE_PACK_SEED = join(VSCODE_CACHE_DIR, 'e2e-ext', 'seed', LANGUAGE_PACK_CACHE);
+export const LANGUAGE_PACK_SEED = join(VSCODE_CACHE_DIR, 'e2e-ext', 'seed', LANGUAGE_PACK_CACHE);
 
 /** 启动前播种语言包缓存：主进程 NLS 解析先于语言包缓存重建（实测慢一拍——首启恒 en、次启才 zh）。
  *  缓存内容只依赖 extRoot 绝对路径（跨 run 稳定），首轮由 harvestLanguagePackCache 收割为种子后，
@@ -169,28 +189,6 @@ export function harvestLanguagePackCache(userDataDir: string, locale: string): v
   if (!existsSync(generated)) return;
   mkdirSync(join(LANGUAGE_PACK_SEED, '..'), { recursive: true });
   copyFileSync(generated, LANGUAGE_PACK_SEED);
-}
-
-/** CLI 装出的是平铺 `<id>-<version>` 目录；归一化为经典嵌套 `<id>/<version>/` 布局，
- * 并同步改写 extensions.json 的 location/relativeLocation——manifest 是扫描的权威索引，
- * 只挪目录不改索引实测语言包不生效（env.language 恒 en） */
-function normalizePackLayout(extRoot: string): void {
-  const flatDirs = readdirSync(extRoot).filter((d) => d.startsWith(`${ZH_PACK_ID}-`));
-  if (flatDirs.length === 0) return;
-  const manifestPath = join(extRoot, 'extensions.json');
-  let manifest = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : null;
-  for (const flat of flatDirs) {
-    const version = flat.slice(ZH_PACK_ID.length + 1);
-    const src = join(extRoot, flat);
-    const dst = join(extRoot, ZH_PACK_ID, version);
-    mkdirSync(join(dst, '..'), { recursive: true });
-    if (!existsSync(dst)) {
-      cpSync(src, dst, { recursive: true });
-    }
-    rmSync(src, { recursive: true, force: true });
-    if (manifest !== null) manifest = manifest.split(flat).join(`${ZH_PACK_ID}/${version}`);
-  }
-  if (manifest !== null) writeFileSync(manifestPath, manifest);
 }
 
 export interface VscodeApp {
@@ -225,6 +223,10 @@ export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
   }
   const userDataDir = join(opts.runDir, 'user-data');
   mkdirSync(join(userDataDir, 'User'), { recursive: true });
+  // 顺序关键：先确保语言包 + 引导出 languagepacks.json 种子，再播种进 profile——
+  // 冷态下种子由本步骤的无头引导产出，颠倒顺序会让播种空跳、首轮恒回落 en（实测定因：
+  // argv.json 20:56:07 写入时种子不存在，VSCode 20:56:17 启动后 20:56:19 才自建缓存，晚于 NLS 解析）
+  const extensionsDir = await ensureLocaleExtensions(opts.locale, executablePath);
   seedLanguagePackCache(userDataDir, opts.locale);
   // locale 必须写进 profile 的 argv.json：--locale CLI 旗标不驱动语言包 NLS 解析（实测 1.143
   // zh 包已装载仍回落 en）；日常 VSCode 的生效路径同样是 argv.json（用户实机对照确认）
@@ -243,13 +245,16 @@ export async function launchVSCode(opts: LaunchOptions): Promise<VscodeApp> {
     }),
   );
 
-  const extensionsDir = await ensureLocaleExtensions(opts.locale, executablePath);
   const args = [
     `--extensionDevelopmentPath=${EXTENSION_DIR}`,
     `--extensionDevelopmentPath=${TEST_EXTENSION_DIR}`,
     `--user-data-dir=${join(opts.runDir, 'user-data')}`,
     // 用户已装扩展隔离 + locale 依赖（P-77）：en=空目录屏蔽用户扩展；zh=缓存的语言包目录
     `--extensions-dir=${extensionsDir}`,
+    // 1.14x 新增 HOME 级全局共享存储（~/.vscode-shared/sharedStorage/state.vscdb，product.json
+    // sharedDataFolderName）——跨 run 跨 profile 共享，不隔离会让 e2e 结果依赖本机历史状态；
+    // 指进 runDir 保证每轮零历史
+    `--shared-data-dir=${join(opts.runDir, 'shared-data')}`,
     `--locale=${opts.locale}`,
     '--disable-workspace-trust',
     '--disable-updates',
