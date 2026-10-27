@@ -143,16 +143,16 @@ d('mysql conformance（CI service 实跑）', () => {
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
   });
 
-  it('cancellation 组（capabilities.supportsCancel=false，如实声明 → 按能力跳过）', async () => {
-    // mysql2 无法可靠中止已下发语句（M2 起契约如实声明 supportsCancel=false，同 mock 口径）
+  it('cancellation 组（supportsCancel=true → KILL QUERY 三检查实跑）', async () => {
+    // abort/超时 → 专用临时连接 KILL QUERY <threadId>（只杀语句不断连接），1317 → E_CANCELED
     const summary = await runCancellationChecks(makeConn, {
-      supportsCancel: false,
+      supportsCancel: true,
       longQuerySql: (seconds) => `SELECT SLEEP(${seconds})`,
       probeSql: 'SELECT 1 AS one',
     });
     logFailures(summary);
     expect(summary.failed).toBe(0);
-    expect(summary.results.every((r) => r.skipped)).toBe(true);
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(3);
   });
 
   it('sql-value-encoding 组（§5 编码往返）', async () => {

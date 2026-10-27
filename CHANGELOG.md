@@ -2,6 +2,13 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [Unreleased]
+
+### 特性
+
+- **MySQL Console 语句取消**：mysql 驱动 `supportsCancel` 转为 true——Console「取消」（与语句超时死线）经**专用临时连接**下发 `KILL QUERY <threadId>`（只杀语句不断连接，取消后连接可复用），在途语句回包 `ER_QUERY_INTERRUPTED` 映射 `E_CANCELED`；归还前有界等待结算（pg 同构，防归还竞态）。契约 cancellation 组三检查（预中止 / 在途取消 / 连接复用）随 CI `mysql:8` service 实跑
+- **MySQL Console 语句超时生效**：`dbExplorer.query.timeoutMs`（默认 15s）此前被 mysql 驱动忽略，现按驱动规范 §7 对齐 pg 口径——超时请求服务端取消并抛 `E_TIMEOUT`
+
 ## [0.7.1] - 2026-10-26
 
 ### 修复
