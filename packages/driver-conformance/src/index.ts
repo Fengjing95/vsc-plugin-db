@@ -2205,8 +2205,11 @@ export async function runRelationGraphChecks(
             { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
             { name: 'manager_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
           ],
+          // 自引用带 NO ACTION（SQL Server 禁自引用 ON DELETE CASCADE——cascade path 环检测
+          // 报 1785「may cause cycles or multiple cascade paths」，mysql/pg/sqlite 允许；
+          // 动作集审计后 fixture 只用全引擎合法子集：CASCADE / NO ACTION）
           foreignKeys: [
-            { name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'], onDelete: 'CASCADE' },
+            { name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'], onDelete: 'NO ACTION' },
           ],
         },
         {
@@ -2275,7 +2278,7 @@ export async function runRelationGraphChecks(
         assert(composite!.onDelete === 'NO ACTION', `line→order 边 onDelete 应为 NO ACTION：${JSON.stringify(composite)}`);
         assert(single!.onUpdate === 'CASCADE', `child→parent 边 onUpdate 应为 CASCADE：${JSON.stringify(single)}`);
       }
-      assert(selfEdge!.onDelete === 'CASCADE', `自引用边 onDelete 应为 CASCADE：${JSON.stringify(selfEdge)}`);
+      assert(selfEdge!.onDelete === 'NO ACTION', `自引用边 onDelete 应为 NO ACTION：${JSON.stringify(selfEdge)}`);
     });
 
     await check(results, 'relation-graph', 'listKeys FK 动作原文带回（不经合并的原始 KeyMeta）', async () => {
