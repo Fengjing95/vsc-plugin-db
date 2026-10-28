@@ -215,10 +215,11 @@ export function renderResultSetAsText(input: {
 }
 
 /** WHERE 片段消毒（AI P2A 批次 A1）：AI 产物进筛选栏前的 fail-closed 检查——
- *  禁分号/多语句、禁注释（行注释 `--` 与块注释定界符）、禁超长；剥掉模型多带头的 WHERE 关键字。
+ *  禁分号/多语句、禁注释（行注释 `--` 与块注释定界符）、禁超长；剥掉模型多带头的 WHERE 关键字；
+ *  换行折叠为空格（筛选栏为单行输入框，用户实测反馈——多行内容不可滚动查看）。
  *  合法性交给用户过目 + 驱动参数化下推（whereSql 为 C-10 例外通道，驱动规范 §4）。 */
 export function sanitizeWhereFragment(fragment: string): string {
-  let s = fragment.trim();
+  let s = normalizeFragmentWhitespace(fragment);
   const leadingWhere = /^where(?:\s+|$)/i.exec(s);
   if (leadingWhere) {
     s = s.slice(leadingWhere[0].length).trim();
@@ -236,6 +237,11 @@ export function sanitizeWhereFragment(fragment: string): string {
     throw new DriverError('E_VALIDATION', '筛选条件超长（>2000 字符），已拒绝');
   }
   return s;
+}
+
+/** 片段空白归一：换行及其相邻空白折成单空格（单行输入框契约），字面量外 SQL 对空白不敏感 */
+function normalizeFragmentWhitespace(fragment: string): string {
+  return fragment.replace(/[ \t]*\r?\n+[ \t]*/g, ' ').trim();
 }
 
 /** 模型响应 → 纯 SQL：剥 Markdown 代码围栏（取第一个围栏体），无围栏返回原文 trim */

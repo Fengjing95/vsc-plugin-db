@@ -6,7 +6,7 @@ import { rpcErrorText } from '../../lib/errors';
 import { RpcError, request } from '../../rpc/client';
 import { useTableStore } from '../../store/tableStore';
 import { Popover } from '../../components/ui/popover';
-import { SqlInput } from './SqlInput';
+import { normalizeSingleLine, SqlInput } from './SqlInput';
 
 /**
  * 自由条件栏（交互稿 §4.4 v0.1.3）：WHERE 与 ORDER BY 两个手写输入框，
@@ -35,10 +35,10 @@ export function FilterBar() {
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
 
-  // 应用/清空后同步本地草稿
+  // 应用/清空后同步本地草稿（归一化为单行——历史会话恢复的值可能含换行）
   useEffect(() => {
-    setWhere(appliedWhere);
-    setOrderBy(appliedOrderBy);
+    setWhere(normalizeSingleLine(appliedWhere));
+    setOrderBy(normalizeSingleLine(appliedOrderBy));
   }, [appliedWhere, appliedOrderBy]);
 
   const apply = (): void => {
@@ -57,7 +57,7 @@ export function FilterBar() {
         { connId, db, table: obj, nl },
         120_000,
       );
-      setWhere(result.whereSql);
+      setWhere(normalizeSingleLine(result.whereSql));
       setAiOpen(false);
       setAiInput('');
       showToast({ kind: 'info', text: t('ai.filterFilled') }, 6000);

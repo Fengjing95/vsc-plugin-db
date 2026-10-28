@@ -9,6 +9,12 @@ const WHERE_KEYWORDS = [
 ];
 const ORDER_KEYWORDS = ['ASC', 'DESC'];
 
+/** 单行契约（用户实测反馈）：换行及其相邻空白折成单空格——AI 回填 / 粘贴 / Shift+Enter 三条路都不产生第二行；
+ *  SQL 片段在字符串字面量之外对空白不敏感，折叠安全。字面量内换行属罕见形态，单行输入框不支持 */
+export function normalizeSingleLine(v: string): string {
+  return v.replace(/[ \t]*\r?\n+[ \t]*/g, ' ');
+}
+
 interface Candidate {
   label: string;
   detail?: string;
@@ -141,13 +147,15 @@ export function SqlInput({
         return;
       }
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter') {
+      // 单行契约：Shift+Enter 不再换行（用户实测反馈——多行内容在单行高度里不可滚动查看）
       e.preventDefault();
-      onApply();
+      if (!e.shiftKey) {
+        onApply();
+      }
     }
   };
 
-  const lines = Math.min(4, Math.max(1, value.split('\n').length));
   // 有内容时显示内联清除按钮；文本层同步加右内边距避免文字压到按钮下
   const hasValue = value !== '';
   const clearPadding = hasValue ? ' pr-6' : '';
@@ -162,19 +170,30 @@ export function SqlInput({
       <pre
         ref={preRef}
         aria-hidden
-        className={`sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all px-2 py-1 font-mono text-[12px] leading-[1.6]${clearPadding}`}
+        className={`sql-hl pointer-events-none absolute inset-0 overflow-hidden whitespace-pre px-2 py-1 font-mono text-[12px] leading-[1.6]${clearPadding}`}
       >
         <span dangerouslySetInnerHTML={{ __html: highlightSql(value || ' ') }} />
       </pre>
       <textarea
         ref={taRef}
-        rows={lines}
+        rows={1}
         spellCheck={false}
-        wrap="soft"
+        wrap="off"
         aria-label={ariaLabel}
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
+          // 单行契约：粘贴/输入法等路径进来的换行就地折成空格
+          const single = normalizeSingleLine(e.target.value);
+          onChange(single);
+          if (single !== e.target.value) {
+            // 折行后把光标放到末尾（受控重渲染会丢位置）
+            requestAnimationFrame(() => {
+              const ta = taRef.current;
+              if (ta) {
+                ta.setSelectionRange(single.length, single.length);
+              }
+            });
+          }
           // 同帧刷新补全（受控值更新后 caret 不变）
           requestAnimationFrame(refreshCaret);
         }}
