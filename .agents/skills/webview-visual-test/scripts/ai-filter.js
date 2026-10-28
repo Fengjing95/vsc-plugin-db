@@ -36,7 +36,10 @@ window.__DBX_STUB__ = {
     // A1：ai.generateFilter 返回 WHERE 片段（Host 已消毒）——断言回填的是片段文本且不自动执行
     'ai.generateFilter': (p) => {
       window.__AI_FILTER_CALLED__ = p;
-      return { whereSql: "status = 'paid' AND amount > 100" };
+      return {
+        whereSql:
+          "status = 'paid' AND amount > 100 AND created_at >= '2026-10-01' AND (channel = 'web' OR channel = 'app') AND user_id IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) AND NOT deleted",
+      };
     },
     'table.metadata': () => ({
       objects: [],

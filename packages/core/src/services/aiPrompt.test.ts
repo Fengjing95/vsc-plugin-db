@@ -170,6 +170,12 @@ describe('sanitizeWhereFragment（A1 片段消毒，fail-closed）', () => {
     expect(sanitizeWhereFragment('where id > 1')).toBe('id > 1');
   });
 
+  it('换行折叠为单空格（单行输入框契约，多行 AI 输出折行展示）', () => {
+    expect(sanitizeWhereFragment("status = 'paid'\nAND amount > 100")).toBe("status = 'paid' AND amount > 100");
+    expect(sanitizeWhereFragment("a = 1\r\n  AND b = 2\n  AND c = 3")).toBe('a = 1 AND b = 2 AND c = 3');
+    expect(sanitizeWhereFragment('WHERE\n  id > 1')).toBe('id > 1');
+  });
+
   it('分号（多语句注入面）→ E_VALIDATION', () => {
     expect(() => sanitizeWhereFragment('1=1; DROP TABLE users')).toThrowError(/分号/);
   });
