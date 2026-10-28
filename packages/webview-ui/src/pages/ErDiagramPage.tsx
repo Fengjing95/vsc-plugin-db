@@ -68,6 +68,8 @@ export function ErDiagramPage() {
       return { kind: 'all' };
     }
   }, [boot?.params.scope]);
+  // 邻接 scope 的中心表（D-28）：恒亮描边 + 不参与淡化（协议 focusTable 与 scope.table 同源，取 scope 免切片）
+  const focusTable = scope.kind === 'neighbors' ? scope.table : null;
 
   // P-17：组件直接订阅底层切片（不经 action 间接读）
   const status = useErStore((s) => s.status);
@@ -446,8 +448,10 @@ export function ErDiagramPage() {
               const h = nodeHeight(rows, consts);
               const matched = tableMatchesSearch(tb, search);
               const isHover = hoverTable === tb.name;
+              // 邻接 scope（D-28）：中心表恒亮描边，不随悬停/搜索淡化（e2e 以 data-focus 断言）
+              const isFocus = focusTable === tb.name;
               const neighbor = hoverTable !== null && !isHover && isNeighbor(graph, hoverTable, tb.name);
-              const dim = !matched || (hoverTable !== null && !isHover && !neighbor);
+              const dim = !isFocus && (!matched || (hoverTable !== null && !isHover && !neighbor));
               const visibleColumns = displayMode === 'compact' ? [] : (expanded[tb.name] ?? false) ? tb.columns : tb.columns.slice(0, 12);
               const tailCount = tb.columns.length - visibleColumns.length + (tb.columnsTruncated ?? 0);
               return (
@@ -456,13 +460,14 @@ export function ErDiagramPage() {
                   tabIndex={0}
                   role="group"
                   aria-label={tb.name}
+                  data-focus={isFocus ? 'true' : undefined}
                   className="absolute select-none rounded-sm border bg-panel shadow-sm outline-none"
                   style={{
                     left: x,
                     top: y,
                     width: consts.nodeWidth,
                     height: h,
-                    borderColor: isHover ? 'var(--color-ring)' : 'var(--color-border)',
+                    borderColor: isFocus ? 'var(--color-primary)' : isHover ? 'var(--color-ring)' : 'var(--color-border)',
                     opacity: dim ? 0.25 : 1,
                     cursor: 'grab',
                   }}
@@ -544,7 +549,7 @@ export function ErDiagramPage() {
           </div>
         )}
 
-        {/* 边 tooltip（约束名 / 列映射 / 基数） */}
+        {/* 边 tooltip（约束名 / 列映射 / 基数 / 外键动作附注） */}
         {edgeTip && (
           <div
             className="pointer-events-none absolute z-20 max-w-[280px] rounded-sm border border-border bg-panel px-2 py-1.5 text-[11px] text-foreground shadow-md"
@@ -555,6 +560,17 @@ export function ErDiagramPage() {
               {edgeTip.edge.sourceTable}({edgeTip.edge.sourceColumns.join(', ')}) → {edgeTip.edge.targetTable}
               ({edgeTip.edge.targetColumns.join(', ')})
             </div>
+            {/* 外键动作（D-28）：引擎原文直显不翻译（C-17 detail 原文口径，同列类型展示） */}
+            {(edgeTip.edge.onDelete || edgeTip.edge.onUpdate) && (
+              <div className="font-mono text-[10px] text-muted-foreground">
+                {[
+                  edgeTip.edge.onDelete ? `ON DELETE ${edgeTip.edge.onDelete}` : '',
+                  edgeTip.edge.onUpdate ? `ON UPDATE ${edgeTip.edge.onUpdate}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
             <div className="text-muted-foreground">{t('er.cardinality')}</div>
           </div>
         )}

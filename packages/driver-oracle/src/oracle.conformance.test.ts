@@ -248,11 +248,12 @@ d('oracle conformance（ORACLE_* 门控实跑）', () => {
     expect(summary.results.filter((r) => r.skipped)).toHaveLength(1);
   }, 120_000);
 
-  it('relation-graph 组（M8-ER / D-22：单列/复合/自引用 FK + selection 裁剪）', async () => {
-    const summary = await runRelationGraphChecks(makeConn);
+  it('relation-graph 组（M8-ER / D-22：单列/复合/自引用 FK + selection 裁剪；动作 deleteCascadeOnly 裁剪）', async () => {
+    // Oracle 写侧无 ON UPDATE 语法、ON DELETE 仅 CASCADE/SET NULL（D-23）——动作断言按方言裁剪
+    const summary = await runRelationGraphChecks(makeConn, { fkActions: 'deleteCascadeOnly' });
     logFailures(summary);
     expect(summary.failed).toBe(0);
-    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(9);
   }, 240_000);
 
   it('database-ddl 组（M8-DBDDL / D-19：CREATE/DROP USER 周期 + 标识符 fail-closed；无 ALTER 跳过）', async () => {

@@ -75,6 +75,13 @@ export interface KeyMeta {
   columns: string[];
   refTable?: string;
   refColumns?: string[];
+  /** @since v0.9.0（ER P2 / ADR D-28）：FK 参照动作，引擎原文直显（标准五级
+   *  'CASCADE'/'SET NULL'/'SET DEFAULT'/'RESTRICT'/'NO ACTION'——ForeignKeyAction 全集，
+   *  原四级漏 SET DEFAULT）；类型保持 string：读侧不收窄、UI 按 detail 原文口径展示不翻译
+   *  （C-17 延伸），写侧回流（表设计器 spec）由 mergeForeignKeyRows 按五级白名单收口；
+   *  未显式声明时引擎默认形态（undefined 或 'NO ACTION'）由驱动如实返回 */
+  onDelete?: string;
+  onUpdate?: string;
 }
 
 // ── 表结构编辑（概要 §5.9，M8-B2；驱动契约见驱动规范 §3 @since v0.1.2）──────────
@@ -111,8 +118,10 @@ export interface UniqueKeySpec {
   columns: string[];
 }
 
-/** 外键动作（标准四级；驱动经 capabilities.tableDesign.refActions 声明子集裁剪） */
-export type ForeignKeyAction = 'RESTRICT' | 'CASCADE' | 'SET NULL' | 'NO ACTION';
+/** 外键动作（五级 @since v0.9.0：SET DEFAULT 为 SQL 标准动作，pg/mssql/sqlite 引擎支持——
+ *  KeyMeta 动作原文回读若被四级枚举挡在写侧会导致设计器 roundtrip 丢动作误重建，故入全集；
+ *  驱动经 capabilities.tableDesign.refActions 声明各自支持子集，MySQL InnoDB 不支持 SET DEFAULT） */
+export type ForeignKeyAction = 'RESTRICT' | 'CASCADE' | 'SET NULL' | 'NO ACTION' | 'SET DEFAULT';
 
 /** 外键（外键 Tab）。name 缺省由驱动自动生成（fk_<table>_<n>）；
  *  首版引用范围限当前库内（refTable 为裸表名，跨库引用后续按方言评估） */

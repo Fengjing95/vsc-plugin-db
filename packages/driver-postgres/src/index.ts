@@ -81,6 +81,7 @@ const capabilities: DriverCapabilities = {
     foreignKeyAlter: true,
     indexes: true,
     indexTypes: ['btree', 'hash', 'gin', 'gist', 'brin'],
+    refActions: ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'],
   },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
@@ -156,6 +157,15 @@ const pgQueryTypes = {
 
 /** 数组列 → string[]：SQL 侧已 ::text 强制 text[]（builtin 解析为数组）；string 形态
  *  （pg 数组字面量）兜底解析——只承载标识符名场景，带引号特殊名由主路径覆盖 */
+/** pg_constraint 参照动作单字母 → 引擎原文（@since v0.9.0 / D-28；KeyMeta 动作原文直显不收窄） */
+const PG_FK_ACTION: Record<string, string> = {
+  a: 'NO ACTION',
+  r: 'RESTRICT',
+  c: 'CASCADE',
+  n: 'SET NULL',
+  d: 'SET DEFAULT',
+};
+
 function toNameArray(v: unknown): string[] {
   if (Array.isArray(v)) {
     return v.map((c) => String(c));
@@ -330,9 +340,10 @@ export class PostgresConnection implements IConnection {
       // 外键列集：attname 是 name 类型，ARRAY(SELECT …) 产出 name[]（OID 1003，pg builtin 无解析器
       // → 回原始字符串，r.cols.map 崩——CI 契约实跑抓到）；元素 ::text 强制产出 text[]（OID 1009，
       // builtin 解析为数组）。列序用 unnest WITH ORDINALITY 保约束顺序（ANY() 不保序，复合外键列序
-      // 是 roundtrip/UI 成对映射的正确性前提）
+      // 是 roundtrip/UI 成对映射的正确性前提）。confdeltype/confupdtype（@since v0.9.0 / D-28）：
+      // a=NO ACTION r=RESTRICT c=CASCADE n=SET NULL d=SET DEFAULT（动作原文直显，KeyMeta 不收窄）
       const fks = await this.queryRows(
-        "SELECT con.conname AS name, ARRAY (SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum ORDER BY k.ord) AS cols, ft.relname AS reftable, ARRAY (SELECT fa.attname::text FROM unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) JOIN pg_catalog.pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = fk.attnum ORDER BY fk.ord) AS refcols FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class ft ON ft.oid = con.confrelid WHERE n.nspname = $1 AND c.relname = $2 AND con.contype = 'f' ORDER BY con.conname",
+        "SELECT con.conname AS name, ARRAY (SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum ORDER BY k.ord) AS cols, ft.relname AS reftable, ARRAY (SELECT fa.attname::text FROM unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) JOIN pg_catalog.pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = fk.attnum ORDER BY fk.ord) AS refcols, con.confdeltype AS deltype, con.confupdtype AS uptype FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid = con.conrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace JOIN pg_catalog.pg_class ft ON ft.oid = con.confrelid WHERE n.nspname = $1 AND c.relname = $2 AND con.contype = 'f' ORDER BY con.conname",
         [db, obj],
       );
       for (const r of fks) {
@@ -342,6 +353,8 @@ export class PostgresConnection implements IConnection {
           columns: toNameArray(r.cols),
           refTable: String(r.reftable),
           refColumns: toNameArray(r.refcols),
+          onDelete: PG_FK_ACTION[String(r.deltype)] ?? undefined,
+          onUpdate: PG_FK_ACTION[String(r.uptype)] ?? undefined,
         });
       }
 

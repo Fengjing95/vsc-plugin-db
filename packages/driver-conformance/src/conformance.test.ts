@@ -96,8 +96,8 @@ it('conformance: mock 驱动通过 relation-graph 组（M8-ER，D-22）', async 
     console.error(JSON.stringify(summary.results.filter((r) => !r.ok), null, 2));
   }
   expect(summary.failed).toBe(0);
-  // C-3：组必须实跑（mock 声明 supportsErDiagram + listKeys）——fixture / 表集列形状 / FK 边 / selection / 清理
-  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+  // C-3：组必须实跑（mock 声明 supportsErDiagram + listKeys）——fixture / 表集列形状 / FK 边 / 动作 / 邻接×3 / selection / 清理
+  expect(summary.results.filter((r) => !r.skipped)).toHaveLength(9);
 });
 
 /** mock 基准值编码用例（§5 编码形态写入→读回；dataType 为驱动方言原文） */

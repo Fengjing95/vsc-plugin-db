@@ -75,6 +75,7 @@ const capabilities: DriverCapabilities = {
     foreignKeys: true,
     foreignKeyAlter: false,
     indexes: true,
+    refActions: ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'],
   },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
@@ -361,6 +362,9 @@ export class SqliteConnection implements IConnection {
         columns: ordered.map((r) => String(r.from)),
         refTable: String(ordered[0].table),
         refColumns: ordered.map((r) => String(r.to)),
+        // 动作原文（@since v0.9.0 / D-28）：PRAGMA 未显式声明时引擎默认 'NO ACTION'，如实返回
+        onDelete: ordered[0].on_delete === undefined ? undefined : String(ordered[0].on_delete),
+        onUpdate: ordered[0].on_update === undefined ? undefined : String(ordered[0].on_update),
       });
     }
 

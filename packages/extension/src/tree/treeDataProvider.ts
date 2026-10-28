@@ -390,8 +390,15 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           // 行估算不再上树（M4 评审反馈，交互稿 §8.1 v0.1.2）；注释可得时展示
           description: o.comment,
           collapsibleState: kind === 'table' ? Collapsed : None,
-          // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）
-          contextValue: kind === 'table' && this.ddlCapable(connId) ? `${kind} ddl` : kind,
+          // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）；
+          // ER P2（D-28）：table 且 supportsErDiagram 时追加 er 令牌（「以该表为中心展开」入口显隐
+          // ——view 不入图不加；引用 table 令牌的 when 正则已全量扩展，见 package.json menus P-40 清单）
+          contextValue:
+            kind === 'table' && this.ddlCapable(connId)
+              ? `${kind} ddl${this.erCapable(connId) ? ' er' : ''}`
+              : kind === 'table' && this.erCapable(connId)
+                ? `${kind} er`
+                : kind,
           iconId: kind === 'table' ? 'table' : 'eye',
           // rowEstimate 仍随 payload 供表格分页栏“约 N 行”（交互稿 §4.7）
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },

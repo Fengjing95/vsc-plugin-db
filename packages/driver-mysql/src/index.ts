@@ -64,6 +64,8 @@ const capabilities: DriverCapabilities = {
     foreignKeyAlter: true,
     indexes: true,
     indexTypes: ['BTREE', 'HASH'],
+    // InnoDB 拒绝 SET DEFAULT（解析器接受、引擎报错）——不进下拉
+    refActions: ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION'],
   },
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
@@ -248,8 +250,10 @@ export class MysqlConnection implements IConnection {
         keys.push({ name: 'PRIMARY', kind: 'PK', columns: pk });
       }
 
+      // 动作列（@since v0.9.0 / D-28）：REFERENTIAL_CONSTRAINTS 按（schema, 约束名）关联取
+      // DELETE_RULE / UPDATE_RULE——引擎原文直显（'NO ACTION' 默认形态如实返回，不归一化）
       const fks = await this.queryRows(
-        'SELECT CONSTRAINT_NAME AS name, COLUMN_NAME AS col, REFERENCED_TABLE_NAME AS refTable, REFERENCED_COLUMN_NAME AS refCol FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION',
+        'SELECT kcu.CONSTRAINT_NAME AS name, kcu.COLUMN_NAME AS col, kcu.REFERENCED_TABLE_NAME AS refTable, kcu.REFERENCED_COLUMN_NAME AS refCol, rc.DELETE_RULE AS deleteRule, rc.UPDATE_RULE AS updateRule FROM information_schema.KEY_COLUMN_USAGE kcu LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION',
         [db, obj],
       );
       for (const r of fks) {
@@ -259,6 +263,8 @@ export class MysqlConnection implements IConnection {
           columns: [String(r.col)],
           refTable: String(r.refTable),
           refColumns: [String(r.refCol)],
+          onDelete: r.deleteRule === null || r.deleteRule === undefined ? undefined : String(r.deleteRule),
+          onUpdate: r.updateRule === null || r.updateRule === undefined ? undefined : String(r.updateRule),
         });
       }
 

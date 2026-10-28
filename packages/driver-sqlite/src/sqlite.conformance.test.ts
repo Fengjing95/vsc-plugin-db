@@ -222,7 +222,7 @@ describe('sqlite conformance（sql.js 引擎，进程内实跑）', () => {
     logFailures(summary);
     expect(summary.failed).toBe(0);
     // C-3：组必须实跑（supportsErDiagram 已声明）——fixture / 表集列形状 / FK 边 / selection / 清理
-    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(9);
   });
 
   it('interactive-transaction 组（D-09；commit 落盘对其他连接可见）', async () => {

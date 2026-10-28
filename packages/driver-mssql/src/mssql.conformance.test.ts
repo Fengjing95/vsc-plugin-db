@@ -222,7 +222,7 @@ d('mssql conformance（CI service 实跑）', () => {
     logFailures(summary);
     expect(summary.failed).toBe(0);
     // C-3：组必须实跑（supportsErDiagram 已声明）——fixture / 表集列形状 / FK 边 / selection / 清理
-    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(5);
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(9);
   });
 
   it('database-ddl 组（M8-DBDDL / D-19：schema 建删周期 + 标识符 fail-closed；无 ALTER 跳过）', async () => {

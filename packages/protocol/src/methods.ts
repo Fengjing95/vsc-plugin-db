@@ -695,8 +695,8 @@ export const ForeignKeySpecSchema = z.object({
   columns: z.array(z.string().min(1).max(128)).min(1).max(32),
   refTable: z.string().min(1).max(128),
   refColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
-  onDelete: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).optional(),
-  onUpdate: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).optional(),
+  onDelete: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT']).optional(),
+  onUpdate: z.enum(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT']).optional(),
 });
 export type ForeignKeySpecPayload = z.infer<typeof ForeignKeySpecSchema>;
 
@@ -898,6 +898,13 @@ export const ErGraphScopeSchema = z.discriminatedUnion('kind', [
     /** 选中表清单（打开引导 QuickPick 的选择结果；按 listObjects 序保留） */
     tables: z.array(z.string().min(1).max(128)).min(1).max(300),
   }),
+  z.object({
+    kind: z.literal('neighbors'),
+    /** 中心表（邻接展开 focus；不存在 → E_NOT_FOUND） */
+    table: z.string().min(1).max(128),
+    /** 展开度数 1..3（缺省 1 = 直接邻接；树入口首批固定 1 度，D-28） */
+    depth: z.number().int().min(1).max(3).optional(),
+  }),
 ]);
 export type ErGraphScopePayload = z.infer<typeof ErGraphScopeSchema>;
 
@@ -926,13 +933,16 @@ export const ErTableSummarySchema = z.object({
 });
 export type ErTableSummaryPayload = z.infer<typeof ErTableSummarySchema>;
 
-/** FK 关系边：source = FK 子表（多端）→ target = 被引用父表（一端）；复合 FK 单边、列序对齐 */
+/** FK 关系边：source = FK 子表（多端）→ target = 被引用父表（一端）；复合 FK 单边、列序对齐。
+ *  onDelete/onUpdate（@since v0.9.0 / D-28）= 引擎动作原文（tooltip 附注直显，detail 原文口径） */
 export const ErEdgeSummarySchema = z.object({
   name: z.string().max(128).optional(),
   sourceTable: z.string().min(1).max(128),
   sourceColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
   targetTable: z.string().min(1).max(128),
   targetColumns: z.array(z.string().min(1).max(128)).min(1).max(32),
+  onDelete: z.string().max(32).optional(),
+  onUpdate: z.string().max(32).optional(),
 });
 export type ErEdgeSummaryPayload = z.infer<typeof ErEdgeSummarySchema>;
 
@@ -964,6 +974,8 @@ export const ErGraphResultSchema = z.object({
   tableCount: z.number().int().min(0),
   /** 端点不全未绘制的 FK 边数（selection 裁剪 / 引用目标不在表集） */
   hiddenEdges: z.number().int().min(0),
+  /** @since v0.9.0（D-28）：邻接 scope 的中心表（webview 聚焦高亮；all/selection 缺省） */
+  focusTable: z.string().max(128).optional(),
 });
 export type ErGraphResult = z.infer<typeof ErGraphResultSchema>;
 

@@ -17,7 +17,7 @@ import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
 import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
-import { openErDiagramPanel } from './views/erDiagramPanel';
+import { openErDiagramPanel, type ErDiagramPanelDeps } from './views/erDiagramPanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
@@ -66,6 +66,30 @@ export function registerCommands(
   const { store, connections } = services;
   // 删除确认按钮（规则：构造与比较同源翻译，禁止一处 t() 一处裸字面量）
   const delLabel = t('删除');
+
+  // ── M8-ER 面板依赖（D-22/D-28：showErDiagram 与 erFocusTable 共用 openTable 回调与能力断言）──
+  const erPanelDeps = (): ErDiagramPanelDeps => ({
+    er: services.er,
+    logger: services.logger,
+    openTable: async ({ connId: cid, db: d, table }) => {
+      await openTablePanel(context, services, {
+        connId: cid,
+        db: d,
+        obj: table,
+        viewId: `${cid}/${d}/${table}`,
+        title: `${table} @ ${d}`,
+        readOnly: store.get(cid)?.readOnly ?? false,
+        env: store.get(cid)?.env ?? null,
+      });
+    },
+  });
+  const assertErCapable = (connId: string): boolean => {
+    if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
+      void vscode.window.showInformationMessage(t('当前数据库类型不支持 ER 图。'));
+      return false;
+    }
+    return true;
+  };
 
   return [
     vscode.commands.registerCommand('dbExplorer.focus', async () => {
@@ -539,8 +563,7 @@ export function registerCommands(
       if (!connId || !db) {
         return;
       }
-      if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
-        void vscode.window.showInformationMessage(t('当前数据库类型不支持 ER 图。'));
+      if (!assertErCapable(connId)) {
         return;
       }
       try {
@@ -548,25 +571,25 @@ export function registerCommands(
         if (!scope) {
           return; // 用户取消选择（Esc / 空选集），无副作用
         }
-        openErDiagramPanel(
-          context,
-          {
-            er: services.er,
-            logger: services.logger,
-            openTable: async ({ connId: cid, db: d, table }) => {
-              await openTablePanel(context, services, {
-                connId: cid,
-                db: d,
-                obj: table,
-                viewId: `${cid}/${d}/${table}`,
-                title: `${table} @ ${d}`,
-                readOnly: store.get(cid)?.readOnly ?? false,
-                env: store.get(cid)?.env ?? null,
-              });
-            },
-          },
-          { connId, db, scope },
+        openErDiagramPanel(context, erPanelDeps(), { connId, db, scope });
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
+      }
+    }),
+
+    // ER P2（D-28）：表节点「以该表为中心展开」——邻接 scope（1 度）直接开图，无选择引导
+    vscode.commands.registerCommand('dbExplorer.erFocusTable', async (node?: DbTreeNode) => {
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      if (!assertErCapable(connId)) {
+        return;
+      }
+      try {
+        openErDiagramPanel(context, erPanelDeps(), { connId, db, scope: { kind: 'neighbors', table: obj } });
       } catch (err) {
         void vscode.window.showErrorMessage(
           t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),

@@ -277,6 +277,11 @@
         "icon": "$(graph-scatter)"
       },
       {
+        "command": "dbExplorer.erFocusTable",
+        "title": "%command.dbExplorer.erFocusTable.title%",
+        "category": "%command.category%"
+      },
+      {
         "command": "dbExplorer.settings",
         "title": "%command.dbExplorer.settings.title%",
         "category": "%command.category%",
@@ -356,12 +361,12 @@
       "view/item/context": [
         {
           "command": "dbExplorer.openTable",
-          "when": "viewItem =~ /^(table|view|collection)( ddl)?$/",
+          "when": "viewItem =~ /^(table|view|collection)( ddl)?( er)?$/",
           "group": "inline@1"
         },
         {
           "command": "dbExplorer.openTable",
-          "when": "viewItem =~ /^(table|view|collection)( ddl)?$/",
+          "when": "viewItem =~ /^(table|view|collection)( ddl)?( er)?$/",
           "group": "1_open@0"
         },
         {
@@ -426,17 +431,17 @@
         },
         {
           "command": "dbExplorer.viewDdl",
-          "when": "viewItem =~ /^(table|view)( ddl)?$/",
+          "when": "viewItem =~ /^(table|view)( ddl)?( er)?$/",
           "group": "2_object@1"
         },
         {
           "command": "dbExplorer.alterTable",
-          "when": "viewItem =~ /^table ddl$/",
+          "when": "viewItem =~ /^table ddl( er)?$/",
           "group": "2_object@5"
         },
         {
           "command": "dbExplorer.dropTable",
-          "when": "viewItem =~ /^table ddl$/",
+          "when": "viewItem =~ /^table ddl( er)?$/",
           "group": "7_danger@0"
         },
         {
@@ -465,18 +470,23 @@
           "group": "2_object@6"
         },
         {
+          "command": "dbExplorer.erFocusTable",
+          "when": "viewItem =~ /^(table( ddl)?|view) er$/",
+          "group": "2_object@6"
+        },
+        {
           "command": "dbExplorer.generateCode",
-          "when": "viewItem =~ /^(table|view)( ddl)?$/",
+          "when": "viewItem =~ /^(table|view)( ddl)?( er)?$/",
           "group": "2_object@4"
         },
         {
           "command": "dbExplorer.copyName",
-          "when": "viewItem =~ /^(table|view)( ddl)?$/ || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
+          "when": "viewItem =~ /^(table|view)( ddl)?( er)?$/ || viewItem == collection || viewItem == column || viewItem == index || viewItem == key",
           "group": "2_object@2"
         },
         {
           "command": "dbExplorer.generateSelect",
-          "when": "viewItem =~ /^(table|view)( ddl)?$/",
+          "when": "viewItem =~ /^(table|view)( ddl)?( er)?$/",
           "group": "2_object@3"
         },
         {
