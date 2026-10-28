@@ -21,8 +21,6 @@ export interface UiLabels {
   runAnyway: string;
   /** 通用取消按钮（webview common.cancel） */
   cancel: string;
-  /** 树表节点右键「以该表为中心展开 ER 图」（manifest erFocusTable title，D-28） */
-  erFocusTable: string;
 }
 
 export function uiLabels(locale: string): UiLabels {
@@ -38,7 +36,6 @@ export function uiLabels(locale: string): UiLabels {
       bannerDetected: '检测到可能影响全表的语句',
       runAnyway: '仍要执行',
       cancel: '取消',
-      erFocusTable: '以该表为中心展开 ER 图',
     };
   }
   return {
@@ -52,7 +49,6 @@ export function uiLabels(locale: string): UiLabels {
     bannerDetected: 'A statement that may affect the whole table was detected',
     runAnyway: 'Run Anyway',
     cancel: 'Cancel',
-    erFocusTable: 'Expand ER Diagram from This Table',
   };
 }
 

@@ -92,9 +92,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     private readonly queryFiles?: QueryFilesService,
   ) {}
 
+  private view?: vscode.TreeView<DbTreeNode>;
+
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
-  attachView(_view: vscode.TreeView<DbTreeNode>): void {
-    // P-33 起收起不再依赖 reveal（按 id 代数方案），句柄暂无消费方——保留挂载点
+  attachView(view: vscode.TreeView<DbTreeNode>): void {
+    this.view = view;
+  }
+
+  /** 树当前选中节点（命令面板/桥接直呼 tree 命令时的参数兜底——VSCode 树命令标准语义，
+   *  ER P2 e2e 因宿主不渲染合成右键菜单而改走此链路，P-82 同批注记） */
+  async selectedNode(): Promise<DbTreeNode | undefined> {
+    return this.view?.selection?.[0];
   }
 
   refresh(): void {

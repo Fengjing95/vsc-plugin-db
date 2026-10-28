@@ -579,8 +579,10 @@ export function registerCommands(
       }
     }),
 
-    // ER P2（D-28）：表节点「以该表为中心展开」——邻接 scope（1 度）直接开图，无选择引导
-    vscode.commands.registerCommand('dbExplorer.erFocusTable', async (node?: DbTreeNode) => {
+    // ER P2（D-28）：表节点「以该表为中心展开」——邻接 scope（1 度）直接开图，无选择引导；
+    // 无 node 参数（命令面板直呼）时回退树当前选中节点（树命令标准语义）
+    vscode.commands.registerCommand('dbExplorer.erFocusTable', async (rawNode?: DbTreeNode) => {
+      const node = rawNode ?? (await tree.selectedNode());
       const { connId, db, obj } = node?.payload ?? {};
       if (!connId || !db || !obj) {
         return;

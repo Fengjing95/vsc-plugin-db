@@ -2,30 +2,32 @@ import { dismissOverlays, findWebviewFrame, waitTreeRow, expandRow } from '../cd
 import type { JourneyFn } from './j1';
 
 /**
- * 旅程④（J-ER，ER P2 / ADR D-28）：表节点右键「以该表为中心展开 ER 图」→ 邻接图渲染。
- * 断言面：① 树右键菜单按 er 能力令牌出现；② ER webview（page=erDiagram）画布渲染中心表
- * 与被引用父表两节点；③ 中心表带 data-focus 恒亮标识（邻接 scope）；④ 边 tooltip 携带
- * FK 动作原文 ON DELETE CASCADE（fixture 建表子句 → sqlite PRAGMA → KeyMeta → ErEdge 全链路）。
+ * 旅程④（J-ER，ER P2 / ADR D-28）：表节点「以该表为中心展开 ER 图」→ 邻接图渲染。
+ * 断言面：① ER webview（page=erDiagram）画布渲染中心表与被引用父表两节点；② 中心表带
+ * data-focus 恒亮标识（邻接 scope）；③ 边 tooltip 携带 FK 动作原文 ON DELETE CASCADE
+ * （fixture 建表子句 → sqlite PRAGMA → KeyMeta → ErEdge 全链路）。
+ * 入口经 bridge 直呼 `dbExplorer.erFocusTable`（无参回退树选中节点——命令面板语义）：
+ * CDP 合成右键在本宿主不渲染树 context menu（Queries 对照组同样不出，两个 VSCode 版本一致，
+ * P-82 注记）——右键菜单的 when 显隐面由 extension 侧 treeWhenClauses 单测锁定匹配矩阵。
  * 依赖 j1 已建的 e2e-sqlite 连接（journeys 有序全跑）。
  */
 export const journey4: JourneyFn = async (ctx) => {
-  const { page, labels } = ctx;
+  const { page, bridge } = ctx;
   await dismissOverlays(page, 1000);
 
   // 1. 展开到表节点（j1 收尾后树已建连接；逐层展开幂等）
   await expandRow(await waitTreeRow(page, 'e2e-sqlite'));
   await expandRow(await waitTreeRow(page, 'main'));
-  await expandRow(await waitTreeRow(page, labels.tables));
+  const zh = ctx.locale.startsWith('zh');
+  await expandRow(await waitTreeRow(page, zh ? '表' : 'Tables'));
   const childRow = await waitTreeRow(page, 'e2e_fk_child');
 
-  // 2. 右键表节点 → 上下文菜单「以该表为中心展开 ER 图」（er 令牌 + P-40 正则扩展的显隐面）
-  await childRow.click({ button: 'right' });
-  const menuItem = page
-    .locator('.monaco-context-menu [role="menuitem"], .context-view .monaco-menu .action-label')
-    .filter({ hasText: labels.erFocusTable })
-    .first();
-  await menuItem.waitFor({ state: 'visible', timeout: 15_000 });
-  await menuItem.click();
+  // 2. 左键选中（TreeItem.command 顺带打开该表表格页，无害）→ bridge 直呼命令（取树选中节点）
+  await childRow.click();
+  const executed = await bridge.execute('dbExplorer.erFocusTable');
+  if (!executed.ok) {
+    throw new Error(`erFocusTable 执行失败: ${executed.error}`);
+  }
 
   // 3. ER 图 webview：邻接图两节点（中心表 + 被引用父表）
   const er = await findWebviewFrame(page, (b) => b.page === 'erDiagram');
@@ -38,9 +40,18 @@ export const journey4: JourneyFn = async (ctx) => {
     timeout: 10_000,
   });
 
-  // 5. 边 tooltip 动作原文：悬停边命中区（透明宽描边 path）→ tooltip 出现 ON DELETE CASCADE
+  // 5. 边 tooltip 动作原文：边命中区是零高度水平线（SVG path 几何 bbox 不含 stroke，
+  //    playwright 判 hidden 不可 waitFor visible/hover）——按 boundingBox 坐标直接 mouse.move
+  //    （两段移动模拟真实指针进入，触发 pointerenter/pointermove）
   const edgeHit = er.locator('svg path[stroke="transparent"]').first();
-  await edgeHit.waitFor({ state: 'visible', timeout: 10_000 });
-  await edgeHit.hover();
+  await edgeHit.waitFor({ state: 'attached', timeout: 10_000 });
+  const box = await edgeHit.boundingBox();
+  if (!box || box.width < 4) {
+    throw new Error(`边命中区无几何: ${JSON.stringify(box)}`);
+  }
+  const cx = box.x + box.width / 2;
+  const cy = box.y + Math.max(box.height / 2, 1);
+  await page.mouse.move(cx - 8, cy + 8);
+  await page.mouse.move(cx, cy);
   await er.getByText('ON DELETE CASCADE').first().waitFor({ state: 'visible', timeout: 10_000 });
 };

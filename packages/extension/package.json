@@ -426,7 +426,7 @@
         },
         {
           "command": "dbExplorer.refreshNode",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl(-alter)?)?( er)?$/",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)?( er)?$/",
           "group": "navigation@1"
         },
         {
@@ -461,7 +461,7 @@
         },
         {
           "command": "dbExplorer.createTable",
-          "when": "viewItem =~ /^database ddl( dbddl(-alter)?)?( er)?$/ || viewItem =~ /^folder-table ddl$/",
+          "when": "viewItem =~ /^database ddl( dbddl)?( dbddl-alter)?( er)?$/ || viewItem =~ /^folder-table ddl$/",
           "group": "2_object@5"
         },
         {
@@ -471,7 +471,7 @@
         },
         {
           "command": "dbExplorer.erFocusTable",
-          "when": "viewItem =~ /^(table( ddl)?|view) er$/",
+          "when": "viewItem =~ /^table( ddl)? er$/",
           "group": "2_object@6"
         },
         {

@@ -424,7 +424,10 @@ export function ErDiagramPage() {
                       fill="none"
                       stroke="transparent"
                       strokeWidth={10}
-                      className="pointer-events-stroke cursor-pointer"
+                      className="cursor-pointer"
+                      // pointer-events: stroke——透明宽描边命中区（SVG 根为 none，仅沿笔刷收事件；
+                      // 曾写成不存在的 Tailwind 类 pointer-events-stroke，悬停 tooltip/高亮从未生效）
+                      style={{ pointerEvents: 'stroke' }}
                       onPointerEnter={() => useErStore.getState().setHoverEdge(i)}
                       onPointerLeave={() => useErStore.getState().setHoverEdge(null)}
                       onPointerMove={(e) => {
