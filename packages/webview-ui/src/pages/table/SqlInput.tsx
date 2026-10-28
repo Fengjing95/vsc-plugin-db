@@ -80,9 +80,16 @@ export function SqlInput({
     }
   };
 
+  // 滚动同步走原生监听：React 的 onScroll 委托对 scroll 事件（非冒泡）在 webview 里实测不触发
+  // （程序滚动与滚动条拖动均不回调，高亮层原地不动——用户实测反馈），原生监听无此问题
   useEffect(() => {
-    syncScroll();
-  }, [value]);
+    const ta = taRef.current;
+    if (!ta) return;
+    const onScroll = (): void => syncScroll();
+    ta.addEventListener("scroll", onScroll, { passive: true });
+    return () => ta.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshCaret = (): void => {
     const ta = taRef.current;
