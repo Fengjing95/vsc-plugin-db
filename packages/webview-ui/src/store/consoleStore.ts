@@ -63,6 +63,8 @@ interface ConsoleStoreState {
   exportItem(seq: number, format: 'csv' | 'json' | 'xlsx' | 'ndjson' | 'markdown'): Promise<void>;
   openFix(seq: number): Promise<void>;
   retryExplain(): Promise<void>;
+  /** AI P2A 批次 A2：EXPLAIN 结果集 → 执行计划解读（流式经 evt:console.ai 推送到 AI Tab） */
+  explainPlan(seq: number): Promise<void>;
   openAiSettings(): Promise<void>;
   closePanel(): Promise<void>;
   showToast(toast: ToastState, autoDismissMs?: number): void;
@@ -270,6 +272,21 @@ export const useConsoleStore = create<ConsoleStoreState>((set, get) => ({
     } catch (err) {
       // 失败由 evt:console.ai 的 error 态呈现（Host 侧推送）；此处仅兜底 Toast
       get().showToast({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  /** AI P2A 批次 A2：EXPLAIN 结果 Tab「✨ 解释执行计划」——Host 取该 item 结果集渲染计划文本送 AI，
+   *  流式经 evt:console.ai 推送（AI Tab 自动跟随，与解释同链路）；失败态同样在 AI Tab 呈现 */
+  async explainPlan(seq: number) {
+    try {
+      await request('ai.explainPlan', { consoleId: get().consoleId, seq }, 0);
+    } catch (err) {
+      get().showToast({
+        kind: 'error',
+        text: t('ai.explainPlanFailed', [
+          rpcErrorText(err instanceof RpcError ? err : { message: err instanceof Error ? err.message : String(err) }),
+        ]),
+      });
     }
   },
 

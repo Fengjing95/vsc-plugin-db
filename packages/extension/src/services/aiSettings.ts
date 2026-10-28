@@ -8,12 +8,14 @@ import {
 } from '@db-explorer/protocol';
 import { t } from './i18n';
 import { describeError, type Logger } from './logger';
+import type { AiUsageStore } from './aiUsage';
 
 /**
  * AI 设置存取（M9-AI / D-24 / 交互稿 §15.1）：
  * - endpoint/model 落 VSCode settings（dbExplorer.ai.*，可同步可见）
  * - API 密钥只进 SecretStorage（`dbExplorer.secrets.ai`），永不回传明文（getSettings 只回 hasKey）
- * - resolveProvider 按当前配置实例化 OpenAI 兼容 provider；缺项抛 E_AI_NOT_CONFIGURED
+ * - resolveProvider 按当前配置实例化 OpenAI 兼容 provider；缺项抛 E_AI_NOT_CONFIGURED；
+ *   注入 AiUsageStore 时自动包装用量回调（AI P2A 批次 A4：SSE usage 累计）
  */
 
 export const AI_SECRET_KEY = 'dbExplorer.secrets.ai';
@@ -27,6 +29,8 @@ export class AiSettingsStore {
   constructor(
     private readonly secrets: vscode.SecretStorage,
     private readonly logger: Logger,
+    /** 可选：注入后所有 AI 调用的 usage 回调累计进用量统计（测试连接同口径） */
+    private readonly usage?: AiUsageStore,
   ) {}
 
   private config(): { endpoint: string; model: string } {
@@ -34,6 +38,17 @@ export class AiSettingsStore {
     return {
       endpoint: conf.get<string>('endpoint', '').trim(),
       model: conf.get<string>('model', '').trim(),
+    };
+  }
+
+  /** 采样参数默认值（AI P2A 批次 A4）：temperature 0–2 / maxTokens >0，非法或缺省回落 provider 默认 */
+  samplingDefaults(): { temperature?: number; maxTokens?: number } {
+    const conf = vscode.workspace.getConfiguration('dbExplorer.ai');
+    const temperature = conf.get<number>('temperature');
+    const maxTokens = conf.get<number>('maxTokens');
+    return {
+      temperature: typeof temperature === 'number' && Number.isFinite(temperature) && temperature >= 0 && temperature <= 2 ? temperature : undefined,
+      maxTokens: typeof maxTokens === 'number' && Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : undefined,
     };
   }
 
@@ -89,7 +104,25 @@ export class AiSettingsStore {
     if (missing.length > 0) {
       throw new DriverError('E_AI_NOT_CONFIGURED', t('AI 功能需要先配置模型服务（缺 {0}）', [missing.join(' / ')]));
     }
-    return new OpenAICompatProvider({ endpoint, model, apiKey });
+    const provider = new OpenAICompatProvider({ endpoint, model, apiKey });
+    if (!this.usage) {
+      return provider;
+    }
+    // 用量包装（A4）：所有 AI 调用（生成/解释/修复/测试连接）的 usage 回调统一累计；
+    // onUsage 串联回原调用方的回调（当前无调用方使用，保语义完整）
+    const store = this.usage;
+    return {
+      id: provider.id,
+      modelId: provider.modelId,
+      complete: (req) =>
+        provider.complete({
+          ...req,
+          onUsage: (u) => {
+            store.add(u);
+            req.onUsage?.(u);
+          },
+        }),
+    };
   }
 
   /** 设置页「测试连接」：按表单当前值发最小请求，返回耗时；失败抛错由 webview 行内呈现 */

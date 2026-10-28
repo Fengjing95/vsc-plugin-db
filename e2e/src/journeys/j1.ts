@@ -1,5 +1,5 @@
 import type { BridgeClient } from '../bridgeClient';
-import { dismissNotifications, dismissOverlays, findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
+import { clickDismissingToasts, dismissOverlays, findWebviewFrame, expandRow, waitTreeRow, type Workbench } from '../cdp';
 import type { Fixture } from '../fixture';
 import { commitCountLabel, uiLabels } from '../labels';
 
@@ -39,12 +39,14 @@ export const journey1: JourneyFn = async (ctx) => {
   const form = await findWebviewFrame(page, (b) => b.page === 'connectionForm');
 
   // 3. 填表：驱动卡片（role=radio + displayName）→ 名称 → sqlite path（type=file 控件手输口径）。
-  //    保存前再清一次气泡（通知可能在表单填写期间弹出）
+  //    Save 走「清气泡→点击」重试：shell 环境解析超时 toast 在启动后约 10s 弹出，恰落在填表与
+  //    点击之间，一次性预清覆盖不到（P-76 竞态变体，macOS 本机两连红定因）
   await form.getByRole('radio', { name: 'SQLite' }).click();
   await form.locator('#conn-name').fill('e2e-sqlite');
   await form.locator('#conn-field-path').fill(fixture.dbPath);
-  await dismissNotifications(page);
-  await form.getByRole('button', { name: labels.save, exact: true }).click();
+  await clickDismissingToasts(page, form.getByRole('button', { name: labels.save, exact: true }), {
+    hideToasts: () => bridge.execute('notifications.hideToasts'),
+  });
 
   // 4. 保存成功 → 表单面板自关 + 树出现连接节点
   await waitTreeRow(page, 'e2e-sqlite', 30_000);

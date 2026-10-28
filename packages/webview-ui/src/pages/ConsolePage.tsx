@@ -87,6 +87,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
   const exporting = useConsoleStore((s) => s.exporting);
   const openFix = useConsoleStore((s) => s.openFix);
   const retryExplain = useConsoleStore((s) => s.retryExplain);
+  const explainPlan = useConsoleStore((s) => s.explainPlan);
   const openAiSettings = useConsoleStore((s) => s.openAiSettings);
   const closePanel = useConsoleStore((s) => s.closePanel);
   const dismissToast = useConsoleStore((s) => s.dismissToast);
@@ -168,6 +169,19 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             >
               ↻
             </button>
+            {/* AI P2A 批次 A2（交互稿 §15.7 转正）：EXPLAIN 结果集 → AI 解读执行计划（D-13 树形缩进同源判定） */}
+            {activeItem && isExplainResultSet(activeItem.sql, activeItem.resultSet.columns) && (
+              <button
+                type="button"
+                aria-label={t('ai.explainPlan')}
+                title={t('ai.explainPlanTitle')}
+                disabled={running !== null}
+                className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                onClick={() => void explainPlan(activeItem.seq)}
+              >
+                {t('ai.explainPlan')}
+              </button>
+            )}
             <button
               type="button"
               aria-label={t('console.exportCsv')}

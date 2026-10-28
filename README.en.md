@@ -32,7 +32,7 @@ The presentation layer (native views + Webview) calls the Extension Host service
 | Export (CSV/JSON/XLSX/NDJSON/Markdown/SQL INSERT, cancellable background tasks) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Conformance tests (run for real in CI) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-More capabilities: AI assistant (BYOK: natural-language → SQL, SQL explanation, error fix suggestions), cell viewer for long text / JSON / binary, ER diagram viewer with SVG/PNG export, View DDL, Generate Code from Schema (TS/Java/Go/Prisma), copy as multiple formats, Format SQL, saved queries with the in-tree query folder, EXPLAIN tree indentation, inline execution-result annotations, per-statement CodeLens execution, and the operation log (`dbExplorer.showLog`).
+More capabilities: AI assistant (BYOK: natural-language → SQL, SQL explanation, error fix suggestions, natural-language table filter, query plan explanation, "Try Again" regeneration; sampling parameters and usage stats in the Settings hub), cell viewer for long text / JSON / binary, ER diagram viewer with SVG/PNG export, View DDL, Generate Code from Schema (TS/Java/Go/Prisma), copy as multiple formats, Format SQL, saved queries with the in-tree query folder, EXPLAIN tree indentation, inline execution-result annotations, per-statement CodeLens execution, and the operation log (`dbExplorer.showLog`).
 
 ## Install
 

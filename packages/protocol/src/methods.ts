@@ -50,6 +50,12 @@ export const RpcMethods = {
   aiOpenSettings: 'ai.openSettings',
   /** 解释 Tab 错误态「重试」：复跑该 Console 最近一次 AI 解释（入参 Host 侧缓存） */
   aiRetryExplain: 'ai.retryExplain',
+  /** @since AI P2A（交互稿 §15.7 批次 A）：表格筛选栏自然语言 → WHERE 片段（回填待用户确认，不直接执行） */
+  aiGenerateFilter: 'ai.generateFilter',
+  /** @since AI P2A：对指定执行 item 的 EXPLAIN 结果集生成计划解读（流式经 evt:console.ai 推送） */
+  aiExplainPlan: 'ai.explainPlan',
+  /** @since AI P2A：AI 用量统计（服务端 SSE usage 字段累计，workspaceState 持久化） */
+  aiUsage: 'ai.usage',
   /** @since 设置中心（交互稿 §16）：代理编辑 VSCode settings（key 白名单 fail-closed，
    *  仅允许 dbExplorer.* 自有配置键）+ VSCode 设置定位 + 关于页动作（枚举分发） */
   settingsGet: 'settings.get',
@@ -1109,6 +1115,42 @@ export const AiRetryExplainParamsSchema = z.object({
 });
 export type AiRetryExplainParams = z.infer<typeof AiRetryExplainParamsSchema>;
 
+/** ai.generateFilter（AI P2A 批次 A1，交互稿 §15.7 转正）：表格筛选栏自然语言 → WHERE 片段。
+ *  只返回片段文本，由 Webview 回填筛选栏给用户过目可改——AI 产物可审计、绝不直接执行（D-24 原则②）；
+ *  应用走既有 whereSql 下推链（C-10 例外通道：用户自撰/已确认片段原样拼接，驱动规范 §4）。 */
+export const AiGenerateFilterWhereParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  table: z.string().min(1),
+  nl: z.string().min(1).max(2000),
+});
+export type AiGenerateFilterWhereParams = z.infer<typeof AiGenerateFilterWhereParamsSchema>;
+
+export const AiGenerateFilterWhereResultSchema = z.object({
+  whereSql: z.string(),
+});
+export type AiGenerateFilterWhereResult = z.infer<typeof AiGenerateFilterWhereResultSchema>;
+
+/** ai.explainPlan（AI P2A 批次 A2）：对指定执行 item 的 EXPLAIN 结果集生成计划解读——
+ *  计划文本非数据行（§15.6 隐私边界不破），流式经 evt:console.ai 推送（与解释同链路）。 */
+export const AiExplainPlanParamsSchema = z.object({
+  consoleId: z.string().min(1),
+  seq: z.number().int().min(1),
+});
+export type AiExplainPlanParams = z.infer<typeof AiExplainPlanParamsSchema>;
+
+/** ai.usage（AI P2A 批次 A4）：AI 用量统计（服务端 SSE usage 字段累计；未上报的服务不计入） */
+export const AiUsageParamsSchema = z.object({}).optional();
+export type AiUsageParams = z.infer<typeof AiUsageParamsSchema>;
+
+export const AiUsageResultSchema = z.object({
+  requests: z.number().int().min(0),
+  promptTokens: z.number().int().min(0),
+  completionTokens: z.number().int().min(0),
+  totalTokens: z.number().int().min(0),
+});
+export type AiUsageResult = z.infer<typeof AiUsageResultSchema>;
+
 // ── settings.*（设置中心，交互稿 §16）────────────────────────────────────
 // 代理编辑 VSCode settings：读 getConfiguration / 写 update（User 作用域），与 VSCode
 // 设置双向同步、不另立存储。key 白名单 fail-closed——只允许本插件自有配置键（防 webview
@@ -1123,12 +1165,15 @@ export const SETTINGS_ALLOWED_KEYS = [
   'dbExplorer.export.chunkRows',
   'dbExplorer.transaction.idleTimeoutMs',
   'dbExplorer.edit.allowNoPrimaryKey',
+  /** @since AI P2A（交互稿 §15.7 批次 A）：AI 采样参数（设置中心 AiSection 代理编辑） */
+  'dbExplorer.ai.temperature',
+  'dbExplorer.ai.maxTokens',
 ] as const;
 
 export type SettingsAllowedKey = (typeof SETTINGS_ALLOWED_KEYS)[number];
 
 /** 各键的值形状约束（settings.update 校验；number 均须 > 0） */
-export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'string' | 'enum' | 'boolean'> = {
+export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'number0' | 'string' | 'enum' | 'boolean'> = {
   'dbExplorer.query.maxRows': 'number',
   'dbExplorer.query.timeoutMs': 'number',
   'dbExplorer.connection.connectTimeoutMs': 'number',
@@ -1137,6 +1182,9 @@ export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'string' 
   'dbExplorer.export.chunkRows': 'number',
   'dbExplorer.transaction.idleTimeoutMs': 'number',
   'dbExplorer.edit.allowNoPrimaryKey': 'boolean',
+  /** number0 = 允许 0 的非负数（temperature=0 是合法的确定性采样） */
+  'dbExplorer.ai.temperature': 'number0',
+  'dbExplorer.ai.maxTokens': 'number',
 };
 
 export const SettingsGetResultSchema = z.object({

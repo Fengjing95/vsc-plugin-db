@@ -12,7 +12,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 /** 语言中立数据（品牌/链接/引擎列表——引擎名本身免翻） */
 export const site = {
   name: 'DB Kit',
-  version: 'v0.7.1',
+  version: 'v0.8.0',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
@@ -257,7 +257,7 @@ const zh: SiteContent = {
     {
       icon: '🤖',
       title: 'AI 助手，自带钥匙（BYOK）',
-      desc: '自然语言生成 SQL（CodeLens / Alt+\\ 直插编辑器）、选中即解释、报错一键生成修复建议（编辑器内联 diff，确认后才落地）——接入你自己的 OpenAI 兼容服务（DeepSeek / Moonshot / ollama 等均可）；密钥只存系统密钥链，默认只发表结构、不发数据行，AI 产物照常过危险语句拦截。',
+      desc: '自然语言生成 SQL（CodeLens / Alt+\\ 直插编辑器，不满意「再来一个」）、表格筛选栏用自然语言生成 WHERE 条件（回填后过目再应用）、选中即解释、EXPLAIN 结果一键解读执行计划、报错一键生成修复建议（编辑器内联 diff，确认后才落地）——接入你自己的 OpenAI 兼容服务（DeepSeek / Moonshot / ollama 等均可）；密钥只存系统密钥链，默认只发表结构、不发数据行，AI 产物照常过危险语句拦截；采样参数与用量统计在设置中心一目了然。',
     },
     {
       icon: '📤',
@@ -452,7 +452,7 @@ const en: SiteContent = {
     {
       icon: '🤖',
       title: 'AI assistant with its own key (BYOK)',
-      desc: 'Generate SQL from natural language (CodeLens / Alt+\\ inserts straight into the editor), explain a selection instantly, one-click fix suggestions for SQL errors (inline editor diff, applied only after confirmation) — plug in your own OpenAI-compatible service (DeepSeek / Moonshot / ollama and more); keys stay in the system keychain, only schema is sent by default — never data rows — and AI output still passes danger checks.',
+      desc: 'Generate SQL from natural language (CodeLens / Alt+\\ inserts straight into the editor; "Try Again" if you want another take), describe a table filter in plain words and get a WHERE condition filled in for review before applying, explain a selection instantly, one-click query-plan explanation on EXPLAIN results, one-click fix suggestions for SQL errors (inline editor diff, applied only after confirmation) — plug in your own OpenAI-compatible service (DeepSeek / Moonshot / ollama and more); keys stay in the system keychain, only schema is sent by default — never data rows — AI output still passes danger checks, and sampling parameters plus usage stats live in the Settings hub.',
     },
     {
       icon: '📤',

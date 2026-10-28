@@ -36,35 +36,59 @@ describe('extractOpenAiEvent', () => {
     expect(extractOpenAiEvent('{"choices":[{"delta":{"content":"Hi"}}]}')).toEqual({
       content: 'Hi',
       reasoning: null,
+      usage: null,
     });
   });
 
   it('reasoning_content / reasoning 双字段取推理过程', () => {
     expect(
       extractOpenAiEvent('{"choices":[{"delta":{"reasoning_content":"思考中"}}]}'),
-    ).toEqual({ content: null, reasoning: '思考中' });
+    ).toEqual({ content: null, reasoning: '思考中', usage: null });
     expect(extractOpenAiEvent('{"choices":[{"delta":{"reasoning":"thinking"}}]}')).toEqual({
       content: null,
       reasoning: 'thinking',
+      usage: null,
     });
   });
 
   it('[DONE] 双 null', () => {
-    expect(extractOpenAiEvent('[DONE]')).toEqual({ content: null, reasoning: null });
+    expect(extractOpenAiEvent('[DONE]')).toEqual({ content: null, reasoning: null, usage: null });
   });
 
   it('空 delta / 非 JSON 双 null', () => {
     expect(extractOpenAiEvent('{"choices":[{"delta":{}}]}')).toEqual({
       content: null,
       reasoning: null,
+      usage: null,
     });
-    expect(extractOpenAiEvent('not-json')).toEqual({ content: null, reasoning: null });
+    expect(extractOpenAiEvent('not-json')).toEqual({ content: null, reasoning: null, usage: null });
+  });
+
+  it('usage 字段解析（A4 用量统计，OpenAI 口径）', () => {
+    expect(
+      extractOpenAiEvent(
+        '{"choices":[{"delta":{}}],"usage":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46}}',
+      ),
+    ).toEqual({
+      content: null,
+      reasoning: null,
+      usage: { promptTokens: 12, completionTokens: 34, totalTokens: 46 },
+    });
+    // 部分 token 字段缺失 → undefined 缺省（不虚构 0）
+    expect(extractOpenAiEvent('{"usage":{"total_tokens":46}}')?.usage).toEqual({
+      promptTokens: undefined,
+      completionTokens: undefined,
+      totalTokens: 46,
+    });
+    // 无 usage → null（不触发 onUsage）
+    expect(extractOpenAiEvent('{"choices":[{"delta":{"content":"x"}}]}')?.usage).toBeNull();
   });
 
   it('message.content 兜底（非流式形态）', () => {
     expect(extractOpenAiEvent('{"choices":[{"message":{"content":"done"}}]}')).toEqual({
       content: 'done',
       reasoning: null,
+      usage: null,
     });
   });
 });

@@ -55,5 +55,11 @@ window.__DBX_STUB__ = {
       },
     }),
     'console.export': () => ({ filePath: '/tmp/x.xlsx', rows: 4, bytes: 4096 }),
+    // AI P2A 批次 A2：EXPLAIN 结果 Tab「✨ 解释执行计划」——Host 流式经 evt:console.ai 推送；
+    // 桩直接返回空对象（真实推送链在 Host 侧，stub 只验按钮显隐与 RPC 入参）
+    'ai.explainPlan': (p) => {
+      window.__AI_EXPLAIN_PLAN_CALLED__ = p;
+      return {};
+    },
   },
 };

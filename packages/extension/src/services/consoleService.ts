@@ -1139,6 +1139,12 @@ export class ConsoleService implements vscode.Disposable {
     return state?.run?.items.find((i) => i.seq === seq && i.error);
   }
 
+  /** 指定执行 item（须带结果集；AI 执行计划解释入口只对 EXPLAIN 结果集有意义——A2） */
+  resultSetItemFor(consoleId: string, seq: number): ConsoleRunItem | undefined {
+    const state = this.consoles.get(consoleId);
+    return state?.run?.items.find((i) => i.seq === seq && i.resultSet);
+  }
+
   /** 错误 item 的文档定位快照（AI 修复主路径；执行时语句范围 + 版本） */
   itemOriginFor(
     consoleId: string,

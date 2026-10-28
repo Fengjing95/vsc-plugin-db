@@ -112,6 +112,17 @@ export function registerConsoleResultView(context: vscode.ExtensionContext, deps
                   throw err;
                 }
               },
+              // AI P2A 批次 A2（交互稿 §15.7 转正）：EXPLAIN 结果集 → 计划解读（流式经 evt:console.ai）
+              [RpcMethods.aiExplainPlan]: async (raw) => {
+                const p = raw as { consoleId?: string; seq?: number };
+                try {
+                  await ai.explainPlan(consoleIdOf(p), Number(p.seq ?? 0));
+                  return {};
+                } catch (err) {
+                  deps.logger.error('ai', `AI 执行计划解读失败：${describeError(err)}`);
+                  throw err;
+                }
+              },
             }
           : undefined,
       });

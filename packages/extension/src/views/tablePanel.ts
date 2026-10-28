@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { type ChangeSetService, type DriverHost } from '@db-explorer/core';
+import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
+import type { AiAssistService } from '../services/aiAssistService';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
 import { t } from '../services/i18n';
@@ -31,6 +33,8 @@ export interface TablePanelServices {
   changesets: ChangeSetService;
   viewStates: ViewStateStore;
   editGuard: EditGuard;
+  /** AI P2A 批次 A1（交互稿 §15.7 转正）：筛选栏「✨ 自然语言筛选」→ ai.generateFilter（片段回填待确认） */
+  ai?: Pick<AiAssistService, 'generateFilterWhere' | 'openSettings'>;
 }
 
 const panels = new Map<string, vscode.WebviewPanel>();
@@ -82,6 +86,7 @@ export async function openTablePanel(
   });
 
   const cfg = vscode.workspace.getConfiguration('dbExplorer');
+  const ai = services.ai;
   attachRpcHost(panel.webview, {
     viewId: target.viewId,
     params: {
@@ -105,6 +110,16 @@ export async function openTablePanel(
       chunkRows: cfg.get('export.chunkRows', 1000),
       timeoutMs: cfg.get('query.timeoutMs', 15000),
     }),
+    handlers: ai
+      ? {
+          // 片段只回填筛选栏（Webview 侧），不直接执行——应用走既有 whereSql 下推链
+          [RpcMethods.aiGenerateFilter]: (raw) => ai.generateFilterWhere(raw),
+          [RpcMethods.aiOpenSettings]: () => {
+            ai.openSettings();
+            return Promise.resolve({});
+          },
+        }
+      : undefined,
   });
 }
 

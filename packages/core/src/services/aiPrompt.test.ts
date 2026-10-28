@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildExplainPlanPrompt,
   buildExplainPrompt,
+  buildFilterWherePrompt,
   buildFixPrompt,
   buildGeneratePrompt,
   extractSqlFromResponse,
+  renderResultSetAsText,
   renderSchemaContext,
+  sanitizeWhereFragment,
   type AiPromptContext,
 } from './aiPrompt';
 
@@ -79,6 +83,118 @@ describe('buildExplainPrompt', () => {
     expect(user).toContain('SELECT * FROM users');
     expect(user).toContain('users');
     expect(system).toContain('中文');
+  });
+});
+
+// ── AI P2A 批次 A（交互稿 §15.7 转正）：筛选 / 计划解读 / 消毒 / 计划渲染 ──
+
+describe('buildFilterWherePrompt（A1 自然语言筛选）', () => {
+  it('system 只要 WHERE 表达式本身（无 WHERE 关键字/分号/围栏），user 携带单表结构与需求', () => {
+    const single: AiPromptContext = { dialectId: 'mysql', tables: [ctx.tables[0]], columns: ctx.columns.filter((c) => c.table === 'users') };
+    const { system, user } = buildFilterWherePrompt({ nl: '最近 7 天注册的用户', context: single });
+    expect(system).toContain('WHERE 条件表达式本身');
+    expect(system).toContain('不要 WHERE 关键字');
+    expect(system).toContain('MySQL');
+    expect(user).toContain('最近 7 天注册的用户');
+    expect(user).toContain('users');
+    expect(user).toContain('created_at');
+    expect(user).not.toContain('orders'); // 单表上下文：不泄漏其他表结构
+  });
+
+  it('C-10 审计：prompt 不含密钥/连接信息', () => {
+    const { system, user } = buildFilterWherePrompt({ nl: 'x', context: ctx });
+    for (const text of [system, user]) {
+      expect(text).not.toContain('password=');
+      expect(text).not.toContain('sk-');
+    }
+  });
+});
+
+describe('buildExplainPlanPrompt（A2 执行计划解读）', () => {
+  it('user 携带 SQL 与计划文本，system 要求解读访问路径与优化建议', () => {
+    const { system, user } = buildExplainPlanPrompt({
+      sql: 'EXPLAIN SELECT * FROM users',
+      plan: 'id | select_type | table\n1 | SIMPLE | users',
+      context: ctx,
+    });
+    expect(system).toContain('执行计划');
+    expect(system).toContain('优化建议');
+    expect(user).toContain('EXPLAIN SELECT * FROM users');
+    expect(user).toContain('### 执行计划');
+    expect(user).toContain('1 | SIMPLE | users');
+  });
+
+  it('C-10 审计：prompt 不含密钥/连接信息', () => {
+    const { system, user } = buildExplainPlanPrompt({ sql: 'x', plan: 'y', context: ctx });
+    for (const text of [system, user]) {
+      expect(text).not.toContain('password=');
+      expect(text).not.toContain('sk-');
+    }
+  });
+});
+
+describe('renderResultSetAsText（EXPLAIN 结果集 → 计划文本）', () => {
+  it('管道分隔表：表头 + 行；NULL 显式标注', () => {
+    const text = renderResultSetAsText({
+      columns: [{ name: 'id' }, { name: 'key' }],
+      rows: [
+        [1, 'PRIMARY'],
+        [2, null],
+      ],
+    });
+    expect(text).toBe('id | key\n1 | PRIMARY\n2 | NULL');
+  });
+
+  it('行数 >200 截断并标注省略行数', () => {
+    const rows = Array.from({ length: 250 }, (_, i) => [i]);
+    const text = renderResultSetAsText({ columns: [{ name: 'n' }], rows });
+    expect(text).toContain('其余 50 行省略');
+    expect(text.split('\n').length).toBeLessThanOrEqual(203);
+  });
+
+  it('单元格 >120 字符截断；多空白折叠', () => {
+    const long = 'x'.repeat(200);
+    const text = renderResultSetAsText({ columns: [{ name: 'c' }], rows: [[long], ['a  \n b']] });
+    expect(text).toContain(`${'x'.repeat(120)}…`);
+    expect(text).toContain('a b');
+  });
+});
+
+describe('sanitizeWhereFragment（A1 片段消毒，fail-closed）', () => {
+  it('合法片段原样返回（trim）', () => {
+    expect(sanitizeWhereFragment("  status = 'paid' AND amount > 100  ")).toBe("status = 'paid' AND amount > 100");
+  });
+
+  it('剥掉模型多带头的 WHERE 关键字（大小写不敏感）', () => {
+    expect(sanitizeWhereFragment('WHERE id > 1')).toBe('id > 1');
+    expect(sanitizeWhereFragment('where id > 1')).toBe('id > 1');
+  });
+
+  it('分号（多语句注入面）→ E_VALIDATION', () => {
+    expect(() => sanitizeWhereFragment('1=1; DROP TABLE users')).toThrowError(/分号/);
+  });
+
+  it('注释定界符 → E_VALIDATION', () => {
+    expect(() => sanitizeWhereFragment('id > 1 -- x')).toThrowError(/注释/);
+    expect(() => sanitizeWhereFragment('id > 1 /* x */')).toThrowError(/注释/);
+  });
+
+  it('空片段 → E_VALIDATION', () => {
+    expect(() => sanitizeWhereFragment('   ')).toThrowError(/有效/);
+    expect(() => sanitizeWhereFragment('WHERE ')).toThrowError(/有效/);
+  });
+
+  it('超长（>2000）→ E_VALIDATION', () => {
+    expect(() => sanitizeWhereFragment(`id IN (${'1,'.repeat(1200)}1)`)).toThrowError(/超长/);
+  });
+
+  it('错误码为 E_VALIDATION（C-6 按 code 映射）', () => {
+    try {
+      sanitizeWhereFragment('a;b');
+      expect.unreachable();
+    } catch (err) {
+      expect((err as { code?: string }).code).toBe('E_VALIDATION');
+    }
   });
 });
 

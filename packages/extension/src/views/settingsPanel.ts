@@ -3,6 +3,7 @@ import { RpcMethods } from '@db-explorer/protocol';
 import { attachRpcHost } from '../rpc/rpcHost';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 import type { AiSettingsStore } from '../services/aiSettings';
+import type { AiUsageStore } from '../services/aiUsage';
 import type { SettingsHub } from '../services/settingsHub';
 
 import type { Logger } from '../services/logger';
@@ -20,7 +21,7 @@ let panel: vscode.WebviewPanel | undefined;
 
 export function openSettingsPanel(
   context: vscode.ExtensionContext,
-  deps: { settings: AiSettingsStore; hub: SettingsHub; logger: Logger },
+  deps: { settings: AiSettingsStore; hub: SettingsHub; logger: Logger; usage: AiUsageStore },
   category?: SettingsCategory,
 ): void {
   if (panel) {
@@ -63,6 +64,8 @@ export function openSettingsPanel(
       [RpcMethods.aiGetSettings]: () => deps.settings.getSettings(),
       [RpcMethods.aiSaveSettings]: (raw) => deps.settings.saveSettings(raw),
       [RpcMethods.aiTestSettings]: (raw) => deps.settings.testSettings(raw),
+      // AI P2A 批次 A4（交互稿 §15.7 转正）：用量统计读取（SSE usage 累计，workspaceState 持久化）
+      [RpcMethods.aiUsage]: () => Promise.resolve(deps.usage.get()),
       [RpcMethods.settingsGet]: () => Promise.resolve(deps.hub.getSettings()),
       [RpcMethods.settingsUpdate]: (raw) => {
         const p = raw as { key?: string; value?: unknown };

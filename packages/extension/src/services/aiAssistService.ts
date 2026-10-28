@@ -2,15 +2,24 @@ import * as vscode from 'vscode';
 import {
   AI_CONTEXT_TABLE_LIMIT,
   DriverError,
+  buildExplainPlanPrompt,
   buildExplainPrompt,
+  buildFilterWherePrompt,
   buildFixPrompt,
   buildGeneratePrompt,
   extractSqlFromResponse,
+  renderResultSetAsText,
+  sanitizeWhereFragment,
   splitSqlStatements,
   statementAtOffset,
   type AiPromptContext,
 } from '@db-explorer/core';
-import type { AiFixErrorResult, ConsoleAi } from '@db-explorer/protocol';
+import {
+  AiGenerateFilterWhereParamsSchema,
+  type AiFixErrorResult,
+  type ConsoleAi,
+  type ResultSetPayload,
+} from '@db-explorer/protocol';
 import { t } from './i18n';
 import { describeError, type Logger } from './logger';
 import type { ConnectionManager } from './connectionManager';
@@ -22,9 +31,19 @@ import type { AiSettingsStore } from './aiSettings';
  * - 生成（NL→SQL）：QuickPick 输入 → 结果直插编辑器并选中新文本（无预览确认步，护栏在执行侧）
  * - 解释：光标语句/选区 → Console 结果面板「AI 解释」Tab 流式 Markdown（evt:console.ai）
  * - 错误修复：Console 错误 item → 文档语句定位 → AI → diff 确认（applyFix 校验原文仍匹配）
- * 护栏不变式（D-24）：AI 产物一律草稿/diff，绝不直接执行——本服务只产生文档编辑，
- * 执行链（DangerGuard / prod 确认 / 只读拦截）零改动。
+ * AI P2A 批次 A（交互稿 §15.7 转正）：自然语言筛选（WHERE 片段回填待确认）、执行计划解读、
+ * 生成「再来一个」重生成、采样参数默认值与用量统计。
+ * 护栏不变式（D-24）：AI 产物一律草稿/diff/回填待确认，绝不直接执行——本服务只产生文档编辑
+ * 与筛选栏回填，执行链（DangerGuard / prod 确认 / 只读拦截）零改动。
  */
+
+/** protocol ResultSet → 计划文本（renderResultSetAsText 适配；计划为元信息非数据行，§15.6 不破） */
+function renderPlanResultSet(rs: ResultSetPayload): string {
+  return renderResultSetAsText({
+    columns: rs.columns.map((c: { name: string }) => ({ name: c.name })),
+    rows: rs.rows as unknown[][],
+  });
+}
 
 interface ConsoleBindingInfo {
   connId: string;
@@ -36,6 +55,22 @@ interface LoadedContext {
   context: AiPromptContext;
   selectedTables?: string[];
   label: string;
+}
+
+/** 解释类入参（AI Tab 复用同一流式链路）：普通语句解释 / EXPLAIN 结果集计划解读 */
+type ExplainInput = { kind: 'sql'; sql: string } | { kind: 'plan'; sql: string; plan: string };
+
+/** 「再来一个」重生成记忆（会话级单例）：原插入段仍在原位才允许替换 */
+interface LastGenerate {
+  uriString: string;
+  /** 原插入偏移与完整插入文本（anchored 时含尾随空行） */
+  offset: number;
+  insertedText: string;
+  sql: string;
+  anchored: boolean;
+  nl: string;
+  info?: ConsoleBindingInfo;
+  loaded: LoadedContext;
 }
 
 /**
@@ -67,8 +102,10 @@ export class AiAssistService {
   private readonly tablePickMemory = new Map<string, string[]>();
   /** 每文档进行中的解释（新一轮取消上一轮，交互稿 §15.3） */
   private readonly explainControllers = new Map<string, AbortController>();
-  /** 最近一次解释的入参（Tab 错误态「重试」按钮复跑，交互稿 §15.5） */
-  private readonly lastExplains = new Map<string, { info: ConsoleBindingInfo; sql: string }>();
+  /** 最近一次解释的入参（Tab 错误态「重试」按钮复跑，交互稿 §15.5；计划解读同口径） */
+  private readonly lastExplains = new Map<string, { info: ConsoleBindingInfo; input: ExplainInput }>();
+  /** 最近一次生成（「再来一个」重生成；AI P2A 批次 A3） */
+  private lastGenerate?: LastGenerate;
   private aiSeq = 0;
   private fixSeq = 0;
   /** 锚点行内 loading 装饰（行尾 `$(sync~spin) AI 正在生成…`，随进度清除）——复用单例 DecorationType 防泄漏 */
@@ -285,9 +322,10 @@ export class AiAssistService {
   }
 
   /**
-   * 应用后的「放弃」出口（实机反馈 #5：Copilot 式保留/丢弃）——VSCode 公开 API 无法在
-   * diff 编辑器里放「保留/放弃」按钮（Copilot 内联聊天是私有 UI），最接近的形态：
-   * 应用即生效 + 通知按钮一键还原原文（或 Ctrl+Z）。后续编辑介入时拒绝盲还原。
+   * 应用后的「放弃/再来一个」出口（实机反馈 #5：Copilot 式保留/丢弃；AI P2A A3 增「再来一个」）——
+   * VSCode 公开 API 无法在 diff 编辑器里放「保留/放弃」按钮（Copilot 内联聊天是私有 UI），最接近的
+   * 形态：应用即生效 + 通知按钮一键还原原文（或 Ctrl+Z）。后续编辑介入时拒绝盲还原。
+   * onAgain 提供时通知附「再来一个」（重新生成并替换，A3）。
    */
   private offerDiscard(
     editor: vscode.TextEditor,
@@ -295,12 +333,21 @@ export class AiAssistService {
     originalText: string,
     appliedText: string,
     label: string,
+    onAgain?: () => void,
   ): void {
     const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
     const discardBtn = t('放弃这次修改');
+    const againBtn = t('再来一个');
     void vscode.window
-      .showInformationMessage(t('{0}（Ctrl+Z 可撤销）', [label]), discardBtn)
+      .showInformationMessage(
+        t('{0}（Ctrl+Z 可撤销）', [label]),
+        ...(onAgain ? [againBtn, discardBtn] : [discardBtn]),
+      )
       .then((pick) => {
+        if (onAgain && pick === againBtn) {
+          onAgain();
+          return;
+        }
         if (pick !== discardBtn) {
           return;
         }
@@ -485,16 +532,7 @@ export class AiAssistService {
     this.showEditorStatus(editor, anchorPos, t('AI 正在生成…'));
     let sql = '';
     try {
-      sql = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: t('AI 正在生成 SQL…'), cancellable: true },
-        async (_progress, token) => {
-          const controller = new AbortController();
-          token.onCancellationRequested(() => controller.abort());
-          return extractSqlFromResponse(
-            await provider.complete({ system, prompt: user, signal: controller.signal }),
-          );
-        },
-      );
+      sql = await this.completeSqlWithProgress(provider, system, user, t('AI 正在生成 SQL…'));
     } catch (err) {
       this.logger.error('ai', `AI 生成失败：${describeError(err)}`);
       this.showAiError(err, 'toast');
@@ -518,7 +556,166 @@ export class AiAssistService {
       'ai',
       `AI 生成完成：${provider.modelId} · ${sql.length} 字符 → ${doc.uri.fsPath}${anchored ? '（语句前插入）' : '（光标处）'}`,
     );
-    this.offerDiscard(editor, doc.positionAt(offset), '', insertText, t('已插入 AI 生成的 SQL（{0} 字符）', [sql.length]));
+    // 「再来一个」（A3）：记录插入段与入参，通知提供重生成（原段仍在原位才允许替换）
+    this.lastGenerate = {
+      uriString: doc.uri.toString(),
+      offset,
+      insertedText: insertText,
+      sql,
+      anchored,
+      nl,
+      info,
+      loaded,
+    };
+    this.offerDiscard(
+      editor,
+      doc.positionAt(offset),
+      '',
+      insertText,
+      t('已插入 AI 生成的 SQL（{0} 字符）', [sql.length]),
+      () => this.regenerateLastSql(),
+    );
+  }
+
+  /** 生成/重生成的 provider 调用（通知进度可取消；采样参数走设置默认值，A4） */
+  private async completeSqlWithProgress(
+    provider: Awaited<ReturnType<AiSettingsStore['resolveProvider']>>,
+    system: string,
+    user: string,
+    title: string,
+  ): Promise<string> {
+    return vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+      async (_progress, token) => {
+        const controller = new AbortController();
+        token.onCancellationRequested(() => controller.abort());
+        return extractSqlFromResponse(
+          await provider.complete({
+            system,
+            prompt: user,
+            signal: controller.signal,
+            ...this.settings.samplingDefaults(),
+          }),
+        );
+      },
+    );
+  }
+
+  /** 「再来一个」（A3）：同入参重新生成并替换原插入段——原段被编辑介入即失效（空白归一化校验） */
+  private async regenerateLastSql(): Promise<void> {
+    const last = this.lastGenerate;
+    if (!last) {
+      return;
+    }
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === last.uriString);
+    if (!doc) {
+      this.lastGenerate = undefined;
+      return;
+    }
+    if (!(await this.ensureConfiguredOrGuide())) {
+      return;
+    }
+    const provider = await this.settings.resolveProvider().catch((err) => {
+      this.showAiError(err, 'toast');
+      return undefined;
+    });
+    if (!provider) {
+      return;
+    }
+    const norm = (s: string): string => s.replace(/\s+/g, ' ').trim();
+    const range = new vscode.Range(doc.positionAt(last.offset), doc.positionAt(last.offset + last.insertedText.length));
+    if (norm(doc.getText(range)) !== norm(last.insertedText)) {
+      this.lastGenerate = undefined;
+      void vscode.window.showInformationMessage(t('文档已修改，原生成结果已失效——请重新触发生成。'));
+      return;
+    }
+    const { system, user } = buildGeneratePrompt({
+      nl: last.nl,
+      context: last.loaded.context,
+      selectedTables: last.loaded.selectedTables,
+    });
+    this.logger.info('ai', `AI 生成重试（再来一个）：${last.loaded.label} · prompt ${user.length} 字符`);
+    let sql = '';
+    try {
+      sql = await this.completeSqlWithProgress(provider, system, user, t('AI 正在生成 SQL…'));
+    } catch (err) {
+      this.logger.error('ai', `AI 生成重试失败：${describeError(err)}`);
+      this.showAiError(err, 'toast');
+      return;
+    }
+    if (!sql) {
+      void vscode.window.showInformationMessage(t('AI 未返回可用的 SQL，可重试。'));
+      return;
+    }
+    const editor = await vscode.window.showTextDocument(doc);
+    const insertText = last.anchored ? `${sql}\n\n` : sql;
+    const applied = await editor.edit((builder) => builder.replace(range, insertText));
+    if (!applied) {
+      return;
+    }
+    editor.selection = new vscode.Selection(doc.positionAt(last.offset), doc.positionAt(last.offset + sql.length));
+    this.lastGenerate = { ...last, insertedText: insertText, sql };
+    this.logger.info('ai', `AI 生成重试完成：${provider.modelId} · ${sql.length} 字符 → ${doc.uri.fsPath}`);
+    this.offerDiscard(
+      editor,
+      doc.positionAt(last.offset),
+      '',
+      insertText,
+      t('已插入 AI 生成的 SQL（{0} 字符）', [sql.length]),
+      () => this.regenerateLastSql(),
+    );
+  }
+
+  // ── 自然语言筛选（AI P2A 批次 A1，交互稿 §15.7 转正）：表格筛选栏 → WHERE 片段回填 ──
+
+  /**
+   * 表格筛选栏「✨ 自然语言筛选」：单表列结构 + 自然语言 → WHERE 片段。
+   * 只返回片段文本——Webview 回填筛选栏给用户过目可改（原则②：AI 产物可审计、绝不直接执行），
+   * 应用走既有 whereSql 下推链（C-10 例外通道）；片段先经 sanitizeWhereFragment 消毒。
+   */
+  async generateFilterWhere(raw: unknown): Promise<{ whereSql: string }> {
+    const p = AiGenerateFilterWhereParamsSchema.parse(raw);
+    if (!(await this.settings.isConfigured())) {
+      throw this.notConfigured();
+    }
+    if (this.connections.getDriver(p.connId)?.capabilities.supportsSQL === false) {
+      throw new DriverError('E_UNSUPPORTED', t('AI 筛选仅支持 SQL 数据源'));
+    }
+    const conn = await this.connections.ensureConnected(p.connId);
+    const columns = await conn.listColumns(p.db, p.table);
+    const context: AiPromptContext = {
+      dialectId: this.connections.getDriver(p.connId)?.id,
+      tables: [{ name: p.table }],
+      columns: columns.map((c) => ({ table: p.table, name: c.name, comment: c.comment })),
+    };
+    const provider = await this.settings.resolveProvider();
+    const { system, user } = buildFilterWherePrompt({ nl: p.nl, context });
+    this.logger.info(
+      'ai',
+      `AI 筛选生成开始：${p.connId}/${p.db}/${p.table} · 模型 ${provider.modelId} · 列 ${columns.length} · prompt ${user.length} 字符`,
+    );
+    let response = '';
+    try {
+      response = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: t('AI 正在生成筛选条件…'), cancellable: true },
+        async (_progress, token) => {
+          const controller = new AbortController();
+          token.onCancellationRequested(() => controller.abort());
+          return provider.complete({
+            system,
+            prompt: user,
+            signal: controller.signal,
+            ...this.settings.samplingDefaults(),
+          });
+        },
+      );
+    } catch (err) {
+      this.logger.error('ai', `AI 筛选生成失败：${describeError(err)}`);
+      throw err;
+    }
+    const whereSql = sanitizeWhereFragment(extractSqlFromResponse(response));
+    this.logger.info('ai', `AI 筛选生成完成：${whereSql.length} 字符（回填筛选栏待用户确认）`);
+    return { whereSql };
   }
 
   private askPrompt(title: string, placeholder: string): Promise<string | undefined> {
@@ -583,12 +780,12 @@ export class AiAssistService {
     await this.runExplain(
       state.consoleId,
       { connId: state.connId, db: state.db, consoleId: state.consoleId },
-      sql,
+      { kind: 'sql', sql },
       loaded,
     );
   }
 
-  /** 「AI 解释」Tab 错误态的重试入口：复跑最近一次解释（入参原样，上下文重载） */
+  /** 「AI 解释」Tab 错误态的重试入口：复跑最近一次解释（入参原样，上下文重载；计划解读同口径） */
   async retryExplain(consoleId: string): Promise<void> {
     const last = this.lastExplains.get(consoleId);
     if (!last) {
@@ -601,21 +798,54 @@ export class AiAssistService {
     if (!loaded) {
       throw new DriverError('E_CANCELED', t('已取消'));
     }
-    await this.runExplain(consoleId, last.info, last.sql, loaded);
+    await this.runExplain(consoleId, last.info, last.input, loaded);
+  }
+
+  /** 执行计划解读（AI P2A 批次 A2，交互稿 §15.7 转正）：EXPLAIN 结果 item → 计划文本 → AI Tab 流式。
+   *  计划为查询计划元信息（非数据行，§15.6 不破）；复用解释链路（lastExplains/重试/新一轮取消）。 */
+  async explainPlan(consoleId: string, seq: number): Promise<void> {
+    const info = this.console.consoleInfoFor(consoleId);
+    if (!info) {
+      throw new DriverError('E_NOT_FOUND', t('Console 不存在（可能已关闭）'));
+    }
+    const item = this.console.resultSetItemFor(consoleId, seq);
+    if (!item?.resultSet) {
+      throw new DriverError('E_NOT_FOUND', t('该结果集已不存在——请重新执行后再试'));
+    }
+    if (!(await this.settings.isConfigured())) {
+      throw this.notConfigured();
+    }
+    if (this.connections.getDriver(info.connId)?.capabilities.supportsSQL === false) {
+      throw new DriverError('E_UNSUPPORTED', t('AI 解释仅支持 SQL 数据源'));
+    }
+    const loaded = await this.loadAiContext({ connId: info.connId, db: info.db, consoleId });
+    if (!loaded) {
+      throw new DriverError('E_CANCELED', t('已取消'));
+    }
+    await this.runExplain(
+      consoleId,
+      { connId: info.connId, db: info.db, consoleId },
+      { kind: 'plan', sql: item.sql, plan: renderPlanResultSet(item.resultSet) },
+      loaded,
+    );
   }
 
   private async runExplain(
     consoleId: string,
     info: ConsoleBindingInfo,
-    sql: string,
+    input: ExplainInput,
     loaded: LoadedContext,
   ): Promise<void> {
     const provider = await this.settings.resolveProvider();
-    const { system, user } = buildExplainPrompt({ sql, context: loaded.context, selectedTables: loaded.selectedTables });
-    this.lastExplains.set(consoleId, { info, sql });
+    const built =
+      input.kind === 'plan'
+        ? buildExplainPlanPrompt({ sql: input.sql, plan: input.plan, context: loaded.context, selectedTables: loaded.selectedTables })
+        : buildExplainPrompt({ sql: input.sql, context: loaded.context, selectedTables: loaded.selectedTables });
+    const { system, user } = built;
+    this.lastExplains.set(consoleId, { info, input });
     this.logger.info(
       'ai',
-      `AI 解释开始：${consoleId} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表 · SQL ${sql.length} 字符 / prompt ${user.length} 字符`,
+      `AI 解释开始：${consoleId} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表 · ${input.kind === 'plan' ? '计划解读' : 'SQL 解释'} ${input.sql.length} 字符 / prompt ${user.length} 字符`,
     );
 
     this.explainControllers.get(consoleId)?.abort(); // 新一轮取消上一轮（结果面板以最近一次为准）
@@ -647,6 +877,7 @@ export class AiAssistService {
         system,
         prompt: user,
         signal: controller.signal,
+        ...this.settings.samplingDefaults(),
         onDelta: (delta) => {
           content += delta;
           push('running', false);
@@ -732,7 +963,7 @@ export class AiAssistService {
       'ai',
       `AI 修复开始：${consoleId} #${seq} · 模型 ${provider.modelId} · 上下文 ${loaded.context.tables.length} 表 · 语句 ${item.sql.length} 字符 / 错误码 ${item.error.code}`,
     );
-    const response = await provider.complete({ system, prompt: user }).catch((err) => {
+    const response = await provider.complete({ system, prompt: user, ...this.settings.samplingDefaults() }).catch((err) => {
       this.logger.error('ai', `AI 修复失败：${describeError(err)}`);
       throw err;
     });
