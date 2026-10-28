@@ -2163,7 +2163,8 @@ export async function runRelationGraphChecks(
             { name: 'order_yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
             { name: 'order_num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
           ],
-          // RESTRICT 各 SQL 引擎通用；Oracle 裁剪模式下不带动作（SET NULL 要求列可空，RESTRICT 不支持）
+          // NO ACTION 全 SQL 引擎通用（RESTRICT 非 T-SQL 语法——mssql CI 实跑抓到，本地
+          // mock/sqlite/mysql/pg 均合法故未暴露）；Oracle 裁剪模式下不带动作（SET NULL 要求列可空）
           foreignKeys: [
             fkActions === 'full'
               ? {
@@ -2171,7 +2172,7 @@ export async function runRelationGraphChecks(
                   columns: ['order_yr', 'order_num'],
                   refTable: 'cf_er_order',
                   refColumns: ['yr', 'num'],
-                  onDelete: 'RESTRICT',
+                  onDelete: 'NO ACTION',
                 }
               : {
                   name: 'cf_er_fk_line',
@@ -2271,7 +2272,7 @@ export async function runRelationGraphChecks(
       // 动作透传（D-28）：边 = KeyMeta 动作原文，未声明的动作不虚构
       assert(single!.onDelete === 'CASCADE', `child→parent 边 onDelete 应为 CASCADE：${JSON.stringify(single)}`);
       if (fkActions === 'full') {
-        assert(composite!.onDelete === 'RESTRICT', `line→order 边 onDelete 应为 RESTRICT：${JSON.stringify(composite)}`);
+        assert(composite!.onDelete === 'NO ACTION', `line→order 边 onDelete 应为 NO ACTION：${JSON.stringify(composite)}`);
         assert(single!.onUpdate === 'CASCADE', `child→parent 边 onUpdate 应为 CASCADE：${JSON.stringify(single)}`);
       }
       assert(selfEdge!.onDelete === 'CASCADE', `自引用边 onDelete 应为 CASCADE：${JSON.stringify(selfEdge)}`);
