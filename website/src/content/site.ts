@@ -12,7 +12,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 /** 语言中立数据（品牌/链接/引擎列表——引擎名本身免翻） */
 export const site = {
   name: 'DB Kit',
-  version: 'v0.9.0',
+  version: 'v0.10.0',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
