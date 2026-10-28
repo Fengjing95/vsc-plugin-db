@@ -40,6 +40,7 @@
 - **C-11 CSP/nonce**：所有 `<script>` 必须带 nonce；HTML 构建统一走 `packages/extension/src/views/webviewHtmlInject.ts`，禁止绕过自拼 HTML。
 - **C-12 颜色零硬编码**：UI 只允许引用 `webview-ui/src/styles/tokens.css` 的语义 token（`--color-*`，映射到 `--vscode-*`，交互稿 §11）。
 - **C-13 重活不进 Webview**：导出、大批量数据处理在 Extension Host 执行（概要 §5.7）。
+- **C-18 覆盖层滚动同步用原生监听（筛选栏单行批次踩）**：SqlInput 是「透明 textarea + pre 高亮层」覆盖层结构，滚动同步**禁止用 React 的 `onScroll`**——scroll 是非冒泡事件，React 的根委托在 webview 里实测不触发（程序设 `scrollLeft` 与拖滚动条都不回调，`onScroll` 恒不执行且无任何报错），必须 `ref + addEventListener('scroll', …, { passive: true })` 原生监听。排查这类「可见层不动」问题先分清哪层在滚（透明层滚动、可见层被同步），再用「设不同 scrollLeft 判别」验证同步是否真的发生。
 
 ---
 
