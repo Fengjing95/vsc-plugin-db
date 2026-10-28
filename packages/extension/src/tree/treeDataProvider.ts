@@ -251,6 +251,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             this.dbDropCapable(connId) ? 'dbddl' : null,
             this.dbAlterCapable(connId) ? 'dbddl-alter' : null,
             this.erCapable(connId) ? 'er' : null,
+            this.cmpCapable(connId) ? 'cmp' : null,
           ]
             .filter(Boolean)
             .join(' '),
@@ -545,6 +546,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   /** ER 图能力（M8-ER / D-22）：capabilities.supportsErDiagram 声明裁剪；未注册驱动保守为不支持 */
   private erCapable(connId: string): boolean {
     return this.connections.getDriver(connId)?.capabilities.supportsErDiagram === true;
+  }
+
+  /** 表结构对比能力（ADR D-29 / §17）：supportsSQL 数据源才有 SQL 结构语义 */
+  private cmpCapable(connId: string): boolean {
+    return this.connections.getDriver(connId)?.capabilities.supportsSQL === true;
   }
 }
 

@@ -464,6 +464,11 @@ const en: SiteContent = {
       title: 'Connections that just work',
       desc: 'Per-driver dynamic connection forms; SSH tunneling (TOFU fingerprint verification) and SSL/TLS; passwords live only in the system keychain — zero telemetry, nothing written to disk.',
     },
+    {
+      icon: '📈',
+      title: 'Charts & schema compare',
+      desc: 'One click turns any Console result into a Chart tab: line / bar with selectable X axis and numeric series, automatic downsampling for large results, exportable as SVG/PNG; cross-database schema compare within a connection aligns tables and columns side by side — no diff SQL required.',
+    },
   ],
   screenshots: [
     { file: 'console.png', title: 'SQL Console', desc: 'Context completion, dangerous-statement blocking, EXPLAIN tree indent and inline run annotations' },

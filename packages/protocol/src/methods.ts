@@ -40,6 +40,8 @@ export const RpcMethods = {
   /** @since M8-ER（概要 §5.11 / D-22）：ER 图查看（库级关系图；节点双击打开表格视图） */
   erGraph: 'er.getGraph',
   erOpenTable: 'er.openTable',
+  compareList: 'compare.list',
+  compareTable: 'compare.table',
   /** @since M9-AI（概要 §5.12 / D-24）：AI 辅助——设置读写/连通测试 + 错误修复建议（生成与
    *  解释走编辑器 Host 命令 + console item 推送，不经 RPC）；openSettings 供 webview 引导去配置 */
   aiGetSettings: 'ai.getSettings',
@@ -989,6 +991,75 @@ export type ErOpenTableParams = z.infer<typeof ErOpenTableParamsSchema>;
 
 export const ErOpenTableResultSchema = z.object({});
 export type ErOpenTableResult = z.infer<typeof ErOpenTableResultSchema>;
+
+// ── compare.list / compare.table（ADR D-29 / 交互稿 §17 @since v0.10.0）──────────
+// 表数据对比：同连接跨库的结构 diff（只读；数据面 = 既有自省三件套，零新增驱动方法）。
+
+export const CompareTableStatusSchema = z.enum(['only-left', 'only-right', 'same', 'changed']);
+export type CompareTableStatus = z.infer<typeof CompareTableStatusSchema>;
+
+export const CompareSummaryParamsSchema = z.object({
+  connId: z.string().min(1),
+  /** 左库（树右键所在库） */
+  dbA: z.string().min(1),
+  /** 右库（QuickPick 选定的对侧库） */
+  dbB: z.string().min(1),
+});
+export type CompareSummaryParams = z.infer<typeof CompareSummaryParamsSchema>;
+
+export const CompareTableSummarySchema = z.object({
+  table: z.string(),
+  status: CompareTableStatusSchema,
+  /** status=changed 的差异条目数（列/主键/索引/外键合计） */
+  diffCount: z.number().int().min(0),
+  leftRows: z.number().int().min(0).optional(),
+  rightRows: z.number().int().min(0).optional(),
+});
+export type CompareTableSummary = z.infer<typeof CompareTableSummarySchema>;
+
+export const CompareSummaryResultSchema = z.object({
+  tables: z.array(CompareTableSummarySchema).max(2000),
+});
+export type CompareSummaryResult = z.infer<typeof CompareSummaryResultSchema>;
+
+export const CompareTableParamsSchema = CompareSummaryParamsSchema.extend({
+  table: z.string().min(1).max(128),
+});
+export type CompareTableParams = z.infer<typeof CompareTableParamsSchema>;
+
+export const CompareColumnSideSchema = z.object({
+  dataType: z.string(),
+  nullable: z.boolean(),
+  defaultValue: z.string().optional(),
+  comment: z.string().optional(),
+});
+export type CompareColumnSide = z.infer<typeof CompareColumnSideSchema>;
+
+export const CompareColumnDiffSchema = z.object({
+  name: z.string(),
+  status: CompareTableStatusSchema,
+  left: CompareColumnSideSchema.optional(),
+  right: CompareColumnSideSchema.optional(),
+  changedFields: z.array(z.string()).optional(),
+});
+export type CompareColumnDiff = z.infer<typeof CompareColumnDiffSchema>;
+
+export const CompareNamedDiffSchema = z.object({
+  name: z.string(),
+  status: CompareTableStatusSchema,
+  left: z.object({ columns: z.array(z.string()), extra: z.string().optional() }).optional(),
+  right: z.object({ columns: z.array(z.string()), extra: z.string().optional() }).optional(),
+});
+export type CompareNamedDiff = z.infer<typeof CompareNamedDiffSchema>;
+
+export const CompareTableResultSchema = z.object({
+  table: z.string(),
+  columns: z.array(CompareColumnDiffSchema).max(512),
+  primaryKey: CompareNamedDiffSchema.nullable(),
+  indexes: z.array(CompareNamedDiffSchema).max(256),
+  foreignKeys: z.array(CompareNamedDiffSchema).max(256),
+});
+export type CompareTableResult = z.infer<typeof CompareTableResultSchema>;
 
 // ── sys.copyText（Host 剪贴板：webview 环境直接用 navigator.clipboard 不可靠，经 Host 写入）──
 export const CopyTextParamsSchema = z.object({

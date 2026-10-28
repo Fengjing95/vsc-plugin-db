@@ -42,6 +42,7 @@
   "command.dbExplorer.showLog.title": "打开日志",
   "command.dbExplorer.showErDiagram.title": "查看 ER 图",
   "command.dbExplorer.erFocusTable.title": "以该表为中心展开 ER 图",
+  "command.dbExplorer.compareSchemas.title": "表结构对比",
   "command.dbExplorer.settings.title": "设置",
   "command.dbExplorer.ai.settings.title": "AI 设置",
   "command.dbExplorer.ai.generateSql.title": "AI 生成 SQL",

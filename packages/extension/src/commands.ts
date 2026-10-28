@@ -18,6 +18,7 @@ import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
 import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
 import { openErDiagramPanel, type ErDiagramPanelDeps } from './views/erDiagramPanel';
+import { openSchemaComparePanel } from './views/schemaComparePanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
@@ -49,6 +50,8 @@ export interface AppServices {
   er: import('./services/erService').ErService;
   /** M9-AI AI 辅助（概要 §5.12 / D-24）：生成（NL→SQL）/ 解释 / 错误修复三能力 + 设置守卫 */
   ai: import('./services/aiAssistService').AiAssistService;
+  /** 表结构对比（ADR D-29 / 交互稿 §17）：同连接跨库结构 diff（compare.* RPC） */
+  compare: import('./services/schemaCompareService').SchemaCompareService;
   /** 设置中心（交互稿 §16）：打开总设置面板（深链分类） */
   openSettings: (category?: 'ai' | 'queryExport' | 'about') => void;
 }
@@ -595,6 +598,35 @@ export function registerCommands(
       } catch (err) {
         void vscode.window.showErrorMessage(
           t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),
+        );
+      }
+    }),
+
+    // 表结构对比（ADR D-29 / 交互稿 §17）：database 节点右键「表结构对比」→ QuickPick 选对侧库
+    vscode.commands.registerCommand('dbExplorer.compareSchemas', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        return;
+      }
+      const conn = services.connections.getDriver(connId);
+      if (conn?.capabilities.supportsSQL !== true) {
+        void vscode.window.showInformationMessage(t('当前数据源无 SQL 结构语义，不支持结构对比。'));
+        return;
+      }
+      try {
+        const connObj = await services.connections.ensureConnected(connId);
+        const dbs = (await connObj.listDatabases()).map((d) => d.name).filter((n) => n !== db);
+        const picked = await vscode.window.showQuickPick(dbs, {
+          title: t('表结构对比：选择与 {0} 对比的库', [db]),
+          placeHolder: t('选择对侧库（同连接）'),
+        });
+        if (!picked) {
+          return; // Esc 取消无副作用
+        }
+        openSchemaComparePanel(context, { compare: services.compare, logger: services.logger }, { connId, dbA: db, dbB: picked });
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          t('打开结构对比失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),

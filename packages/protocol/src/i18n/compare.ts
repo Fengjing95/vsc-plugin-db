@@ -1,0 +1,53 @@
+/** compare 域词表（ADR D-29 / 交互稿 §17）：表数据对比——同连接跨库结构 diff（只读）。
+ * zh 值=webview 原文逐字节；en 同步对译。命令标题（manifest 层）在 package.nls*.json。 */
+export const zhCompare = {
+  'compare.title': '表结构对比',
+  'compare.header': '{0} ↔ {1}',
+  'compare.tableHeader': '{0}（{1} ↔ {2}）',
+  'compare.onlyLeft': '仅左有',
+  'compare.onlyRight': '仅右有',
+  'compare.changedN': '{0} 项差异',
+  'compare.same': '一致',
+  'compare.allSame': '两库结构一致',
+  'compare.rowsLabel': '{0} 行',
+  'compare.sectionColumns': '列',
+  'compare.sectionPrimaryKey': '主键',
+  'compare.sectionIndexes': '索引',
+  'compare.sectionForeignKeys': '外键',
+  'compare.colName': '列名',
+  'compare.dataType': '类型',
+  'compare.nullable': '可空',
+  'compare.defaultValue': '默认值',
+  'compare.comment': '注释',
+  'compare.backToList': '← 返回清单',
+  'compare.loadFailed': '加载失败：{0}',
+  'compare.loading': '正在读取两库结构…',
+  'compare.tableLoading': '正在读取表结构…',
+} as const;
+
+export type CompareKey = keyof typeof zhCompare;
+
+export const enCompare: Partial<Record<CompareKey, string>> = {
+  'compare.title': 'Schema Compare',
+  'compare.header': '{0} ↔ {1}',
+  'compare.tableHeader': '{0} ({1} ↔ {2})',
+  'compare.onlyLeft': 'Only in left',
+  'compare.onlyRight': 'Only in right',
+  'compare.changedN': '{0} differences',
+  'compare.same': 'Same',
+  'compare.allSame': 'Both schemas are identical',
+  'compare.rowsLabel': '{0} rows',
+  'compare.sectionColumns': 'Columns',
+  'compare.sectionPrimaryKey': 'Primary key',
+  'compare.sectionIndexes': 'Indexes',
+  'compare.sectionForeignKeys': 'Foreign keys',
+  'compare.colName': 'Column',
+  'compare.dataType': 'Type',
+  'compare.nullable': 'Nullable',
+  'compare.defaultValue': 'Default',
+  'compare.comment': 'Comment',
+  'compare.backToList': '← Back to list',
+  'compare.loadFailed': 'Load failed: {0}',
+  'compare.loading': 'Reading both schemas…',
+  'compare.tableLoading': 'Reading table schema…',
+};

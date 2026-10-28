@@ -282,6 +282,11 @@
         "category": "%command.category%"
       },
       {
+        "command": "dbExplorer.compareSchemas",
+        "title": "%command.dbExplorer.compareSchemas.title%",
+        "category": "%command.category%"
+      },
+      {
         "command": "dbExplorer.settings",
         "title": "%command.dbExplorer.settings.title%",
         "category": "%command.category%",
@@ -426,7 +431,7 @@
         },
         {
           "command": "dbExplorer.refreshNode",
-          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)?( er)?$/",
+          "when": "viewItem =~ /^connection connected/ || viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)?( er)?( cmp)?$/",
           "group": "navigation@1"
         },
         {
@@ -451,7 +456,7 @@
         },
         {
           "command": "dbExplorer.alterDatabase",
-          "when": "viewItem =~ /^database( ddl)?( dbddl)? dbddl-alter( er)?$/",
+          "when": "viewItem =~ /^database( ddl)?( dbddl)? dbddl-alter( er)?( cmp)?$/",
           "group": "2_object@4"
         },
         {
@@ -461,13 +466,18 @@
         },
         {
           "command": "dbExplorer.createTable",
-          "when": "viewItem =~ /^database ddl( dbddl)?( dbddl-alter)?( er)?$/ || viewItem =~ /^folder-table ddl$/",
+          "when": "viewItem =~ /^database ddl( dbddl)?( dbddl-alter)?( er)?( cmp)?$/ || viewItem =~ /^folder-table ddl$/",
           "group": "2_object@5"
         },
         {
           "command": "dbExplorer.showErDiagram",
-          "when": "viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)? er$/",
+          "when": "viewItem =~ /^database( ddl)?( dbddl)?( dbddl-alter)? er( cmp)?$/",
           "group": "2_object@6"
+        },
+        {
+          "command": "dbExplorer.compareSchemas",
+          "when": "viewItem =~ /^database.* cmp$/",
+          "group": "2_object@7"
         },
         {
           "command": "dbExplorer.erFocusTable",

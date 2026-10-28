@@ -42,6 +42,7 @@
   "command.dbExplorer.showLog.title": "Open Log",
   "command.dbExplorer.showErDiagram.title": "View ER Diagram",
   "command.dbExplorer.erFocusTable.title": "Expand ER Diagram from This Table",
+  "command.dbExplorer.compareSchemas.title": "Compare Table Schemas",
   "command.dbExplorer.settings.title": "Settings",
   "command.dbExplorer.ai.settings.title": "AI Settings",
   "command.dbExplorer.ai.generateSql.title": "AI: Generate SQL",

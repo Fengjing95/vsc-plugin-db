@@ -11,6 +11,7 @@
  * 官网 Playground 的 iframe bootstrap 由外壳按站点语言注入（嵌入界面随站点语言）。
  */
 import { enAi, zhAi } from './ai';
+import { enCompare, zhCompare } from './compare';
 import { enCommon, zhCommon } from './common';
 import { enConsole, zhConsole } from './console';
 import { enDbddl, zhDbddl } from './dbddl';
@@ -23,6 +24,7 @@ import { enTable, zhTable } from './table';
 
 export const zhMessages = {
   ...zhCommon,
+  ...zhCompare,
   ...zhError,
   ...zhTable,
   ...zhConsole,
@@ -39,6 +41,7 @@ export type MessageDict = Record<MessageKey, string>;
 
 export const enMessages: Partial<MessageDict> = {
   ...enCommon,
+  ...enCompare,
   ...enError,
   ...enTable,
   ...enConsole,

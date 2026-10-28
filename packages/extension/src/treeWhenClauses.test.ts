@@ -103,20 +103,26 @@ describe('树菜单 when × contextValue 匹配矩阵（P-40 守卫）', () => {
       noMatch: ['table', 'table ddl', 'view', 'view ddl', 'collection', 'database er', 'database ddl er'],
     },
     {
-      // D-22：database 节点 ER 图（令牌序 database [ddl] [dbddl] [dbddl-alter] er）
+      // D-22：database 节点 ER 图（令牌序 database [ddl] [dbddl] [dbddl-alter] [er] [cmp]）
       command: 'dbExplorer.showErDiagram',
-      match: ['database er', 'database ddl er', 'database dbddl er', 'database ddl dbddl er', 'database ddl dbddl dbddl-alter er'],
+      match: ['database er', 'database ddl er', 'database dbddl er', 'database ddl dbddl er', 'database ddl dbddl dbddl-alter er', 'database er cmp', 'database ddl dbddl dbddl-alter er cmp'],
       noMatch: ['database', 'database ddl', 'table er'],
+    },
+    {
+      // D-29：表结构对比——只挂带 cmp 令牌的 database 节点（前缀+尾锚，redis/mongo 无入口）
+      command: 'dbExplorer.compareSchemas',
+      match: ['database cmp', 'database ddl cmp', 'database ddl dbddl dbddl-alter er cmp'],
+      noMatch: ['database', 'database er', 'database ddl er', 'table er', 'table ddl er', 'collection', 'query'],
     },
     {
       // P-40 原始事故区：「编辑库」令牌串中间夹 dbddl 段
       command: 'dbExplorer.alterDatabase',
-      match: ['database dbddl-alter er', 'database ddl dbddl-alter er', 'database ddl dbddl dbddl-alter er'],
+      match: ['database dbddl-alter er', 'database ddl dbddl-alter er', 'database ddl dbddl dbddl-alter er', 'database ddl dbddl dbddl-alter er cmp'],
       noMatch: ['database er', 'database ddl er', 'database dbddl er', 'table ddl er'],
     },
     {
       command: 'dbExplorer.createTable',
-      match: ['database ddl er', 'database ddl dbddl er', 'database ddl dbddl dbddl-alter er', 'folder-table ddl'],
+      match: ['database ddl er', 'database ddl dbddl er', 'database ddl dbddl dbddl-alter er', 'database ddl dbddl dbddl-alter er cmp', 'folder-table ddl'],
       noMatch: ['database', 'database er', 'table ddl er'],
     },
     {
@@ -126,7 +132,7 @@ describe('树菜单 when × contextValue 匹配矩阵（P-40 守卫）', () => {
     },
     {
       command: 'dbExplorer.refreshNode',
-      match: ['connection connected', 'connection connected readonly', 'database', 'database er', 'database ddl dbddl dbddl-alter er'],
+      match: ['connection connected', 'connection connected readonly', 'database', 'database er', 'database ddl dbddl dbddl-alter er', 'database er cmp'],
       noMatch: ['connection disconnected'],
     },
   ];

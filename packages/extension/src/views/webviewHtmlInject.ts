@@ -12,6 +12,7 @@ export type WebviewPage =
   | 'tableDesign'
   | 'databaseDesign'
   | 'erDiagram'
+  | 'schemaCompare'
   | 'settings';
 
 export interface WebviewBootstrap {

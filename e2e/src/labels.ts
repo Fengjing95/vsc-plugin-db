@@ -21,6 +21,10 @@ export interface UiLabels {
   runAnyway: string;
   /** 通用取消按钮（webview common.cancel） */
   cancel: string;
+  /** 结果面板「图表」Tab（webview console.chartTab，D-29） */
+  chartTab: string;
+  /** 结果面板「结果 1」Tab（webview console.resultTab） */
+  resultTab1: string;
 }
 
 export function uiLabels(locale: string): UiLabels {
@@ -36,6 +40,8 @@ export function uiLabels(locale: string): UiLabels {
       bannerDetected: '检测到可能影响全表的语句',
       runAnyway: '仍要执行',
       cancel: '取消',
+      chartTab: '图表',
+      resultTab1: '结果 1',
     };
   }
   return {
@@ -49,6 +55,8 @@ export function uiLabels(locale: string): UiLabels {
     bannerDetected: 'A statement that may affect the whole table was detected',
     runAnyway: 'Run Anyway',
     cancel: 'Cancel',
+    chartTab: 'Chart',
+    resultTab1: 'Result 1',
   };
 }
 

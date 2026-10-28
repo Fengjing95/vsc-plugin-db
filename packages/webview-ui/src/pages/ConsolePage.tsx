@@ -15,6 +15,7 @@ import { rpcErrorText } from '../lib/errors';
 import { subscribeEvents } from '../rpc/client';
 import { useConsoleStore } from '../store/consoleStore';
 import { deriveTabs } from '../lib/consoleView';
+import { ChartPanel } from './console/ChartPanel';
 import { ConsoleGrid } from './console/ConsoleGrid';
 
 /** AI 解释 Tab 内容（交互稿 §15.3）：Markdown 流式渲染 + 错误态（重试 / 去配置） */
@@ -114,7 +115,7 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
 
   const tabs = deriveTabs(run, ai);
   const active = tabs.find((tb) => tb.id === activeTab) ?? tabs[0] ?? null;
-  const activeItem = active?.kind === 'result' ? active.item : undefined;
+  const activeItem = active?.kind === 'result' || active?.kind === 'chart' ? active.item : undefined;
   const activeResultSet = activeItem?.resultSet;
 
   const messageItems: ConsoleRunItem[] = run ? run.items.filter((i) => !i.resultSet) : [];
@@ -276,6 +277,8 @@ export function ConsolePage({ consoleId }: { consoleId: string }) {
             </>
           )}
         </div>
+      ) : active?.kind === 'chart' && active.item?.resultSet ? (
+        <ChartPanel item={active.item} />
       ) : activeResultSet ? (
         <ConsoleGrid
           resultSet={activeResultSet}
