@@ -28,6 +28,17 @@ export const zhSettings = {
   'settings.ai.privacyMid': '（表 / 列 / 类型 / 注释）将发送给你配置的服务；',
   'settings.ai.privacyNoData': '表数据不会发送',
   'settings.ai.privacyTail': '。单库表较多时会先让你选择提供给 AI 的表。',
+  // ── AI 采样参数与用量（AI P2A 批次 A4，交互稿 §15.7 转正）──
+  'settings.ai.samplingTitle': '采样参数',
+  'settings.ai.samplingDesc': '与 VSCode 设置双向同步；留空或非法值走模型服务默认。',
+  'settings.ai.temperature': 'Temperature（随机度）',
+  'settings.ai.temperatureDesc': '0 = 确定性输出，2 = 最大随机度；生成 SQL 建议偏低（0–0.7）',
+  'settings.ai.maxTokens': '最大生成 Token 数',
+  'settings.ai.maxTokensDesc': '单次响应的生成上限（解释类回答较长时可调大）',
+  'settings.ai.usageTitle': '用量统计',
+  'settings.ai.usageLine': '{0} 次请求 · 输入 {1} / 输出 {2} / 合计 {3} tokens',
+  'settings.ai.usageNote': '仅统计服务端在响应中上报用量的请求（OpenAI usage 口径）；本地累计，不上传。',
+  'settings.ai.usageEmpty': '暂无用量记录',
 
   // ── 查询与导出（QueryExportSection）──
   'settings.qe.maxRows': '结果行数上限',
@@ -100,6 +111,17 @@ export const enSettings: Partial<Record<SettingsKey, string>> = {
   'settings.ai.privacyMid': '(tables / columns / types / comments) of the current database is sent to the service you configured;',
   'settings.ai.privacyNoData': 'table data is never sent',
   'settings.ai.privacyTail': '. When a database has many tables, you will first be asked to choose the tables to provide to the AI.',
+  // ── AI sampling & usage (AI P2A batch A4) ──
+  'settings.ai.samplingTitle': 'Sampling',
+  'settings.ai.samplingDesc': 'Kept in sync with VSCode settings; empty or invalid values fall back to the model service defaults.',
+  'settings.ai.temperature': 'Temperature (randomness)',
+  'settings.ai.temperatureDesc': '0 = deterministic, 2 = most random; lower values (0–0.7) are recommended for SQL generation',
+  'settings.ai.maxTokens': 'Max output tokens',
+  'settings.ai.maxTokensDesc': 'Generation cap per response (raise it for long explanations)',
+  'settings.ai.usageTitle': 'Usage',
+  'settings.ai.usageLine': '{0} requests · {1} input / {2} output / {3} total tokens',
+  'settings.ai.usageNote': 'Counts only requests whose response reports usage (OpenAI usage field); accumulated locally, never uploaded.',
+  'settings.ai.usageEmpty': 'No usage recorded yet',
 
   // ── Query & Export (QueryExportSection) ──
   'settings.qe.maxRows': 'Max result rows',

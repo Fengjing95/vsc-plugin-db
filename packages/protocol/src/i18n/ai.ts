@@ -1,4 +1,4 @@
-/** ai 域词表（D-25/C-17）：AI 辅助（Console「AI 解释」Tab 与修复建议动作）。
+/** ai 域词表（D-25/C-17）：AI 辅助（Console「AI 解释」Tab 与修复建议动作；AI P2A 批次 A：筛选 / 计划解读）。
  * zh 值=webview 原文逐字节（含全角标点/省略号）；en 同步对译（专业数据库工具语气，按钮/标签无句号）。 */
 export const zhAi = {
   'ai.tabLabel': 'AI 解释',
@@ -8,6 +8,19 @@ export const zhAi = {
   'ai.setUp': '去配置',
   'ai.fixGenerated': '已生成修复建议，请在编辑器中选择保留或放弃',
   'ai.fixFailed': '修复建议失败：{0}',
+  // ── AI P2A 批次 A2：执行计划解读（EXPLAIN 结果 Tab 动作）──
+  'ai.explainPlan': '✨ 解释执行计划',
+  'ai.explainPlanTitle': '让 AI 解读这份执行计划（计划文本将发送给你配置的服务；不含数据行）',
+  'ai.explainPlanFailed': '执行计划解读失败：{0}',
+  // ── AI P2A 批次 A1：表格筛选栏自然语言筛选 ──
+  'ai.filter': '✨ AI',
+  'ai.filterTitle': '用自然语言描述筛选条件，AI 生成 WHERE 片段回填到筛选栏（需确认后再应用）',
+  'ai.filterPrompt': '描述筛选需求',
+  'ai.filterPlaceholder': '例如：最近 7 天创建且状态为已支付的订单',
+  'ai.filterGenerate': '生成',
+  'ai.filterGenerating': '生成中…',
+  'ai.filterFilled': '已回填 WHERE 条件，请确认后点击「应用」',
+  'ai.filterFailed': 'AI 筛选生成失败：{0}',
 } as const;
 
 export type AiKey = keyof typeof zhAi;
@@ -20,4 +33,17 @@ export const enAi: Partial<Record<AiKey, string>> = {
   'ai.setUp': 'Set Up',
   'ai.fixGenerated': 'Fix suggestion generated; choose Keep or Discard in the editor',
   'ai.fixFailed': 'Fix suggestion failed: {0}',
+  // ── AI P2A batch A2: query plan explanation ──
+  'ai.explainPlan': '✨ Explain Query Plan',
+  'ai.explainPlanTitle': 'Ask AI to explain this query plan (plan text is sent to your configured service; no data rows)',
+  'ai.explainPlanFailed': 'Query plan explanation failed: {0}',
+  // ── AI P2A batch A1: natural-language filter ──
+  'ai.filter': '✨ AI',
+  'ai.filterTitle': 'Describe the filter in natural language; AI fills a WHERE fragment into the filter bar (review before applying)',
+  'ai.filterPrompt': 'Describe the filter',
+  'ai.filterPlaceholder': 'e.g. orders created in the last 7 days with status paid',
+  'ai.filterGenerate': 'Generate',
+  'ai.filterGenerating': 'Generating…',
+  'ai.filterFilled': 'WHERE condition filled in; review it, then click Apply',
+  'ai.filterFailed': 'AI filter generation failed: {0}',
 };

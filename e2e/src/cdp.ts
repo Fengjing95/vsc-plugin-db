@@ -109,13 +109,49 @@ export async function pickQuickOption(page: Page, optionText: string, timeoutMs 
 }
 
 /** 关闭右下角通知气泡（profile 已设 notifications.showToast=false，此为兜底——
- *  settings 预置先于首启读取，仍防宿主版本差异/新通知形态遮挡点击） */
-export async function dismissNotifications(page: Page): Promise<void> {
-  const toasts = page.locator('.notifications-toasts .notification-list-item .clear-notification-action');
+ *  settings 预置先于首启读取，仍防宿主版本差异/新通知形态遮挡点击）。
+ *  清除按钮是 codicon 类 `.codicon-notifications-clear`（ClearNotificationAction 以
+ *  ThemeIcon.asClassName 作 class）——此前写的 `.clear-notification-action` 在 DOM 中不存在，
+ *  showToast=false 压掉多数 toast 后该兜底从未真正执行过，错误级 toast 穿透时才暴露（两连红定因）。
+ *  hideToasts 提供时（bridge 命令 notifications.hideToasts）优先——与类名解耦，整批收进通知中心。 */
+export async function dismissNotifications(page: Page, hideToasts?: () => Promise<unknown>): Promise<void> {
+  if (hideToasts) {
+    await hideToasts().catch(() => undefined);
+  }
+  const toasts = page.locator(
+    '.notifications-toasts .notification-list-item .codicon-notifications-clear, .notifications-toasts .notification-list-item [aria-label^="Clear Notification"], .notifications-toasts .notification-list-item [aria-label^="清除通知"]',
+  );
   const count = await toasts.count();
   for (let i = 0; i < Math.min(count, 5); i++) {
-    await toasts.first().click().catch(() => undefined);
+    await toasts.first().click({ timeout: 1000 }).catch(() => undefined);
   }
+}
+
+/**
+ * 「清气泡 → 点击」重试（P-76 竞态变体，macOS 本机实测两连红）：一次性预清只覆盖调用瞬间，
+ * 而「Unable to resolve your shell environment」错误级 toast 在 VSCode 启动后约 10s 的 shell
+ * 解析超时时点弹出——恰落在表单填写与 Save 点击之间，且错误级通知穿透 showToast=false。
+ * 真人会随手关掉再点，这里同构：短超时点击，被拦截即清气泡重试（上限 attempts 次）。
+ * 只对「元素可见但被 toast 拦截」生效；元素不存在仍按最后一次错误抛出。
+ */
+export async function clickDismissingToasts(
+  page: Page,
+  target: Locator,
+  opts: { attempts?: number; timeout?: number; hideToasts?: () => Promise<unknown> } = {},
+): Promise<void> {
+  const attempts = opts.attempts ?? 5;
+  const timeout = opts.timeout ?? 4_000;
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    await dismissNotifications(page, opts.hideToasts);
+    try {
+      await target.click({ timeout });
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 /** 关闭首启 onboarding 模态（`.onboarding-a-overlay`，aria-modal，拦截一切点击）。

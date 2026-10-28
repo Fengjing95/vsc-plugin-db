@@ -2,12 +2,29 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
-## [Unreleased]
+## [0.8.0] - 2026-10-28
+
+两批能力合并发版：MySQL Console 语句取消（能力缺口清单 ①）+ AI P2 面批次 A（交互稿 §15.7 四项转正）。
 
 ### 特性
 
+- **AI 自然语言筛选**：表格视图筛选栏新增「✨ AI」——用自然语言描述筛选需求，AI 按本表列结构生成 WHERE 条件并**回填到筛选栏**（语法高亮、可改），确认后点「应用」才生效，不自动执行；片段经 fail-closed 消毒（分号 / 注释 / 超长一律拒绝）。只发送本表结构，不发送数据行
+- **AI 解释执行计划**：Console 结果面板的 EXPLAIN 结果 Tab 新增「✨ 解释执行计划」——计划文本送 AI 解读访问路径、连接顺序、潜在瓶颈与优化建议，流式呈现在「AI 解释」Tab（支持重试）。计划是查询元信息，隐私边界不变
+- **AI 生成「再来一个」**：生成 SQL 直插后的通知新增「再来一个」——同一需求重新生成并替换刚插入的结果（原结果被编辑过则拒绝盲替换）
+- **AI 采样参数与用量统计**：设置中心 AI 分类新增「采样参数」（`dbExplorer.ai.temperature` 0–2、`dbExplorer.ai.maxTokens`，与 VSCode 设置双向同步，留空走模型默认）与「用量统计」（累计请求数 / 输入 / 输出 / 合计 tokens，仅统计服务端上报用量的请求；本地累计不上传）
 - **MySQL Console 语句取消**：mysql 驱动 `supportsCancel` 转为 true——Console「取消」（与语句超时死线）经**专用临时连接**下发 `KILL QUERY <threadId>`（只杀语句不断连接，取消后连接可复用），在途语句回包 `ER_QUERY_INTERRUPTED` 映射 `E_CANCELED`；归还前有界等待结算（pg 同构，防归还竞态）。契约 cancellation 组三检查（预中止 / 在途取消 / 连接复用）随 CI `mysql:8` service 实跑
 - **MySQL Console 语句超时生效**：`dbExplorer.query.timeoutMs`（默认 15s）此前被 mysql 驱动忽略，现按驱动规范 §7 对齐 pg 口径——超时请求服务端取消并抛 `E_TIMEOUT`
+
+### 修复
+
+- **e2e 通知气泡兜底失效**（本地 macOS 偶发两连红定因）：`dismissNotifications` 的清除按钮选择器在 VSCode DOM 中不存在，错误级「shell 环境解析超时」toast 穿透时拦截 Save 点击——修正为 codicon 类选择器 + `notifications.hideToasts` 命令兜底，关键点击改「清气泡→点击」重试
+
+### 已知限制
+
+- AI 能力依赖用户自配的 OpenAI 兼容服务，不进 e2e 回归（D-26 明确排除外部 LLM）——回归面为纯函数单测 + 实机手测
+- 用量统计只覆盖响应中携带 `usage` 字段的服务（OpenAI `stream_options.include_usage` 口径）；不上报用量的服务不计入
+- 自然语言筛选只携带当前表结构（列名 / 注释），复杂跨表条件需手写
+- AI P2 面批次 B（`@dbkit` chat participant / 采样行 opt-in / 多 provider 配置位）经 ADR D-27 决议不做，重开条件见概要设计 §11
 
 ## [0.7.1] - 2026-10-26
 

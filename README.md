@@ -30,7 +30,7 @@
 | 导出（CSV/JSON/XLSX/NDJSON/Markdown/SQL INSERT，后台任务可取消） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 契约测试（CI 实跑） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-其他能力：AI 助手（BYOK：自然语言生成 SQL / SQL 解释 / 错误修复建议）、单元格大文本 / JSON / 二进制查看器、ER 图查看与导出（SVG/PNG）、查看 DDL、由表结构生成代码（TS/Java/Go/Prisma）、复制为多种格式、SQL 格式化、保存查询与树内查询目录、EXPLAIN 树形缩进、行内执行结果注记、CodeLens 逐语句执行、操作日志（`dbExplorer.showLog`）。
+其他能力：AI 助手（BYOK：自然语言生成 SQL / SQL 解释 / 错误修复建议 / 表格自然语言筛选 / 执行计划解读 / 生成结果「再来一个」；采样参数与用量统计可在设置中心查看）、单元格大文本 / JSON / 二进制查看器、ER 图查看与导出（SVG/PNG）、查看 DDL、由表结构生成代码（TS/Java/Go/Prisma）、复制为多种格式、SQL 格式化、保存查询与树内查询目录、EXPLAIN 树形缩进、行内执行结果注记、CodeLens 逐语句执行、操作日志（`dbExplorer.showLog`）。
 
 ## 安装
 

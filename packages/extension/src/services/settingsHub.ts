@@ -32,6 +32,8 @@ export class SettingsHub {
       'dbExplorer.export.chunkRows': get('export.chunkRows', 1000),
       'dbExplorer.transaction.idleTimeoutMs': get('transaction.idleTimeoutMs', 300_000),
       'dbExplorer.edit.allowNoPrimaryKey': get('edit.allowNoPrimaryKey', false),
+      'dbExplorer.ai.temperature': vscode.workspace.getConfiguration('dbExplorer.ai').get<number>('temperature', 0.7),
+      'dbExplorer.ai.maxTokens': vscode.workspace.getConfiguration('dbExplorer.ai').get<number>('maxTokens', 2048),
     };
   }
 
@@ -47,7 +49,7 @@ export class SettingsHub {
       .update(section, value, vscode.ConfigurationTarget.Global);
   }
 
-  /** 值按键分型校验（number > 0；enum 限定导出格式）；非法即拒（E_VALIDATION） */
+  /** 值按键分型校验（number > 0 / number0 ≥ 0——temperature=0 是合法确定性采样；enum 限定导出格式）；非法即拒（E_VALIDATION） */
   private coerce(key: SettingsAllowedKey, raw: unknown): unknown {
     const type = SETTINGS_KEY_TYPES[key];
     if (type === 'boolean') {
@@ -56,10 +58,11 @@ export class SettingsHub {
       }
       return raw;
     }
-    if (type === 'number') {
+    if (type === 'number' || type === 'number0') {
       const n = typeof raw === 'number' ? raw : Number(raw);
-      if (!Number.isFinite(n) || n <= 0) {
-        throw new DriverError('E_VALIDATION', t('{0} 需要正数', [key]));
+      const invalid = type === 'number0' ? !Number.isFinite(n) || n < 0 : !Number.isFinite(n) || n <= 0;
+      if (invalid) {
+        throw new DriverError('E_VALIDATION', t(type === 'number0' ? '{0} 需要不小于 0 的数值' : '{0} 需要正数', [key]));
       }
       return n;
     }

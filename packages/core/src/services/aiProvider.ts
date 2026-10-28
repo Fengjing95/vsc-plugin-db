@@ -8,6 +8,13 @@
  */
 import { DriverError, type AiErrorCode } from '../driver/errors';
 
+/** 服务端用量（AI P2A 批次 A4，OpenAI usage 字段口径；服务端未上报的字段缺省） */
+export interface AiTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 export interface AiCompletionRequest {
   system: string;
   prompt: string;
@@ -16,6 +23,8 @@ export interface AiCompletionRequest {
   onDelta?: (delta: string) => void;
   /** 推理过程增量（DeepSeek reasoner 的 reasoning_content 等；不保证所有服务提供） */
   onReasoning?: (delta: string) => void;
+  /** 用量回调（SSE usage 字段；仅服务端上报时触发，末帧携带） */
+  onUsage?: (usage: AiTokenUsage) => void;
   temperature?: number;
   maxTokens?: number;
 }
@@ -65,11 +74,16 @@ export function parseSseFrame(buffer: string): { events: string[]; rest: string 
 }
 
 /** OpenAI 流式帧负载解析：正文（choices[0].delta.content，兼容 message.content 形态）+
- *  推理过程（delta.reasoning_content / delta.reasoning——DeepSeek reasoner 等非标字段）。
+ *  推理过程（delta.reasoning_content / delta.reasoning——DeepSeek reasoner 等非标字段）+
+ *  用量（usage，stream_options.include_usage 时末帧携带）。
  *  [DONE]/非 JSON → 双 null。 */
-export function extractOpenAiEvent(data: string): { content: string | null; reasoning: string | null } {
+export function extractOpenAiEvent(data: string): {
+  content: string | null;
+  reasoning: string | null;
+  usage: AiTokenUsage | null;
+} {
   if (data === '[DONE]') {
-    return { content: null, reasoning: null };
+    return { content: null, reasoning: null, usage: null };
   }
   try {
     const parsed = JSON.parse(data) as {
@@ -77,6 +91,7 @@ export function extractOpenAiEvent(data: string): { content: string | null; reas
         delta?: { content?: string; reasoning_content?: string; reasoning?: string };
         message?: { content?: string };
       }>;
+      usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown };
     };
     const choice = parsed.choices?.[0];
     const delta = choice?.delta;
@@ -93,9 +108,17 @@ export function extractOpenAiEvent(data: string): { content: string | null; reas
     } else if (typeof delta?.reasoning === 'string') {
       reasoning = delta.reasoning;
     }
-    return { content, reasoning };
+    const u = parsed.usage;
+    const usage: AiTokenUsage | null = u
+      ? {
+          promptTokens: typeof u.prompt_tokens === 'number' ? u.prompt_tokens : undefined,
+          completionTokens: typeof u.completion_tokens === 'number' ? u.completion_tokens : undefined,
+          totalTokens: typeof u.total_tokens === 'number' ? u.total_tokens : undefined,
+        }
+      : null;
+    return { content, reasoning, usage };
   } catch {
-    return { content: null, reasoning: null };
+    return { content: null, reasoning: null, usage: null };
   }
 }
 
@@ -154,6 +177,10 @@ export class OpenAICompatProvider implements AiProvider {
       if (req.maxTokens !== undefined) {
         body.max_tokens = req.maxTokens;
       }
+      if (req.onUsage) {
+        // 用量统计（A4）：OpenAI 口径 stream_options.include_usage——主流兼容服务支持或忽略
+        body.stream_options = { include_usage: true };
+      }
       const res = await this.fetchImpl(joinUrl(this.config.endpoint, '/chat/completions'), {
         method: 'POST',
         headers: {
@@ -173,6 +200,9 @@ export class OpenAICompatProvider implements AiProvider {
       let buffer = '';
       const consume = (data: string): void => {
         const evt = extractOpenAiEvent(data);
+        if (evt.usage) {
+          req.onUsage?.(evt.usage);
+        }
         if (evt.reasoning !== null && evt.reasoning !== '') {
           req.onReasoning?.(evt.reasoning);
         }

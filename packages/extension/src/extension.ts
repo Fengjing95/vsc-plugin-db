@@ -30,6 +30,7 @@ import { SessionManager } from './services/sessionManager';
 import { registerConsoleResultView } from './views/consolePanel';
 import { openSettingsPanel } from './views/settingsPanel';
 import { AiSettingsStore } from './services/aiSettings';
+import { AiUsageStore } from './services/aiUsage';
 import { SettingsHub } from './services/settingsHub';
 import { AiAssistService } from './services/aiAssistService';
 import { ConnectionsTreeProvider } from './tree/treeDataProvider';
@@ -149,11 +150,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const erService = new ErService({ connections, cache, logger });
   // M9-AI AI 辅助（概要 §5.12 / D-24）：BYOK 设置（endpoint/model 落 settings、key 进
   // SecretStorage）+ 三能力（生成直插 / 解释流式 Tab / 错误修复内联 diff 预览）；护栏零改动
-  const aiSettings = new AiSettingsStore(context.secrets, logger);
+  // AI P2A 批次 A（交互稿 §15.7 转正）：+ 用量统计（SSE usage 累计）/ 采样参数默认值 /
+  // 自然语言筛选（片段回填待确认）/ 执行计划解读 / 生成「再来一个」
+  const aiUsage = new AiUsageStore(context.workspaceState, logger);
+  const aiSettings = new AiSettingsStore(context.secrets, logger, aiUsage);
   // 设置中心（交互稿 §16）：分类侧栏总面板（AI 辅助 / 查询与导出 / 关于），深链分类
   const settingsHub = new SettingsHub(context.extension.packageJSON.version as string);
   const openSettings = (category?: 'ai' | 'queryExport' | 'about'): void =>
-    openSettingsPanel(context, { settings: aiSettings, hub: settingsHub, logger }, category);
+    openSettingsPanel(context, { settings: aiSettings, hub: settingsHub, logger, usage: aiUsage }, category);
   const aiAssist = new AiAssistService(connections, consoleService, aiSettings, logger, () =>
     openSettings('ai'),
   );
