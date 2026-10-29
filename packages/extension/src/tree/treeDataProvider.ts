@@ -12,18 +12,22 @@ export type TreeNodeType =
   | 'folder'
   | 'table'
   | 'view'
+  | 'materialized-view'
   | 'collection'
   | 'column'
   | 'key'
   | 'index';
 
-export type FolderKind = 'table' | 'view' | 'collection' | 'columns' | 'keys' | 'indexes';
+export type FolderKind = 'table' | 'view' | 'materialized-view' | 'collection' | 'columns' | 'keys' | 'indexes';
 
 /** 数据源的目录分组（kind → 目录标签/图标）：数据驱动渲染，非 SQL 数据源（collection）同构处理；
- * label 惰性求值（C-17/D-25）——模块加载先于 activate 注入 l10n 后端，取值须延迟到 getChildren */
+ * label 惰性求值（C-17/D-25）——模块加载先于 activate 注入 l10n 后端，取值须延迟到 getChildren。
+ * materialized-view 仅对 listObjects 返回该 kind 的驱动显示（当前 PG；空目录不生成节点，
+ * 清欠批次四：物化视图上树——可浏览/查 DDL，不可编辑数据、无 alter/drop 菜单） */
 const KIND_FOLDERS: Array<{ kind: FolderKind; label: () => string; iconId: string }> = [
   { kind: 'table', label: () => t('表'), iconId: 'folder' },
   { kind: 'view', label: () => t('视图'), iconId: 'folder' },
+  { kind: 'materialized-view', label: () => t('物化视图'), iconId: 'folder' },
   { kind: 'collection', label: () => 'Keys', iconId: 'folder' },
 ];
 
@@ -165,7 +169,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     if (node.description) {
       item.description = node.description;
     }
-    if (node.type === 'table' || node.type === 'view' || node.type === 'collection') {
+    if (node.type === 'table' || node.type === 'view' || node.type === 'materialized-view' || node.type === 'collection') {
       item.command = {
         command: 'dbExplorer.openTable',
         title: t('打开表格视图'),
@@ -388,7 +392,10 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     const conn = await this.connections.ensureConnected(connId);
     const kind = node.payload.kind ?? 'table';
 
-    if (kind === 'table' || kind === 'view') {
+    // materialized-view（清欠批次四）：与 table/view 同分支——列/键/索引目录可展开
+    // （pg listColumns/listKeys/listIndexes 对物化视图天然可用）；不可编辑数据（表格编辑
+    // 走 Host requireEditable 的驱动 editable 面），无 ddl 令牌（alter/drop 菜单不出现）
+    if (kind === 'table' || kind === 'view' || kind === 'materialized-view') {
       const objs = await this.cache.getObjects(connId, db, () => conn.listObjects(db));
       return objs
         .filter((o) => o.kind === kind)
@@ -398,7 +405,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           label: o.name,
           // 行估算不再上树（M4 评审反馈，交互稿 §8.1 v0.1.2）；注释可得时展示
           description: o.comment,
-          collapsibleState: kind === 'table' ? Collapsed : None,
+          collapsibleState: kind === 'view' ? None : Collapsed,
           // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）；
           // ER P2（D-28）：table 且 supportsErDiagram 时追加 er 令牌（「以该表为中心展开」入口显隐
           // ——view 不入图不加；引用 table 令牌的 when 正则已全量扩展，见 package.json menus P-40 清单）

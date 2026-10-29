@@ -32,6 +32,9 @@ export class SettingsHub {
       'dbExplorer.export.chunkRows': get('export.chunkRows', 1000),
       'dbExplorer.transaction.idleTimeoutMs': get('transaction.idleTimeoutMs', 300_000),
       'dbExplorer.edit.allowNoPrimaryKey': get('edit.allowNoPrimaryKey', false),
+      'dbExplorer.edit.cellMaxChars': get('edit.cellMaxChars', 262_144),
+      'dbExplorer.tree.databaseTtlSeconds': get('tree.databaseTtlSeconds', 60),
+      'dbExplorer.tree.columnTtlSeconds': get('tree.columnTtlSeconds', 300),
       'dbExplorer.ai.temperature': vscode.workspace.getConfiguration('dbExplorer.ai').get<number>('temperature', 0.7),
       'dbExplorer.ai.maxTokens': vscode.workspace.getConfiguration('dbExplorer.ai').get<number>('maxTokens', 2048),
     };

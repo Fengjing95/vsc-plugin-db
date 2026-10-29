@@ -225,6 +225,7 @@
   "表 \"{0}\" 没有可用的列元数据。": "Table \"{0}\" has no column metadata available.",
   "覆盖": "Overwrite",
   "视图": "Views",
+  "物化视图": "Materialized Views",
   "设置": "Settings",
   "设计表 · {0} @ {1}": "Design Table · {0} @ {1}",
   "该位置已无语句（文档可能刚被编辑）。": "There is no statement at this position (the document may have just been edited).",

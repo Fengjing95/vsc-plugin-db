@@ -1252,6 +1252,10 @@ export const SETTINGS_ALLOWED_KEYS = [
   'dbExplorer.export.chunkRows',
   'dbExplorer.transaction.idleTimeoutMs',
   'dbExplorer.edit.allowNoPrimaryKey',
+  /** @since v0.11.0（清欠批次一/四，ADR D-30 / §13）：单元格传输截断阈值 + 树缓存 TTL */
+  'dbExplorer.edit.cellMaxChars',
+  'dbExplorer.tree.databaseTtlSeconds',
+  'dbExplorer.tree.columnTtlSeconds',
   /** @since AI P2A（交互稿 §15.7 批次 A）：AI 采样参数（设置中心 AiSection 代理编辑） */
   'dbExplorer.ai.temperature',
   'dbExplorer.ai.maxTokens',
@@ -1269,6 +1273,9 @@ export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'number0'
   'dbExplorer.export.chunkRows': 'number',
   'dbExplorer.transaction.idleTimeoutMs': 'number',
   'dbExplorer.edit.allowNoPrimaryKey': 'boolean',
+  'dbExplorer.edit.cellMaxChars': 'number',
+  'dbExplorer.tree.databaseTtlSeconds': 'number',
+  'dbExplorer.tree.columnTtlSeconds': 'number',
   /** number0 = 允许 0 的非负数（temperature=0 是合法的确定性采样） */
   'dbExplorer.ai.temperature': 'number0',
   'dbExplorer.ai.maxTokens': 'number',

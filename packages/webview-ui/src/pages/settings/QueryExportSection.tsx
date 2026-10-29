@@ -49,6 +49,24 @@ const NUMBER_FIELDS: NumberField[] = [
     description: 'settings.qe.txIdleTimeoutDesc',
     unit: 'ms',
   },
+  {
+    key: 'dbExplorer.edit.cellMaxChars',
+    label: 'settings.qe.cellMaxChars',
+    description: 'settings.qe.cellMaxCharsDesc',
+    unit: 'settings.qe.unitChars',
+  },
+  {
+    key: 'dbExplorer.tree.databaseTtlSeconds',
+    label: 'settings.qe.treeDbTtl',
+    description: 'settings.qe.treeDbTtlDesc',
+    unit: 's',
+  },
+  {
+    key: 'dbExplorer.tree.columnTtlSeconds',
+    label: 'settings.qe.treeColTtl',
+    description: 'settings.qe.treeColTtlDesc',
+    unit: 's',
+  },
 ];
 
 export function QueryExportSection(): React.JSX.Element {
