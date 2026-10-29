@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-29
+
+单元格懒取收口（ADR D-30）+ 批次四小项随车（清欠批次一）。
+
+### 特性
+
+- **单元格懒取收口（ADR D-30）**：六驱动新增 `fetchCell` 大字段按需拉取（MySQL / PostgreSQL / SQL Server / Oracle / SQLite 单列参数化下推，MongoDB projection 单字段取值；Redis 键值源无单元格概念如实不实现）；新配置 `dbExplorer.edit.cellMaxChars`（默认 262144 字符）——超长文本 / 二进制单元格在传输层回传预览前缀 + `truncatedCells` 旁路标记（C-7 值形状保持纯净），▤ 查看器、编辑与复制自动取整值：编辑先取整值保证乐观锁基线、查看器整值未到手时禁用保存/另存、复制失败报错不静默截断——大字段翻页不再卡传输；导出链路直呼驱动天然整值零影响；契约组 lazy-cell 六驱动从「整组跳过」转实跑（C-3 红绿，sqlite 本地红→绿实证、余五驱动 CI 实例跑）
+- **物化视图上树（PostgreSQL）**：资源树新增独立「物化视图」目录（仅驱动返回 materialized-view kind 时显示）——可展开列 / 键 / 索引、浏览数据、查看 DDL；不可编辑数据、不提供修改 / 删除菜单；SQL Server / Oracle 如实不吐该 kind 维持 P2
+- **设置中心新增三项**：`dbExplorer.edit.cellMaxChars`（单元格截断阈值）；`dbExplorer.tree.databaseTtlSeconds` / `dbExplorer.tree.columnTtlSeconds`（树缓存 TTL 配置化，重载窗口生效）
+- redis 补全词表归位 `driver-redis/src/completion.ts`（C-14：派生词表进驱动文件，安全白名单单一来源仍在 core，安全判定与补全永不漂移）
+
+### 移除
+
+- 设计项 `dbExplorer.safety.confirmOnNonProd` 正式移除（护栏不打折——非生产库常含真实数据副本）：确认分级恒按概要设计 §5.8，危险语句必确认 + 生产库输入对象名
+
+### 已知限制
+
+- JSON / 对象单元格不参与传输截断（对象不可前缀切分，ADR D-30 岔口 2）；Console 结果面板截断另批评估
+- 物化视图目录当前仅 PostgreSQL 显示（mssql / oracle 见交互稿 §14.5 P2 留痕）
+
 ## [0.10.1] - 2026-10-29
 
 ### 优化

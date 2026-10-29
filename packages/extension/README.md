@@ -20,13 +20,13 @@
 > UI text follows the VSCode display language (English / Chinese). Screenshots below were taken from the Chinese UI.
 
 **📊 The table is the workbench**
-Smoothly browse huge tables with virtual scrolling; double-click any cell to edit, review the parameterized SQL preview before commit, single-transaction commit with field-level optimistic locking that pinpoints conflicting rows; tables without a primary key are read-only by default.
+Smoothly browse huge tables with virtual scrolling; double-click any cell to edit, review the parameterized SQL preview before commit, single-transaction commit with field-level optimistic locking that pinpoints conflicting rows; tables without a primary key are read-only by default. Oversized text / binary cells transfer a configurable preview prefix — the ▤ viewer, editing and copy fetch the full value automatically.
 
 **⌨️ A SQL Console that completes — and brakes**
 Context-aware completion for databases / tables / columns and dialect keywords; `UPDATE`/`DELETE` without WHERE is blocked outright, with tiered confirmation on production; EXPLAIN results are auto-indented as a tree; per-statement duration / error / canceled status annotations inline.
 
 **🧱 Schema management without writing DDL**
-Visual create/alter/drop for tables and columns with statement preview and red-bar warnings for destructive operations; database-level operations out of the box: MySQL create/alter/drop database, PostgreSQL and SQL Server create/drop schema, MongoDB create/drop database.
+Visual create/alter/drop for tables and columns with statement preview and red-bar warnings for destructive operations; database-level operations out of the box: MySQL create/alter/drop database, PostgreSQL and SQL Server create/drop schema, MongoDB create/drop database; PostgreSQL materialized views get their own tree folder (browse / view DDL).
 
 **📤 Million-row exports that never freeze the UI**
 Streaming export in six formats — CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX — runs in the background: track progress from the notification center, cancel anytime, run tasks concurrently, reveal the file when done.
@@ -73,13 +73,13 @@ Generate SQL from natural language (CodeLens / `Alt+\` inserts straight into the
 ## ✨ 亮点
 
 **📊 表格即工作台**
-虚拟滚动流畅浏览大表；单元格双击直改，提交前给出参数化 SQL 预览，单事务提交 + 字段级乐观锁，并发冲突精准定位到错误行；无主键表默认只读保护。
+虚拟滚动流畅浏览大表；单元格双击直改，提交前给出参数化 SQL 预览，单事务提交 + 字段级乐观锁，并发冲突精准定位到错误行；无主键表默认只读保护。超长文本 / 二进制单元格按阈值传输预览前缀（可配置），▤ 查看器、编辑与复制自动取整值——大字段翻页不再卡传输。
 
 **⌨️ SQL Console 会补全也会踩刹车**
 按上下文补全库 / 表 / 列与方言关键字；`UPDATE`/`DELETE` 不带 WHERE 直接拦截，生产库分级二次确认；EXPLAIN 结果自动树形缩进；每条语句的耗时 / 错误 / 取消状态行内注记。
 
 **🧱 结构管理不写 DDL**
-表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库。
+表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库；PostgreSQL 物化视图独立目录（浏览 / 查 DDL）。
 
 **📤 百万行导出不卡界面**
 CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX 六种格式流式导出转入后台执行：通知中心看进度、随时取消、多任务并发，导完一键定位文件。
