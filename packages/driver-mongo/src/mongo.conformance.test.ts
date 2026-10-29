@@ -123,7 +123,8 @@ d('mongo 契约（真实 MongoDB，MONGO_URI 门控）', () => {
     expect(s.results.filter((r) => !r.skipped)).toHaveLength(3);
   });
 
-  it('lazy-cell 组（能力门控：fetchCell 未实现即整组跳过）', async () => {
+  it('lazy-cell 组（v0.11.0 起实跑；能力声明与 fetchCell 成对，C-3 红绿）', async () => {
+    expect(createMongoDriver().capabilities.lazyCell).toBe(true);
     const s = await runLazyCellChecks(makeConn);
     assertGroup('lazy-cell', s.failed, s.results);
   });

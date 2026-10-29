@@ -52,8 +52,9 @@ function editValue(
   }
 }
 
-/** RowKey 的 _id 值（来自单元格读取：ObjectId 文档为 hex，字符串 _id 文档为原文） */
-function rowKeyFilter(rowKey: RowKey): { id: unknown; encodedId: unknown } {
+/** RowKey 的 _id 值（来自单元格读取：ObjectId 文档为 hex，字符串 _id 文档为原文）。
+ *  fetchCell（ADR D-30）与变更语句同源复用 */
+export function rowKeyFilter(rowKey: RowKey): { id: unknown; encodedId: unknown } {
   const raw = rowKey._id;
   return { id: editValue({ normalizedType: 'string', dataType: 'objectId' }, raw), encodedId: raw };
 }

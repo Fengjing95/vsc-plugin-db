@@ -74,6 +74,7 @@ const capabilities: DriverCapabilities = {
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-15）——buildCreateDatabase/buildDropDatabase
   supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  lazyCell: true, // ADR D-30：fetchCell 大字段按需拉取（契约组 lazy-cell 实跑）
   // 表设计器批次 B（交互稿 §12.2）：键/外键/索引全能力（约束式 UNIQUE/FK；PG 索引方法族）
   tableDesign: {
     uniqueKeys: true,
@@ -431,6 +432,49 @@ export class PostgresConnection implements IConnection {
       };
     } catch (err) {
       throw toDriverError(err);
+    }
+  }
+
+  /** ADR D-30：大字段按需拉取（capabilities.lazyCell）。单列 SELECT 参数化下推（$n 占位），
+   *  binary RowKey 经 toNativeParam 还原 Buffer；返回 C-7 整值；未知列 → E_VALIDATION，
+   *  RowKey 无命中 → E_NOT_FOUND */
+  async fetchCell(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown> {
+    this.assertLive();
+    try {
+      const cols = await this.listColumns(db, obj);
+      const col = cols.find((c) => c.name === column);
+      if (!col) {
+        throw new DriverError('E_VALIDATION', `列不存在: ${column}`);
+      }
+      const typeByName = new Map(cols.map((c) => [c.name, c.normalizedType]));
+      const where: string[] = [];
+      const params: unknown[] = [];
+      for (const key of Object.keys(rowKey)) {
+        if (!typeByName.has(key)) {
+          throw new DriverError('E_VALIDATION', `列不存在: ${key}`);
+        }
+        const v = rowKey[key];
+        if (v === null || v === undefined) {
+          where.push(`${quotePgIdentifier(key)} IS NULL`);
+        } else {
+          params.push(toNativeParam(key, v, typeByName));
+          where.push(`${quotePgIdentifier(key)} = $${params.length}`);
+        }
+      }
+      if (where.length === 0) {
+        throw new DriverError('E_VALIDATION', '缺少行定位条件（RowKey 为空）');
+      }
+      const rows = await this.queryRows(
+        `SELECT ${quotePgIdentifier(column)} FROM ${quotePgIdentifier(db)}.${quotePgIdentifier(obj)} WHERE ${where.join(' AND ')}`,
+        params,
+      );
+      if (rows.length === 0) {
+        // 不带 meta（rowKey 承载行数据值，C-10 不入日志/错误）
+        throw new DriverError('E_NOT_FOUND', '行不存在或已被删除');
+      }
+      return encodeCell((rows[0] as Record<string, unknown>)[column], col.normalizedType);
+    } catch (err) {
+      throw DriverError.is(err) ? err : toDriverError(err);
     }
   }
 

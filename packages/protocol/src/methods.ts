@@ -223,6 +223,10 @@ export const ResultSetSchema = z.object({
   nextCursor: z.string().optional(),
   executionMs: z.number(),
   truncated: z.boolean().optional(),
+  /** @since v0.11.0（ADR D-30）：被 cellMaxChars 截断的单元格坐标 [rowIndex, colIndex]，
+   *  行内值 = 预览前缀（C-7 同形字符串）；仅 Host 传输层在 capabilities.lazyCell=true
+   *  的连接上写入，驱动永不产生。查看器/编辑/复制经 cell.fetch 取整值 */
+  truncatedCells: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])).optional(),
 });
 export type ResultSetPayload = z.infer<typeof ResultSetSchema>;
 

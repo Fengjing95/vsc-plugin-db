@@ -68,6 +68,9 @@ export interface ResultSet {
   messages?: string[];
   executionMs: number;
   truncated?: boolean;
+  /** @since v0.11.0（ADR D-30）：Host 传输层写入的截断单元格坐标（行内值=预览前缀）；
+   *  驱动不产生本字段，实现时无视即可 */
+  truncatedCells?: Array<[number, number]>;
 }
 
 /** 表格编辑暂存变更集；权威副本在 Extension Host（ADR D-06） */
