@@ -1,0 +1,44 @@
+# perf/ 独立基准（概要设计 §12.4 / 遗留 #9）：手动触发，不进 PR 门禁防 flaky——
+# 基准阈值对 runner 负载敏感，回归闸以「入库基线 ×1.2 + 设计绝对阈值」双口径判定；
+# sqlite 基准零网络依赖恒跑，MySQL 基准走 MYSQL_HOST 门控（契约同口径，service 实跑）。
+name: perf
+
+on:
+  workflow_dispatch:
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # sqlite 恒跑 + mysql（MYSQL_HOST 门控）同轮实跑；超阈值退出码非零即红
+      - name: 基准跑批
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root
+        run: pnpm perf

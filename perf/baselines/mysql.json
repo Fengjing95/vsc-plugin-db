@@ -1,0 +1,5 @@
+{
+  "recordedAt": null,
+  "note": "首跑记录实测值后回填（PERF_RECORD=1 pnpm perf）；回填前仅设计阈值生效",
+  "metrics": {}
+}

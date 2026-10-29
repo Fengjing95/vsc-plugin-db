@@ -1,0 +1,10 @@
+{
+  "recordedAt": "2026-10-29T17:27:04.986Z",
+  "platform": "darwin-arm64",
+  "metrics": {
+    "wide_1000x20_fetchrows": 8,
+    "pagination_50k_exhaust": 106,
+    "commit_100_changes": 5,
+    "completion_cache_hit": 1
+  }
+}

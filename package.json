@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r --stream run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "perf": "vitest run --root perf",
     "lint": "eslint .",
     "format": "prettier --write .",
     "e2e": "pnpm build && pnpm --filter db-kit-e2e build && pnpm --filter db-kit-e2e e2e"
