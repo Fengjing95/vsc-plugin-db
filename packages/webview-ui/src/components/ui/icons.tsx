@@ -138,3 +138,51 @@ export function IconDownload(props: IconProps) {
     </Icon>
   );
 }
+
+/** 适应画布（Lucide maximize：四角括号）——ER 工具栏去文字化（v0.10.1） */
+export function IconMaximize(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </Icon>
+  );
+}
+
+/** 重新布局（Lucide network：上层节点连两下层节点）——分层布局隐喻 */
+export function IconNetwork(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+      <path d="M12 12V8" />
+    </Icon>
+  );
+}
+
+/** 完整档（Lucide rows-3：三行）——ER 节点形态切换 */
+export function IconRows3(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M3 15h18" />
+    </Icon>
+  );
+}
+
+/** 紧凑档（Lucide rows-4：四密行）——ER 节点形态切换 */
+export function IconRows4(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 8h18" />
+      <path d="M3 12h18" />
+      <path d="M3 16h18" />
+    </Icon>
+  );
+}
