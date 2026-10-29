@@ -12,6 +12,8 @@ interface ViewerState {
   kind: 'text' | 'json' | 'binary';
   value: unknown;
   loading: boolean;
+  /** ADR D-30：整值尚未到手（懒取失败保持 true）——编辑保存/另存禁用，防前缀覆写整值 */
+  partial: boolean;
 }
 
 /** JSON 折叠树（树视图 tab）：对象/数组可折叠（深度 <2 默认展开），原语内联呈现 */
@@ -173,7 +175,8 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
       )}
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2">
-        {!editable && <span className="text-[11px] text-muted-foreground">{t('table.viewer.readonlyNote')}</span>}
+        {viewer.partial && <span className="text-[11px] text-destructive">{t('table.viewer.partialNote')}</span>}
+        {!editable && !viewer.partial && <span className="text-[11px] text-muted-foreground">{t('table.viewer.readonlyNote')}</span>}
         {parsed && !parsed.ok && <span className="text-[11px] text-destructive">{parsed.error}</span>}
         <span className="mr-auto" />
         {(viewer.kind === 'text' || (isJson && tab === 'raw')) && (
@@ -182,7 +185,7 @@ function ViewerBody({ viewer }: { viewer: ViewerState }) {
           </Button>
         )}
         {editable && (
-          <Button variant="primary" size="md" disabled={!parsed?.ok} onClick={save}>
+          <Button variant="primary" size="md" disabled={!parsed?.ok || viewer.partial} onClick={save}>
             {t('table.viewer.saveBack')}
           </Button>
         )}
@@ -217,10 +220,11 @@ function BinaryBody({ viewer }: { viewer: ViewerState }) {
       </pre>
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2">
         <span className="text-[11px] text-muted-foreground">
-          {t('table.viewer.binaryNote')}{imageKind ? t('table.viewer.imageDetected', [imageKind.toUpperCase()]) : ''}
+          {viewer.partial ? t('table.viewer.partialNote') : t('table.viewer.binaryNote')}
+          {imageKind ? t('table.viewer.imageDetected', [imageKind.toUpperCase()]) : ''}
         </span>
         <span className="mr-auto" />
-        <Button variant="secondary" size="md" onClick={() => void saveViewerBinary()}>
+        <Button variant="secondary" size="md" disabled={viewer.partial} onClick={() => void saveViewerBinary()}>
           {t('table.viewer.saveAsFile')}
         </Button>
         <Button variant="secondary" size="md" onClick={closeCellViewer}>

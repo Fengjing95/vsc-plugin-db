@@ -143,6 +143,7 @@ export const zhTable = {
   'table.viewer.invalidJsonFormat': '内容不是合法 JSON，无法格式化',
   'table.viewer.jsonEmpty': 'JSON 不能为空（置 NULL 请用右键菜单）',
   'table.viewer.jsonSyntax': 'JSON 语法错误',
+  'table.viewer.partialNote': '整值加载失败，当前为传输截断的预览前缀——编辑保存/另存已禁用（ADR D-30）',
 
   // ── 值校验（editValues）──
   'table.validate.integer': '需要整数',
@@ -175,6 +176,8 @@ export const zhTable = {
   'table.toast.committed': '已提交 {0} 条变更',
   'table.toast.conflict': '数据已被他人修改，请刷新后重试',
   'table.toast.lazyCellFailed': '按需拉取失败，已回退行内值：{0}',
+  'table.toast.fullCellFailed': '整值取回失败，本次编辑未生效：{0}',
+  'table.toast.copyFullFailed': '整值取回失败，已取消复制：{0}',
   'table.toast.savedTo': '已保存 → {0}',
   'table.toast.insertFailed': '新增行提交失败，请检查数据后重试或删除该行',
   'table.toast.rowDeletedStale': '该行已被他人删除，本地删除标记已失效',
@@ -305,6 +308,7 @@ export const enTable: Partial<Record<TableKey, string>> = {
   'table.viewer.invalidJsonFormat': 'Content is not valid JSON and cannot be formatted',
   'table.viewer.jsonEmpty': 'JSON cannot be empty (use the context menu to set NULL)',
   'table.viewer.jsonSyntax': 'Invalid JSON syntax',
+  'table.viewer.partialNote': 'Full value unavailable — showing the transfer-truncated preview; editing/saving disabled (ADR D-30)',
   'table.validate.integer': 'Must be an integer',
   'table.validate.integerRange': 'Out of safe integer range; store it in a text column instead',
   'table.validate.number': 'Must be a number',
@@ -329,6 +333,8 @@ export const enTable: Partial<Record<TableKey, string>> = {
   'table.toast.committed': 'Committed {0} changes',
   'table.toast.conflict': 'Data was modified by someone else. Refresh and try again',
   'table.toast.lazyCellFailed': 'Lazy fetch failed; fell back to the inline value: {0}',
+  'table.toast.fullCellFailed': 'Failed to fetch the full value; edit not applied: {0}',
+  'table.toast.copyFullFailed': 'Failed to fetch the full value; copy canceled: {0}',
   'table.toast.savedTo': 'Saved → {0}',
   'table.toast.insertFailed': 'Failed to commit the new row. Check the data and retry, or delete the row',
   'table.toast.rowDeletedStale': 'The row was deleted by someone else; the local deletion mark is stale',

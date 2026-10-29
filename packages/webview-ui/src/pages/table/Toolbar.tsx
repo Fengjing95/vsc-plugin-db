@@ -119,13 +119,29 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
     // 取数列序：rows 数组按 s.columns 对齐；可见列取值经索引映射
     const idxOf = (name: string) => columns.findIndex((c) => c.name === name);
     const colNames = visible.filter((n) => idxOf(n) >= 0);
-    const selected = rows.filter((row) => {
-      const key = rowKeyString(rowKeyOfRow(row, columns, primaryKey));
-      return Boolean(selectedRowsMap[key]);
-    });
-    if (selected.length === 0) {
+    const keyOf = (row: unknown[]) => rowKeyString(rowKeyOfRow(row, columns, primaryKey));
+    const selectedKeys = new Set(rows.filter((row) => selectedRowsMap[keyOf(row)]).map(keyOf));
+    if (selectedKeys.size === 0) {
       return;
     }
+    // 截断单元格先取整值（ADR D-30；失败报错中止——不静默复制前缀）；
+    // 整值回写发生在 store（rows 更替），格式化源从 store 重读
+    const liveIdx: number[] = [];
+    useTableStore.getState().rows.forEach((row, i) => {
+      if (selectedKeys.has(keyOf(row))) {
+        liveIdx.push(i);
+      }
+    });
+    try {
+      await useTableStore.getState().resolveRowsFull(liveIdx);
+    } catch (err) {
+      useTableStore.getState().showToast({
+        kind: 'error',
+        text: t('table.toast.copyFullFailed', [err instanceof Error ? err.message : String(err)]),
+      });
+      return;
+    }
+    const selected = useTableStore.getState().rows.filter((row) => selectedKeys.has(keyOf(row)));
     let text = '';
     if (format === 'inList') {
       // IN 列表取主键首列（无主键回退首可见列）——选中行 IN 查询的高频复用场景

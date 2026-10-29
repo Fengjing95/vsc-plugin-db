@@ -77,8 +77,13 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   const selectRow = useTableStore((s) => s.selectRow);
   const clearSelection = useTableStore((s) => s.clearSelection);
   const markDeleteSelected = useTableStore((s) => s.markDeleteSelected);
+  // ADR D-30：截断单元格坐标（随取数更替）→ O(1) 判定集合（cellView 截断显示/查看器入口共用）
+  const truncatedCells = useTableStore((s) => s.truncatedCells);
+  const truncatedSet = useMemo(() => new Set(truncatedCells.map(([r, c]) => `${r}:${c}`)), [truncatedCells]);
   const dragSelectingRef = useRef(false);
   const lastEditCellRef = useRef('');
+  // 编辑器种子文本是否已被用户修改（截断整值异步回写后仅在未输入时替换种子文本）
+  const userEditedRef = useRef(false);
 
   const totalRows = rows.length + inserts.length;
 
@@ -92,18 +97,22 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
   }, []);
 
   // 进入编辑态时初始化输入文本（NULL/对象按展示语义还原）；
-  // 同一单元格重入（如失焦校验失败后再点回）保留已输入文本
+  // 同一单元格重入（如失焦校验失败后再点回）保留已输入文本；
+  // 截断单元格后台整值回写后（rows 更替）刷新种子文本——仅用户尚未输入时（ADR D-30）
   useEffect(() => {
     if (editing) {
       const cellKey = `${editing.rowIndex}:${editing.colIndex}`;
       if (lastEditCellRef.current !== cellKey) {
         lastEditCellRef.current = cellKey;
+        userEditedRef.current = false;
+        setEditText(cellInputText(useTableStore.getState().effectiveValue(editing.rowIndex, editing.colIndex)));
+      } else if (!userEditedRef.current) {
         setEditText(cellInputText(useTableStore.getState().effectiveValue(editing.rowIndex, editing.colIndex)));
       }
     } else {
       lastEditCellRef.current = '';
     }
-  }, [editing]);
+  }, [editing, rows]);
 
   const columnDefs = useMemo<ColumnDef<unknown[]>[]>(
     () =>
@@ -168,7 +177,18 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
       key: 'copy',
       label: t('table.grid.copyValue'),
       onSelect: () => {
-        void navigator.clipboard.writeText(typeof value === 'string' ? value : JSON.stringify(value));
+        // 截断单元格先取整值再复制（失败报错中止，不静默复制前缀——ADR D-30）
+        void (async () => {
+          try {
+            const full = await useTableStore.getState().resolveFullCell(rowIndex, colIndex);
+            await navigator.clipboard.writeText(typeof full === 'string' ? full : JSON.stringify(full));
+          } catch (err) {
+            useTableStore.getState().showToast({
+              kind: 'error',
+              text: t('table.toast.copyFullFailed', [err instanceof Error ? err.message : String(err)]),
+            });
+          }
+        })();
       },
     });
     return items;
@@ -343,7 +363,7 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                   const type = col.type;
                   const colName = col.name;
                   const value = displayRow[cellIdx];
-                  const view = cellView(value, type);
+                  const view = cellView(value, type, truncatedSet.has(`${rowIndex}:${cellIdx}`));
                   const isDirty = editState.kind === 'updated' && editState.overlay?.cells[colName] !== undefined;
                   const isEditing = editing?.rowIndex === rowIndex && editing?.colIndex === cellIdx;
                   return (
@@ -378,7 +398,10 @@ export function DataGrid({ pageOffset }: { pageOffset: number }) {
                           /* 铺满单元格（absolute 覆盖含父级 px-2 的内边距区），
                              字号/内边距与展示态一致——避免进入编辑时文本跳动"闪烁" */
                           className="absolute inset-0 bg-input-bg px-2 text-[13px] text-input-fg caret-ring outline-none"
-                          onChange={(e) => setEditText(e.target.value)}
+                          onChange={(e) => {
+                            userEditedRef.current = true;
+                            setEditText(e.target.value);
+                          }}
                           onBlur={() => {
                             // 失焦即记录（评审反馈：输入后不必按 Enter）；
                             // 校验失败时保持编辑态等待修正，Esc 仍是取消

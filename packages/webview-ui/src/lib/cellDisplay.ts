@@ -16,7 +16,7 @@ export interface CellView {
   title?: string;
 }
 
-export function cellView(value: unknown, type: string): CellView {
+export function cellView(value: unknown, type: string, truncated = false): CellView {
   if (value === null || value === undefined) {
     return { text: 'NULL', className: 'text-muted-foreground italic' };
   }
@@ -24,9 +24,12 @@ export function cellView(value: unknown, type: string): CellView {
     return { text: '·', className: 'text-muted-foreground' };
   }
   if (type === 'binary' && typeof value === 'string') {
-    // 值编码契约：binary 为 base64 字符串
+    // 值编码契约：binary 为 base64 字符串；截断单元格字节数为下界估计（ADR D-30）
     const bytes = Math.floor((value.length * 3) / 4);
-    return { text: `🔒 <binary, ${bytes} bytes>`, className: 'text-muted-foreground' };
+    return {
+      text: truncated ? `🔒 <binary, ${bytes}+ bytes>` : `🔒 <binary, ${bytes} bytes>`,
+      className: 'text-muted-foreground',
+    };
   }
   if (typeof value === 'object') {
     const raw = JSON.stringify(value) ?? '';
@@ -43,5 +46,9 @@ export function cellView(value: unknown, type: string): CellView {
     return { text: value ? 'true' : 'false' };
   }
   const text = String(value);
-  return { text, title: text.length > 40 ? text : undefined };
+  // 截断前缀（cellMaxChars）对 DOM 文本/tooltip 设上限（防 256K 字符进 DOM，ADR D-30）；
+  // 未截断单元格维持原行为（视觉省略另由 CSS ellipsis 处理）
+  const capped = truncated && text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) + '…' : text;
+  const title = truncated && text.length > MAX_TEXT ? capped : text;
+  return { text: capped, title: title.length > 40 ? title : undefined };
 }

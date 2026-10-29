@@ -97,6 +97,9 @@ interface TableState {
   totalCount?: number;
   executionMs: number;
   truncated: boolean;
+  /** ADR D-30：被 cellMaxChars 截断的单元格坐标（[rowIndex, colIndex]，行内值 = 预览前缀）；
+   *  随每次取数整体更替；编辑/复制前经 resolveFullCell 取整值回写 */
+  truncatedCells: Array<[number, number]>;
   /** totalCount 缺省时：当前页满页 → 可能还有下一页 */
   hasMore: boolean;
 
@@ -131,8 +134,9 @@ interface TableState {
   /** DDL 查看 Modal；null = 关闭 */
   ddl: string | null;
   ddlLoading: boolean;
-  /** 单元格查看器（交互稿 §4.6）；value = 查看器当前值（lazyCell 驱动经 RPC 覆盖行内值） */
-  viewer: { rowIndex: number; colIndex: number; kind: ViewerKind; value: unknown; loading: boolean } | null;
+  /** 单元格查看器（交互稿 §4.6）；value = 查看器当前值（lazyCell 驱动经 RPC 覆盖行内值）；
+   *  partial = 整值尚未到手（lazyCell 拉取失败时保持 true，编辑保存/另存禁用防前缀覆写） */
+  viewer: { rowIndex: number; colIndex: number; kind: ViewerKind; value: unknown; loading: boolean; partial: boolean } | null;
   toast: ToastState | null;
   /** 选中行（rowKeyString → true，仅当前页服务端行；拖拽/点击/Shift 范围） */
   selectedRows: Record<string, true>;
@@ -185,6 +189,12 @@ interface TableState {
   closeDdl(): void;
   /** 单元格查看器（交互稿 §4.6）：binary/json 类型或超长文本的整值查看与编辑 */
   openCellViewer(rowIndex: number, colIndex: number): void;
+  /** 截断单元格取整值（ADR D-30）：编辑/复制前保证乐观锁与「真实值」基线。
+   *  knownFull 传入时跳过 RPC 直接回写（查看器已持整值路径）；
+   *  非截断单元格原样返回行内值；lazyCell 取值失败抛错由调用方提示 */
+  resolveFullCell(rowIndex: number, colIndex: number, knownFull?: unknown): Promise<unknown>;
+  /** 批量取整值：选区内的截断单元格逐格 cell.fetch 回写行内值（复制为多种格式前调用） */
+  resolveRowsFull(rowIndexes: number[]): Promise<void>;
   closeCellViewer(): void;
   /** 查看器保存写回 ChangeSet（文本/JSON；JSON 合法性由 Modal 校验后传入已解析值） */
   applyCellValue(rowIndex: number, colIndex: number, value: unknown): void;
@@ -227,6 +237,7 @@ export const useTableStore = create<TableState>((set, get) => ({
   primaryKey: [],
   executionMs: 0,
   truncated: false,
+  truncatedCells: [],
   hasMore: false,
 
   page: 0,
@@ -304,6 +315,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         totalCount: rs.totalCount,
         executionMs: rs.executionMs,
         truncated: rs.truncated ?? false,
+        truncatedCells: rs.truncatedCells ?? [],
         // cursor 模式：尽头以 nextCursor 缺失判定（比满页启发式精确）
         hasMore: s.capabilities.pagination === 'cursor' ? rs.nextCursor !== undefined : rs.rows.length === s.pageSize,
         cursors:
@@ -547,6 +559,10 @@ export const useTableStore = create<TableState>((set, get) => ({
       return; // 已标记删除的行不再进入编辑
     }
     set({ editing: { rowIndex, colIndex } });
+    // 截断单元格后台预取整值（编辑器种子文本随回写刷新；提交时仍有提交时点解析兜底，ADR D-30）
+    if (isCellTruncated(s, rowIndex, colIndex)) {
+      void get().resolveFullCell(rowIndex, colIndex).catch(() => undefined);
+    }
   },
 
   confirmEdit(text) {
@@ -583,23 +599,38 @@ export const useTableStore = create<TableState>((set, get) => ({
       scheduleSync(set, get);
       return;
     }
-    // 已有行
-    const row = s.rows[editing.rowIndex];
-    const key = rowKeyString(rowKeyOfRow(row, s.columns, s.primaryKey));
-    const overlay = s.updates[key];
-    const nextOverlay = mergeSetCell(overlay, rowKeyOfRow(row, s.columns, s.primaryKey), col.name, row[editing.colIndex], value);
-    if (!overlay && !nextOverlay) {
-      return; // 首改即原值：无变化
-    }
-    const updates = { ...s.updates };
-    if (nextOverlay) {
-      updates[key] = nextOverlay;
-    } else {
-      delete updates[key];
-    }
-    set({ updates });
-    queueOp({ op: 'setCell', rowKey: rowKeyOfRow(row, s.columns, s.primaryKey), column: col.name, old: row[editing.colIndex], new: value });
-    scheduleSync(set, get);
+    // 已有行：截断单元格先取整值（乐观锁 old 必须整值，ADR D-30；取值失败中止本次编辑）
+    void (async () => {
+      try {
+        if (isCellTruncated(get(), editing.rowIndex, editing.colIndex)) {
+          await get().resolveFullCell(editing.rowIndex, editing.colIndex);
+        }
+      } catch (err) {
+        get().showToast({ kind: 'error', text: t('table.toast.fullCellFailed', [err instanceof Error ? err.message : String(err)]) });
+        return;
+      }
+      const s2 = get();
+      if (editing.rowIndex >= s2.rows.length) {
+        return; // 行已被刷新更替
+      }
+      const row = s2.rows[editing.rowIndex];
+      const rowKey = rowKeyOfRow(row, s2.columns, s2.primaryKey);
+      const key = rowKeyString(rowKey);
+      const overlay = s2.updates[key];
+      const nextOverlay = mergeSetCell(overlay, rowKey, col.name, row[editing.colIndex], value);
+      if (!overlay && !nextOverlay) {
+        return; // 首改即原值：无变化
+      }
+      const updates = { ...s2.updates };
+      if (nextOverlay) {
+        updates[key] = nextOverlay;
+      } else {
+        delete updates[key];
+      }
+      set({ updates });
+      queueOp({ op: 'setCell', rowKey, column: col.name, old: row[editing.colIndex], new: value });
+      scheduleSync(set, get);
+    })();
   },
 
   cancelEdit() {
@@ -913,11 +944,12 @@ export const useTableStore = create<TableState>((set, get) => ({
       return;
     }
     const row = s.rows[rowIndex];
-    set({ viewer: { rowIndex, colIndex, kind, value: row[colIndex], loading: s.capabilities.lazyCell === true } });
+    set({ viewer: { rowIndex, colIndex, kind, value: row[colIndex], loading: s.capabilities.lazyCell === true, partial: s.capabilities.lazyCell === true } });
     if (s.capabilities.lazyCell !== true) {
       return;
     }
-    // 按需拉取整值（驱动可能截断行内值）；失败回退行内值并提示；已关闭/切换即丢弃（P-6 口径）
+    // 按需拉取整值（驱动可能截断行内值）；失败回退行内值并提示，partial 保持 true
+    // （查看器编辑保存/另存禁用，防前缀覆写整值）；已关闭/切换即丢弃（P-6 口径）
     request<{ value: unknown }>('cell.fetch', {
       connId: s.connId,
       db: s.db,
@@ -930,7 +962,7 @@ export const useTableStore = create<TableState>((set, get) => ({
         if (!cur || cur.rowIndex !== rowIndex || cur.colIndex !== colIndex) {
           return;
         }
-        set({ viewer: { ...cur, value, loading: false } });
+        set({ viewer: { ...cur, value, loading: false, partial: false } });
       })
       .catch((err) => {
         const cur = get().viewer;
@@ -949,8 +981,53 @@ export const useTableStore = create<TableState>((set, get) => ({
     set({ viewer: null });
   },
 
+  async resolveFullCell(rowIndex, colIndex, knownFull) {
+    const s = get();
+    if (rowIndex < 0 || rowIndex >= s.rows.length) {
+      return null;
+    }
+    if (knownFull !== undefined) {
+      writeBackCell(set, get, rowIndex, colIndex, knownFull);
+      return knownFull;
+    }
+    if (!isCellTruncated(s, rowIndex, colIndex)) {
+      return s.rows[rowIndex][colIndex];
+    }
+    if (s.capabilities.lazyCell !== true) {
+      return s.rows[rowIndex][colIndex]; // 非 lazyCell 连接不产生截断（防御）
+    }
+    const col = s.columns[colIndex];
+    const row = s.rows[rowIndex];
+    const rowKey = rowKeyOfRow(row, s.columns, s.primaryKey);
+    const { value } = await request<{ value: unknown }>('cell.fetch', {
+      connId: s.connId,
+      db: s.db,
+      obj: s.obj,
+      rowKey,
+      column: col?.name ?? '',
+    });
+    // 行数据可能已被 refresh 更替：回写前校验行身份（RowKey）未变
+    writeBackCell(set, get, rowIndex, colIndex, value, rowKeyString(rowKey));
+    return value;
+  },
+
+  async resolveRowsFull(rowIndexes) {
+    const wanted = new Set(rowIndexes);
+    const targets = get().truncatedCells.filter(([r]) => wanted.has(r));
+    for (const [r, c] of targets) {
+      // 逐格取整值（截断单元格通常稀少）；失败抛给调用方——复制中止，不静默截断（ADR D-30）
+      await get().resolveFullCell(r, c);
+    }
+  },
+
   applyCellValue(rowIndex, colIndex, value) {
-    confirmParsed(set, get, rowIndex, colIndex, value);
+    const s = get();
+    // 查看器已持整值（partial=false）时作为 knownFull 直接回写，省一次重复 RPC（ADR D-30）
+    const knownFull =
+      s.viewer && s.viewer.rowIndex === rowIndex && s.viewer.colIndex === colIndex && !s.viewer.partial
+        ? s.viewer.value
+        : undefined;
+    void confirmParsed(set, get, rowIndex, colIndex, value, knownFull);
     set({ viewer: null });
   },
 
@@ -959,6 +1036,11 @@ export const useTableStore = create<TableState>((set, get) => ({
     const v = s.viewer;
     const col = v ? s.columns[v.colIndex] : null;
     if (!v || v.kind !== 'binary' || typeof v.value !== 'string') {
+      return;
+    }
+    if (v.partial) {
+      // 整值未到手（懒取失败）：前缀落盘 = 半文件，禁用（ADR D-30）
+      get().showToast({ kind: 'error', text: t('table.viewer.partialNote') });
       return;
     }
     try {
@@ -1173,17 +1255,32 @@ function flushPending(
   );
 }
 
-function confirmParsed(
+async function confirmParsed(
   set: (partial: Partial<TableState>) => void,
   get: () => TableState,
   rowIndex: number,
   colIndex: number,
   value: unknown,
-): void {
-  const s = get();
-  const col = s.columns[colIndex];
-  if (!col || rowIndex >= s.rows.length) {
+  knownFull?: unknown,
+): Promise<void> {
+  const s0 = get();
+  const col = s0.columns[colIndex];
+  if (!col || rowIndex >= s0.rows.length) {
     return;
+  }
+  // 截断单元格先取整值回写行内——乐观锁 old 必须整值，否则 WHERE 原值失配（ADR D-30）；
+  // 取值失败中止本次编辑（不落队列，不静默用前缀比对）
+  if (knownFull !== undefined || isCellTruncated(s0, rowIndex, colIndex)) {
+    try {
+      await get().resolveFullCell(rowIndex, colIndex, knownFull);
+    } catch (err) {
+      get().showToast({ kind: 'error', text: t('table.toast.fullCellFailed', [err instanceof Error ? err.message : String(err)]) });
+      return;
+    }
+  }
+  const s = get();
+  if (rowIndex >= s.rows.length) {
+    return; // 行已被刷新更替
   }
   const row = s.rows[rowIndex];
   const rowKey = rowKeyOfRow(row, s.columns, s.primaryKey);
@@ -1200,6 +1297,40 @@ function confirmParsed(
   set({ updates });
   queueOp({ op: 'setCell', rowKey, column: col.name, old, new: value });
   scheduleSync(set, get);
+}
+
+/** 截断标记判定（truncatedCells 随取数更替，量级小线性扫） */
+function isCellTruncated(s: TableState, rowIndex: number, colIndex: number): boolean {
+  return s.truncatedCells.some(([r, c]) => r === rowIndex && c === colIndex);
+}
+
+/** 整值回写行内并清除对应截断标记；expectRowKey 给出时校验行身份未变（refresh 竞态防护） */
+function writeBackCell(
+  set: (partial: Partial<TableState>) => void,
+  get: () => TableState,
+  rowIndex: number,
+  colIndex: number,
+  value: unknown,
+  expectRowKey?: string,
+): void {
+  const s = get();
+  if (rowIndex < 0 || rowIndex >= s.rows.length) {
+    return;
+  }
+  if (expectRowKey !== undefined) {
+    const current = rowKeyString(rowKeyOfRow(s.rows[rowIndex], s.columns, s.primaryKey));
+    if (current !== expectRowKey) {
+      return; // 行已被刷新更替，丢弃回写
+    }
+  }
+  const rows = s.rows.slice();
+  const next = rows[rowIndex].slice();
+  next[colIndex] = value;
+  rows[rowIndex] = next;
+  set({
+    rows,
+    truncatedCells: s.truncatedCells.filter(([r, c]) => !(r === rowIndex && c === colIndex)),
+  });
 }
 
 /** 供 TablePage 渲染插入行数组 */
