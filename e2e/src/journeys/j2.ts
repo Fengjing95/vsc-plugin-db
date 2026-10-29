@@ -23,6 +23,15 @@ export const journey2: JourneyFn = async (ctx) => {
   const consoleFrame = await findWebviewFrame(page, (b) => b.page === 'console');
   await consoleFrame.getByText('e2e-alice').first().waitFor({ state: 'visible', timeout: 30_000 });
 
+  // 3.5 图表 Tab（ADR D-29 / §7.5）：SELECT 含数值列（id）+ 非数值列 → 可绘，Tab 在场；
+  //     点击后 SVG 图表渲染（折线图元 + X 刻度标签含首行值）
+  await consoleFrame.getByRole('button', { name: labels.chartTab, exact: true }).first().click();
+  const chartSvg = consoleFrame.locator('svg[role="img"]');
+  await chartSvg.waitFor({ state: 'visible', timeout: 15_000 });
+  await chartSvg.locator('path').first().waitFor({ state: 'attached', timeout: 15_000 });
+  // 回到结果 Tab（后续断言走数据行）
+  await consoleFrame.getByRole('button', { name: labels.resultTab1, exact: true }).first().click();
+
   // 4. 无 WHERE 的 UPDATE → 危险横幅（DangerGuard §5.8：全表语句横幅确认）
   await bridge.execute('vscode.open', { $uri: fixture.updateSqlUri });
   await bridge.execute('dbExplorer.executeQuery');

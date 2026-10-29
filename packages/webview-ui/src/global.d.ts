@@ -7,6 +7,7 @@ type WebviewPage =
   | 'tableDesign'
   | 'databaseDesign'
   | 'erDiagram'
+  | 'schemaCompare'
   | 'settings';
 
 declare global {

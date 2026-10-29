@@ -53,6 +53,10 @@ export interface Fixture {
 
 const CREATE_TABLE =
   'CREATE TABLE dbkit_e2e (id INTEGER PRIMARY KEY, name TEXT NOT NULL, city TEXT, payload TEXT, created_at TEXT)';
+// J-ER（ER P2 / D-28）：子表 + FK（动作 ON DELETE CASCADE 供 ER 边 tooltip 动作原文断言）。
+// 表名避开 dbkit_e2e 子串（waitTreeRow 按 has-text 首行匹配，防误中）
+const CREATE_CHILD_TABLE =
+  'CREATE TABLE e2e_fk_child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES dbkit_e2e(id) ON DELETE CASCADE, note TEXT)';
 
 const SELECT_SQL = 'SELECT id, name, city FROM dbkit_e2e ORDER BY id;\n';
 /** 无 WHERE 的 UPDATE：sqlDanger 判定危险 → Console 横幅（J2 拦截语义） */
@@ -70,6 +74,8 @@ export async function createFixture(runDir: string): Promise<Fixture> {
   const Database = await loadSqlJs();
   const db = new Database();
   db.run(CREATE_TABLE);
+  db.run(CREATE_CHILD_TABLE);
+  db.run("INSERT INTO e2e_fk_child (id, parent_id, note) VALUES (1, 1, 'e2e-child-1'), (2, 2, 'e2e-child-2'), (3, 2, 'e2e-child-3')");
   for (const r of FIXTURE_ROWS) {
     const payload = r.payload === null ? 'NULL' : `'${JSON.stringify(r.payload).replace(/'/g, "''")}'`;
     const city = r.city === null ? 'NULL' : `'${r.city}'`;

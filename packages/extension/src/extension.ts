@@ -17,6 +17,7 @@ import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
 import { DbDdlService } from './services/dbDdlService';
 import { ErService } from './services/erService';
+import { SchemaCompareService } from './services/schemaCompareService';
 import { registerConsoleCompletion } from './services/consoleCompletion';
 import { registerSqlCodeLens } from './services/sqlCodeLens';
 import { createExecutionAnnotations } from './services/sqlExecutionDecorations';
@@ -148,6 +149,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // M8-ER ER 图（概要 §5.11 / D-22）：关系收集 + 分层布局（Host 计算）+ 打开引导；
   // 元数据自省经缓存（§7.5），不经 DriverHost（无查询语句）
   const erService = new ErService({ connections, cache, logger });
+  const schemaCompareService = new SchemaCompareService({ connections, cache });
   // M9-AI AI 辅助（概要 §5.12 / D-24）：BYOK 设置（endpoint/model 落 settings、key 进
   // SecretStorage）+ 三能力（生成直插 / 解释流式 Tab / 错误修复内联 diff 预览）；护栏零改动
   // AI P2A 批次 A（交互稿 §15.7 转正）：+ 用量统计（SSE usage 累计）/ 采样参数默认值 /
@@ -203,6 +205,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ddl: ddlService,
         dbddl: dbDdlService,
         er: erService,
+        compare: schemaCompareService,
         ai: aiAssist,
         openSettings,
       },

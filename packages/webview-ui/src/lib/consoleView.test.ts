@@ -44,12 +44,22 @@ const run: ConsoleRun = {
 };
 
 describe('deriveTabs（交互稿 §7.3：多结果集 Tab）', () => {
-  it('SELECT 语句 → 结果 N；非 SELECT 进消息 Tab；消息 Tab 恒存在', () => {
+  it('SELECT 语句 → 结果 N（可绘结果紧跟图表 Tab）；非 SELECT 进消息 Tab；消息 Tab 恒存在', () => {
     const tabs = deriveTabs(run);
-    expect(tabs.map((t) => t.label)).toEqual(['结果 1', '结果 2', '消息']);
+    // fixture 结果集含 integer 列且 ≥2 行 → 每个结果 Tab 后带图表 Tab（ADR D-29 / §7.5）
+    expect(tabs.map((t) => t.label)).toEqual(['结果 1', '图表', '结果 2', '图表', '消息']);
     expect(tabs[0].item?.seq).toBe(1);
-    expect(tabs[1].item?.seq).toBe(3);
-    expect(tabs[2].kind).toBe('message');
+    expect(tabs[1].kind).toBe('chart');
+    expect(tabs[1].item?.seq).toBe(1);
+    expect(tabs[2].item?.seq).toBe(3);
+    expect(tabs[4].kind).toBe('message');
+  });
+
+  it('不可绘结果（单行 / 无数值列）不显示图表 Tab', () => {
+    const oneRow: ConsoleRun = { ...run, items: [resultSetItem(1, 'SELECT * FROM t', 1), messageItem(2, 'UPDATE t SET a=1 WHERE id=1', 1)] };
+    expect(deriveTabs(oneRow).map((t) => t.label)).toEqual(['结果 1', '消息']);
+    const noNumeric: ConsoleRun = { ...run, items: [{ seq: 1, sql: 'SELECT name FROM t', executionMs: 5, resultSet: { columns: [{ name: 'name', type: 'string' }], rows: [['a'], ['b']], rowCount: 2, executionMs: 5, truncated: false } }] };
+    expect(deriveTabs(noNumeric).map((t) => t.label)).toEqual(['结果 1', '消息']);
   });
 
   it('全部非 SELECT → 只有消息 Tab', () => {

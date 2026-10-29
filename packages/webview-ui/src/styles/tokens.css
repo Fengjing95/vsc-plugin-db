@@ -71,6 +71,13 @@
   --color-code-number: var(--vscode-symbolIcon-numberForeground, var(--vscode-charts-blue));
   --color-code-comment: var(--vscode-descriptionForeground);
   --color-code-function: var(--vscode-symbolIcon-methodForeground, var(--vscode-charts-yellow));
+  /* 图表系列色（ADR D-29 / 交互稿 §7.5：6 系列上限，C-12 全 token） */
+  --color-chart-1: var(--vscode-charts-blue, #3794ff);
+  --color-chart-2: var(--vscode-charts-orange, #d18616);
+  --color-chart-3: var(--vscode-charts-green, #3fb950);
+  --color-chart-4: var(--vscode-charts-red, #f14c4c);
+  --color-chart-5: var(--vscode-charts-purple, #b180d7);
+  --color-chart-6: var(--vscode-charts-yellow, #cca700);
   --color-code-operator: var(--vscode-symbolIcon-operatorForeground, var(--vscode-editor-foreground));
   --color-code-punctuation: var(--vscode-descriptionForeground);
   --color-code-parameter: var(--vscode-symbolIcon-variableForeground, var(--vscode-charts-red));

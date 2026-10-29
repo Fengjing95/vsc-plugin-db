@@ -409,8 +409,10 @@ export class OracleConnection implements IConnection {
       // 两段查询（all_constraints×all_cons_columns×引用侧三表合流查询在字典统计缺失的实例上
       // 单表 2.7s+，实测拖垮 ER 关系收集——先取本表约束列，再逐约束取引用侧）：
       // ① 本表 UNIQUE（U）/外键（R）的约束列（position 序）
+      // delete_rule（@since v0.9.0 / D-28）：动作原文直显（'NO ACTION'/'CASCADE'/'SET NULL'）；
+      // Oracle 字典无 UPDATE 动作列（写侧亦无 ON UPDATE 语法，D-23）
       const res = await conn.execute(
-        `SELECT c.constraint_name, c.constraint_type, cc.column_name, cc.position
+        `SELECT c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.delete_rule
            FROM all_constraints c
            JOIN all_cons_columns cc
              ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.constraint_name = c.constraint_name
@@ -425,7 +427,14 @@ export class OracleConnection implements IConnection {
         if (!key) {
           key =
             String(r[1]) === 'R'
-              ? { name, kind: 'FK', columns: [], refTable: undefined, refColumns: [] }
+              ? {
+                  name,
+                  kind: 'FK',
+                  columns: [],
+                  refTable: undefined,
+                  refColumns: [],
+                  onDelete: r[4] === null || r[4] === undefined ? undefined : String(r[4]),
+                }
               : { name, kind: 'UNIQUE', columns: [] };
           byName.set(name, key);
         }

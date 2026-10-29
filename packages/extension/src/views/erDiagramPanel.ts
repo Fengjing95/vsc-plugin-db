@@ -22,6 +22,12 @@ export interface ErDiagramPanelDeps {
 }
 
 const panels = new Map<string, vscode.WebviewPanel>();
+/** 各面板当前 scope 的序列化（单例 scope 变化检测，D-28） */
+const scopeKeyOfPanel = new Map<string, string>();
+
+function scopeKey(scope: ErGraphScope): string {
+  return JSON.stringify(scope);
+}
 
 export function openErDiagramPanel(
   context: vscode.ExtensionContext,
@@ -31,8 +37,13 @@ export function openErDiagramPanel(
   const viewId = `erDiagram:${target.connId}/${target.db}`;
   const existing = panels.get(viewId);
   if (existing) {
-    void existing.reveal();
-    return;
+    // 库级单例但 scope 可变（D-28 邻接入口与全量/选择模式共用面板）：scope 不同则重开——
+    // ER 图无未提交状态（§13.6），重建代价 = 一次缓存命中的 load（毫秒级）
+    if (scopeKey(target.scope) === scopeKeyOfPanel.get(viewId)) {
+      void existing.reveal();
+      return;
+    }
+    existing.dispose();
   }
   const title = t('ER 图 · {0}', [target.db]);
   const panel = vscode.window.createWebviewPanel(
@@ -46,9 +57,11 @@ export function openErDiagramPanel(
     },
   );
   panels.set(viewId, panel);
+  scopeKeyOfPanel.set(viewId, scopeKey(target.scope));
   panel.onDidDispose(
     () => {
       panels.delete(viewId);
+      scopeKeyOfPanel.delete(viewId);
     },
     null,
     context.subscriptions,

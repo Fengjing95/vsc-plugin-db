@@ -889,7 +889,7 @@ export function TableDesignPage() {
                           onChange={(e) => editFk(r.rowId, { onDelete: (e.target.value || undefined) as FkAction })}
                         >
                           <option value="">{t('design.noAction')}</option>
-                          {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).map((a) => (
+                          {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT']).map((a) => (
                             <option key={a} value={a}>
                               {a}
                             </option>
@@ -906,7 +906,7 @@ export function TableDesignPage() {
                           onChange={(e) => editFk(r.rowId, { onUpdate: (e.target.value || undefined) as FkAction })}
                         >
                           <option value="">{t('design.noAction')}</option>
-                          {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION']).map((a) => (
+                          {(features?.refActions ?? ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT']).map((a) => (
                             <option key={a} value={a}>
                               {a}
                             </option>

@@ -449,6 +449,9 @@ function parseForeignKeyClause(text: string): KeyMeta | undefined {
     columns: splitTopLevel(m[2]).map(unquoteIdent),
     refTable: m[3],
     refColumns: splitTopLevel(m[4]).map(unquoteIdent),
+    // 动作透传（@since v0.9.0 / D-28）：子句未携带时保持 undefined（内存引擎无默认 NO ACTION 形态）
+    ...(m[5] ? { onDelete: m[5] } : {}),
+    ...(m[6] ? { onUpdate: m[6] } : {}),
   };
 }
 

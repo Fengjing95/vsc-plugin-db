@@ -5,6 +5,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { DatabaseDesignPage } from './pages/DatabaseDesignPage';
 import { ConsolePage } from './pages/ConsolePage';
 import { ErDiagramPage } from './pages/ErDiagramPage';
+import { SchemaComparePage } from './pages/SchemaComparePage';
 import { TableDesignPage } from './pages/TableDesignPage';
 import { TablePage } from './pages/TablePage';
 
@@ -33,6 +34,9 @@ export default function App() {
   } else if (boot.page === 'erDiagram') {
     // ER 图（M8-ER / D-22）：scope 由打开引导决定（all / selection JSON）
     page = <ErDiagramPage />;
+  } else if (boot.page === 'schemaCompare') {
+    // 表结构对比（ADR D-29 / 交互稿 §17）：dbA/dbB 由树命令 QuickPick 选定
+    page = <SchemaComparePage />;
   } else if (boot.page === 'settings') {
     // 设置中心（交互稿 §16）：分类侧栏 + 内容区（AI 辅助 / 查询与导出 / 关于）
     page = <SettingsPage />;

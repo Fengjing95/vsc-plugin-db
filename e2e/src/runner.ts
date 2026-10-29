@@ -11,12 +11,15 @@ import { launchVSCode, harvestLanguagePackCache, pickPort, waitForCdpPort, LANGU
 import { journey1 } from './journeys/j1';
 import { journey2 } from './journeys/j2';
 import { journey3 } from './journeys/j3';
+import { journey4 } from './journeys/j4';
 
 // 旅程有状态依赖（J1 建连接、J2 建绑定），必须按序全跑；--journey 过滤仅用于调试
 const journeys: Record<string, (ctx: import('./journeys/j1').JourneyCtx) => Promise<void>> = {
   j1: journey1,
   j2: journey2,
   j3: journey3,
+  // J-ER（ER P2 / D-28）：依赖 j1 建的连接——表节点右键邻接展开 ER 图 + 边动作 tooltip
+  j4: journey4,
 };
 
 function parseArgs(): { locales: string[]; keep: boolean; only: string[] } {

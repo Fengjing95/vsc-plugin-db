@@ -1,4 +1,5 @@
 import type { ConsoleAi, ConsoleRun, ConsoleRunItem } from '@db-explorer/protocol';
+import { isChartable } from './chartView';
 import { t } from './i18n';
 
 /**
@@ -11,9 +12,9 @@ import { t } from './i18n';
 
 export interface ConsoleTab {
   id: string;
-  kind: 'result' | 'message' | 'ai';
+  kind: 'result' | 'message' | 'ai' | 'chart';
   label: string;
-  /** kind=result 时对应的执行项 */
+  /** kind=result/chart 时对应的执行项 */
   item?: ConsoleRunItem;
 }
 
@@ -27,6 +28,10 @@ export function deriveTabs(run: ConsoleRun | null, ai?: ConsoleAi | null): Conso
     if (item.resultSet) {
       resultIndex++;
       tabs.push({ id: `result-${item.seq}`, kind: 'result', label: t('console.resultTab', [resultIndex]), item });
+      // 图表 Tab（ADR D-29 / §7.5）：紧跟结果 Tab，可绘判定不通过不显示
+      if (isChartable(item.resultSet.columns, item.resultSet.rowCount)) {
+        tabs.push({ id: `chart-${item.seq}`, kind: 'chart', label: t('console.chartTab'), item });
+      }
     }
   }
   tabs.push({ id: 'msg', kind: 'message', label: t('console.messagesTab') });

@@ -28,16 +28,46 @@ export function specFromColumns(obj: string, metas: ColumnMeta[], tableComment?:
  * FK 按约束名合并（@since M8-ER 上移为共享纯函数）：MySQL 的 FK 在 listKeys 里按列逐行返回
  * （同名多行），复合外键需按约束名合并且列序随 ORDINAL_POSITION 对齐——表设计器基线派生
  * （specFromTable）与 ER 关系收集（erModel）同源复用。
+ * 动作（@since v0.9.0 / D-28）：KeyMeta 携带引擎原文（string），合并时仅当值 ∈ 标准五级
+ * （ForeignKeyAction 全集）才写入 spec——写侧 DDL 生成按五级收口，引擎异形值不得回流为
+ * 可执行 DDL；ER 边（erModel）另行透传原文直显，不受此收口影响。
  */
+const FK_SPEC_ACTIONS: ReadonlySet<string> = new Set(['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT']);
+
 export function mergeForeignKeyRows(keys: KeyMeta[]): ForeignKeySpec[] {
-  const fkByName = new Map<string, { columns: string[]; refTable: string; refColumns: string[] }>();
+  const fkByName = new Map<
+    string,
+    {
+      columns: string[];
+      refTable: string;
+      refColumns: string[];
+      onDelete?: ForeignKeySpec['onDelete'];
+      onUpdate?: ForeignKeySpec['onUpdate'];
+    }
+  >();
+  const specAction = (v: string | undefined): ForeignKeySpec['onDelete'] =>
+    v !== undefined && FK_SPEC_ACTIONS.has(v) ? (v as ForeignKeySpec['onDelete']) : undefined;
   for (const k of keys) {
     if (k.kind !== 'FK' || !k.name || !k.refTable) {
       continue;
     }
-    const merged = fkByName.get(k.name) ?? { columns: [], refTable: k.refTable, refColumns: [] };
+    // 动作随首行取：MySQL 同名多行动作列同值；未显式声明时引擎默认形态（undefined /
+    // 'NO ACTION'）由 KeyMeta 如实携带，不在此归一化
+    const merged = fkByName.get(k.name) ?? {
+      columns: [],
+      refTable: k.refTable,
+      refColumns: [],
+      onDelete: specAction(k.onDelete),
+      onUpdate: specAction(k.onUpdate),
+    };
     merged.columns.push(...k.columns);
     merged.refColumns.push(...(k.refColumns ?? []));
+    if (merged.onDelete === undefined) {
+      merged.onDelete = specAction(k.onDelete);
+    }
+    if (merged.onUpdate === undefined) {
+      merged.onUpdate = specAction(k.onUpdate);
+    }
     fkByName.set(k.name, merged);
   }
   return [...fkByName.entries()].map(([name, fk]) => ({
@@ -45,6 +75,8 @@ export function mergeForeignKeyRows(keys: KeyMeta[]): ForeignKeySpec[] {
     columns: fk.columns,
     refTable: fk.refTable,
     refColumns: fk.refColumns,
+    onDelete: fk.onDelete,
+    onUpdate: fk.onUpdate,
   }));
 }
 

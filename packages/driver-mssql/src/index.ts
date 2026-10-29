@@ -86,6 +86,7 @@ const capabilities: DriverCapabilities = {
     foreignKeyAlter: true,
     indexes: true,
     indexTypes: ['CLUSTERED', 'NONCLUSTERED'],
+    refActions: ['RESTRICT', 'CASCADE', 'SET NULL', 'NO ACTION', 'SET DEFAULT'],
   },
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：「库」= schema（D-21）——buildCreateDatabase/buildDropDatabase
   supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
@@ -182,6 +183,14 @@ function buildPoolConfig(cfg: ConnectionConfig, secret: string): mssql.config {
       idleTimeoutMillis: 30_000,
     },
   };
+}
+
+/** mssql 参照动作 desc → 引擎原文（NO_ACTION → NO ACTION；NULL/未知原样 undefined） */
+function mssqlActionText(v: unknown): string | undefined {
+  if (v === null || v === undefined) {
+    return undefined;
+  }
+  return String(v).replace(/_/g, ' ');
 }
 
 export class MssqlConnection implements IConnection {
@@ -350,19 +359,29 @@ export class MssqlConnection implements IConnection {
         keys.push({ name: String(pkName.recordset[0]?.name ?? `${obj}_pkey`), kind: 'PK', columns: pkCols });
       }
 
+      // 动作列（@since v0.9.0 / D-28）：*_referential_action_desc 形如 NO_ACTION/SET_NULL——
+      // 下划线归一为空格（引擎原文直显口径）
       const fks = await pool
         .request()
         .input('p1', db)
         .input('p2', obj)
         .query(
-          "SELECT fk.name AS name, c.name AS col, fkc.constraint_column_id AS ord, ro.name AS reftable, rc.name AS refcol FROM sys.foreign_keys fk JOIN sys.objects o ON o.object_id = fk.parent_object_id JOIN sys.schemas s ON s.schema_id = o.schema_id JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id JOIN sys.objects ro ON ro.object_id = fk.referenced_object_id JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id WHERE s.name = @p1 AND o.name = @p2 ORDER BY fk.name, fkc.constraint_column_id",
+          "SELECT fk.name AS name, c.name AS col, fkc.constraint_column_id AS ord, ro.name AS reftable, rc.name AS refcol, fk.delete_referential_action_desc AS deleteRule, fk.update_referential_action_desc AS updateRule FROM sys.foreign_keys fk JOIN sys.objects o ON o.object_id = fk.parent_object_id JOIN sys.schemas s ON s.schema_id = o.schema_id JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id JOIN sys.objects ro ON ro.object_id = fk.referenced_object_id JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id WHERE s.name = @p1 AND o.name = @p2 ORDER BY fk.name, fkc.constraint_column_id",
         );
       const fkByName = new Map<string, KeyMeta>();
       for (const r of fks.recordset) {
         const name = String(r.name);
         let fk = fkByName.get(name);
         if (!fk) {
-          fk = { name, kind: 'FK', columns: [], refTable: String(r.reftable), refColumns: [] };
+          fk = {
+            name,
+            kind: 'FK',
+            columns: [],
+            refTable: String(r.reftable),
+            refColumns: [],
+            onDelete: mssqlActionText(r.deleteRule),
+            onUpdate: mssqlActionText(r.updateRule),
+          };
           fkByName.set(name, fk);
         }
         fk.columns.push(String(r.col));

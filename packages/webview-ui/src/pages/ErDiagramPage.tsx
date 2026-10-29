@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErEdgeSummaryPayload, ErGraphScopePayload } from '@db-explorer/protocol';
 import { RpcMethods } from '@db-explorer/protocol';
 import { Button } from '../components/ui/button';
-import { IconCopy, IconInfo, IconMinus, IconPlus, IconRefresh } from '../components/ui/icons';
+import {
+  IconCopy,
+  IconDownload,
+  IconInfo,
+  IconMaximize,
+  IconMinus,
+  IconNetwork,
+  IconPlus,
+  IconRefresh,
+  IconRows3,
+  IconRows4,
+} from '../components/ui/icons';
 import { Popover } from '../components/ui/popover';
 import {
   crowFootPath,
@@ -68,6 +79,8 @@ export function ErDiagramPage() {
       return { kind: 'all' };
     }
   }, [boot?.params.scope]);
+  // 邻接 scope 的中心表（D-28）：恒亮描边 + 不参与淡化（协议 focusTable 与 scope.table 同源，取 scope 免切片）
+  const focusTable = scope.kind === 'neighbors' ? scope.table : null;
 
   // P-17：组件直接订阅底层切片（不经 action 间接读）
   const status = useErStore((s) => s.status);
@@ -86,6 +99,7 @@ export function ErDiagramPage() {
   const [edgeTip, setEdgeTip] = useState<EdgeTip | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; table: string } | null>(null);
   const [exportHint, setExportHint] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
   const fittedRef = useRef(false);
 
   useEffect(() => {
@@ -244,17 +258,23 @@ export function ErDiagramPage() {
         <div className="mx-1 flex overflow-hidden rounded-sm border border-border" role="group" aria-label={t('er.nodeModeGroup')}>
           <button
             type="button"
-            className={`px-2 py-1 text-[12px] ${displayMode === 'full' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
+            aria-label={t('er.full')}
+            aria-pressed={displayMode === 'full'}
+            title={t('er.full')}
+            className={`flex items-center px-2 py-1 ${displayMode === 'full' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
             onClick={() => useErStore.getState().setDisplayMode('full')}
           >
-            {t('er.full')}
+            <IconRows3 />
           </button>
           <button
             type="button"
-            className={`px-2 py-1 text-[12px] ${displayMode === 'compact' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
+            aria-label={t('er.compact')}
+            aria-pressed={displayMode === 'compact'}
+            title={t('er.compact')}
+            className={`flex items-center px-2 py-1 ${displayMode === 'compact' ? 'bg-selected text-selected-foreground' : 'text-foreground hover:bg-accent'}`}
             onClick={() => useErStore.getState().setDisplayMode('compact')}
           >
-            {t('er.compact')}
+            <IconRows4 />
           </button>
         </div>
         <Button
@@ -284,30 +304,68 @@ export function ErDiagramPage() {
         >
           <IconPlus />
         </Button>
-        <Button variant="secondary" size="sm" title={t('er.fitTitle')} onClick={() => fitToViewport(viewport, graph)}>
-          {t('er.fit')}
-        </Button>
-        <Button variant="secondary" size="sm" title={t('er.relayoutTitle')} onClick={() => useErStore.getState().resetLayout()}>
-          {t('er.relayout')}
+        <Button
+          variant="secondary"
+          size="icon"
+          title={t('er.fitTitle')}
+          aria-label={t('er.fit')}
+          onClick={() => fitToViewport(viewport, graph)}
+        >
+          <IconMaximize />
         </Button>
         <Button
           variant="secondary"
-          size="sm"
-          title={t('er.exportSvgTitle')}
-          disabled={status !== 'ready' || !graph || graph.tables.length === 0}
-          onClick={() => void doExport('svg')}
+          size="icon"
+          title={t('er.relayoutTitle')}
+          aria-label={t('er.relayout')}
+          onClick={() => useErStore.getState().resetLayout()}
         >
-          {t('er.exportSvg')}
+          <IconNetwork />
         </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          title={t('er.exportPngTitle')}
-          disabled={status !== 'ready' || !graph || graph.tables.length === 0}
-          onClick={() => void doExport('png')}
+        {/* 导出（v0.10.1 去文字化）：单入口下拉，SVG/PNG 菜单项保留文字（要读的选项） */}
+        <Popover
+          align="start"
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+          trigger={
+            <Button
+              variant="secondary"
+              size="icon"
+              title={t('er.exportMenu')}
+              aria-label={t('er.exportMenu')}
+              disabled={status !== 'ready' || !graph || graph.tables.length === 0}
+            >
+              <IconDownload />
+            </Button>
+          }
         >
-          {t('er.exportPng')}
-        </Button>
+          <div className="py-1" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-accent"
+              title={t('er.exportSvgTitle')}
+              onClick={() => {
+                setExportOpen(false);
+                void doExport('svg');
+              }}
+            >
+              {t('er.exportSvg')}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-accent"
+              title={t('er.exportPngTitle')}
+              onClick={() => {
+                setExportOpen(false);
+                void doExport('png');
+              }}
+            >
+              {t('er.exportPng')}
+            </button>
+          </div>
+        </Popover>
         <Button
           variant="secondary"
           size="icon"
@@ -422,7 +480,10 @@ export function ErDiagramPage() {
                       fill="none"
                       stroke="transparent"
                       strokeWidth={10}
-                      className="pointer-events-stroke cursor-pointer"
+                      className="cursor-pointer"
+                      // pointer-events: stroke——透明宽描边命中区（SVG 根为 none，仅沿笔刷收事件；
+                      // 曾写成不存在的 Tailwind 类 pointer-events-stroke，悬停 tooltip/高亮从未生效）
+                      style={{ pointerEvents: 'stroke' }}
                       onPointerEnter={() => useErStore.getState().setHoverEdge(i)}
                       onPointerLeave={() => useErStore.getState().setHoverEdge(null)}
                       onPointerMove={(e) => {
@@ -446,8 +507,10 @@ export function ErDiagramPage() {
               const h = nodeHeight(rows, consts);
               const matched = tableMatchesSearch(tb, search);
               const isHover = hoverTable === tb.name;
+              // 邻接 scope（D-28）：中心表恒亮描边，不随悬停/搜索淡化（e2e 以 data-focus 断言）
+              const isFocus = focusTable === tb.name;
               const neighbor = hoverTable !== null && !isHover && isNeighbor(graph, hoverTable, tb.name);
-              const dim = !matched || (hoverTable !== null && !isHover && !neighbor);
+              const dim = !isFocus && (!matched || (hoverTable !== null && !isHover && !neighbor));
               const visibleColumns = displayMode === 'compact' ? [] : (expanded[tb.name] ?? false) ? tb.columns : tb.columns.slice(0, 12);
               const tailCount = tb.columns.length - visibleColumns.length + (tb.columnsTruncated ?? 0);
               return (
@@ -456,13 +519,14 @@ export function ErDiagramPage() {
                   tabIndex={0}
                   role="group"
                   aria-label={tb.name}
+                  data-focus={isFocus ? 'true' : undefined}
                   className="absolute select-none rounded-sm border bg-panel shadow-sm outline-none"
                   style={{
                     left: x,
                     top: y,
                     width: consts.nodeWidth,
                     height: h,
-                    borderColor: isHover ? 'var(--color-ring)' : 'var(--color-border)',
+                    borderColor: isFocus ? 'var(--color-primary)' : isHover ? 'var(--color-ring)' : 'var(--color-border)',
                     opacity: dim ? 0.25 : 1,
                     cursor: 'grab',
                   }}
@@ -544,7 +608,7 @@ export function ErDiagramPage() {
           </div>
         )}
 
-        {/* 边 tooltip（约束名 / 列映射 / 基数） */}
+        {/* 边 tooltip（约束名 / 列映射 / 基数 / 外键动作附注） */}
         {edgeTip && (
           <div
             className="pointer-events-none absolute z-20 max-w-[280px] rounded-sm border border-border bg-panel px-2 py-1.5 text-[11px] text-foreground shadow-md"
@@ -555,6 +619,17 @@ export function ErDiagramPage() {
               {edgeTip.edge.sourceTable}({edgeTip.edge.sourceColumns.join(', ')}) → {edgeTip.edge.targetTable}
               ({edgeTip.edge.targetColumns.join(', ')})
             </div>
+            {/* 外键动作（D-28）：引擎原文直显不翻译（C-17 detail 原文口径，同列类型展示） */}
+            {(edgeTip.edge.onDelete || edgeTip.edge.onUpdate) && (
+              <div className="font-mono text-[10px] text-muted-foreground">
+                {[
+                  edgeTip.edge.onDelete ? `ON DELETE ${edgeTip.edge.onDelete}` : '',
+                  edgeTip.edge.onUpdate ? `ON UPDATE ${edgeTip.edge.onUpdate}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
             <div className="text-muted-foreground">{t('er.cardinality')}</div>
           </div>
         )}

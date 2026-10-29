@@ -12,7 +12,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 /** 语言中立数据（品牌/链接/引擎列表——引擎名本身免翻） */
 export const site = {
   name: 'DB Kit',
-  version: 'v0.8.0',
+  version: 'v0.10.1',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
@@ -463,6 +463,11 @@ const en: SiteContent = {
       icon: '🔌',
       title: 'Connections that just work',
       desc: 'Per-driver dynamic connection forms; SSH tunneling (TOFU fingerprint verification) and SSL/TLS; passwords live only in the system keychain — zero telemetry, nothing written to disk.',
+    },
+    {
+      icon: '📈',
+      title: 'Charts & schema compare',
+      desc: 'One click turns any Console result into a Chart tab: line / bar with selectable X axis and numeric series, automatic downsampling for large results, exportable as SVG/PNG; cross-database schema compare within a connection aligns tables and columns side by side — no diff SQL required.',
     },
   ],
   screenshots: [

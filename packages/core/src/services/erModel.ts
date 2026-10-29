@@ -1,4 +1,5 @@
 import type { ColumnMeta, KeyMeta, ObjectMeta } from '../model/meta';
+import { DriverError } from '../driver/errors';
 import { mergeForeignKeyRows } from './tableSpec';
 
 /**
@@ -19,7 +20,12 @@ export interface ErMetadataSource {
   listKeys?(db: string, obj: string): Promise<KeyMeta[]>;
 }
 
-export type ErGraphScope = { kind: 'all' } | { kind: 'selection'; tables: string[] };
+export type ErGraphScope =
+  | { kind: 'all' }
+  | { kind: 'selection'; tables: string[] }
+  | /** @since v0.9.0（ER P2 / ADR D-28）：以表为中心的邻接展开（BFS 沿 FK 边无向可达，
+     *  depth 1..ER_MAX_NEIGHBOR_DEPTH，缺省 1）；树 table 节点「以该表为中心展开」入口 */
+  { kind: 'neighbors'; table: string; depth?: number };
 
 export interface ErColumnSummary {
   name: string;
@@ -35,13 +41,17 @@ export interface ErTableSummary {
   columnsTruncated: number;
 }
 
-/** FK 关系边：source = FK 所在子表，target = 被引用父表；复合 FK 按约束名合并为单边且列序对齐 */
+/** FK 关系边：source = FK 所在子表，target = 被引用父表；复合 FK 按约束名合并为单边且列序对齐。
+ *  onDelete/onUpdate（@since v0.9.0 / D-28）= KeyMeta 动作原文（未显式声明时 undefined 或
+ *  引擎默认 'NO ACTION'，如实透传；边 tooltip 原文直显，C-17 detail 口径） */
 export interface ErEdgeSummary {
   name?: string;
   sourceTable: string;
   sourceColumns: string[];
   targetTable: string;
   targetColumns: string[];
+  onDelete?: string;
+  onUpdate?: string;
 }
 
 export interface RelationGraphModel {
@@ -57,6 +67,8 @@ export const ER_MAX_COLUMNS = 256;
 export const ER_MAX_TABLES = 300;
 /** 元数据扫描并发上界（百表库瞬时风暴防护） */
 export const ER_SCAN_CONCURRENCY = 8;
+/** 邻接展开度数上限（@since v0.9.0 / D-28；树入口首批固定 1 度，协议开放到 3 度） */
+export const ER_MAX_NEIGHBOR_DEPTH = 3;
 
 /** 有界并发 map（结果保持输入序；任一失败整体失败） */
 async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -81,7 +93,13 @@ export async function collectRelationGraph(
   scope: ErGraphScope = { kind: 'all' },
 ): Promise<RelationGraphModel> {
   const objs: ObjectMeta[] = await src.listObjects(db);
-  let names = objs.filter((o) => o.kind === 'table').map((o) => o.name);
+  const allTableNames = objs.filter((o) => o.kind === 'table').map((o) => o.name);
+
+  if (scope.kind === 'neighbors') {
+    return collectNeighborsGraph(src, db, scope, objs, allTableNames);
+  }
+
+  let names = allTableNames;
   if (scope.kind === 'selection') {
     // 选择表模式：按 listObjects 序保留（视图内表清单同序），范围内过滤
     const included = new Set(scope.tables);
@@ -124,6 +142,109 @@ export async function collectRelationGraph(
         sourceColumns: fk.columns,
         targetTable: fk.refTable,
         targetColumns: fk.refColumns,
+        onDelete: fk.onDelete,
+        onUpdate: fk.onUpdate,
+      });
+    }
+  });
+
+  return { tables, edges, hiddenEdges };
+}
+
+/**
+ * 邻接展开（@since v0.9.0 / ADR D-28）：以 focus 表为中心沿 FK 边无向 BFS depth 度。
+ * 子表方向（谁引用我）无法只扫 focus 表得到——keys 需全表扫描（与 all 模式的 keys 扫描同量级，
+ * 均为字典查询）；columns 只取邻接集（扫描面最小化）。边仅收「集合内表指出、引用目标也在集合内」
+ * 的 FK；集合内表指向集合外 → hiddenEdges++（与 selection 口径一致：只统计已绘制表的出边）。
+ * 自引用不参与邻接扩展（环），但 focus 表自身的自引用边照常绘制。
+ */
+async function collectNeighborsGraph(
+  src: ErMetadataSource,
+  db: string,
+  scope: { kind: 'neighbors'; table: string; depth?: number },
+  objs: ObjectMeta[],
+  allTableNames: string[],
+): Promise<RelationGraphModel> {
+  const depth = Math.min(Math.max(scope.depth ?? 1, 1), ER_MAX_NEIGHBOR_DEPTH);
+  const focus = scope.table;
+  if (!allTableNames.includes(focus)) {
+    throw new DriverError('E_NOT_FOUND', `邻接展开的表不存在：${focus}`);
+  }
+
+  const keysPerAll =
+    typeof src.listKeys === 'function'
+      ? await mapLimited(allTableNames, ER_SCAN_CONCURRENCY, (name) => src.listKeys!(db, name))
+      : allTableNames.map(() => []);
+
+  // 无向邻接表（FK 子表 ↔ 父表）：邻接展开是关系近似，不区分方向（父表 focus 也应收子表）；
+  // 自引用不入表（环不扩展），悬挂引用（refTable 非本库表）不扩展
+  const adjacency = new Map<string, Set<string>>();
+  allTableNames.forEach((name, i) => {
+    for (const fk of mergeForeignKeyRows(keysPerAll[i])) {
+      if (fk.refTable === name || !allTableNames.includes(fk.refTable)) {
+        continue;
+      }
+      if (!adjacency.has(name)) {
+        adjacency.set(name, new Set());
+      }
+      adjacency.get(name)!.add(fk.refTable);
+      if (!adjacency.has(fk.refTable)) {
+        adjacency.set(fk.refTable, new Set());
+      }
+      adjacency.get(fk.refTable)!.add(name);
+    }
+  });
+
+  const inSet = new Set([focus]);
+  let frontier = [focus];
+  for (let d = 0; d < depth; d++) {
+    const next: string[] = [];
+    for (const table of frontier) {
+      for (const neighbor of adjacency.get(table) ?? []) {
+        if (!inSet.has(neighbor)) {
+          inSet.add(neighbor);
+          next.push(neighbor);
+        }
+      }
+    }
+    frontier = next;
+  }
+
+  const names = allTableNames.filter((n) => inSet.has(n));
+  const columnsPerTable = await mapLimited(names, ER_SCAN_CONCURRENCY, (name) => src.listColumns(db, name));
+  const keysPerTable = names.map((name) => keysPerAll[allTableNames.indexOf(name)]);
+
+  const tables = names.map((name, i) => {
+    const meta: ObjectMeta | undefined = objs.find((o) => o.name === name);
+    const cols = [...columnsPerTable[i]].sort((a, b) => a.ordinal - b.ordinal);
+    return {
+      name,
+      comment: meta?.comment,
+      columns: cols.slice(0, ER_MAX_COLUMNS).map((c) => ({
+        name: c.name,
+        dataType: c.dataType,
+        isPrimaryKey: c.isPrimaryKey,
+      })),
+      columnsTruncated: Math.max(0, cols.length - ER_MAX_COLUMNS),
+    };
+  });
+
+  const edges: ErEdgeSummary[] = [];
+  let hiddenEdges = 0;
+  names.forEach((name, i) => {
+    for (const fk of mergeForeignKeyRows(keysPerTable[i])) {
+      if (!inSet.has(fk.refTable)) {
+        hiddenEdges++;
+        continue;
+      }
+      edges.push({
+        name: fk.name,
+        sourceTable: name,
+        sourceColumns: fk.columns,
+        targetTable: fk.refTable,
+        targetColumns: fk.refColumns,
+        onDelete: fk.onDelete,
+        onUpdate: fk.onUpdate,
       });
     }
   });

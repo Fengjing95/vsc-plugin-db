@@ -17,7 +17,8 @@ import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
 import { openTableDesignPanel } from './views/tableDesignPanel';
 import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
-import { openErDiagramPanel } from './views/erDiagramPanel';
+import { openErDiagramPanel, type ErDiagramPanelDeps } from './views/erDiagramPanel';
+import { openSchemaComparePanel } from './views/schemaComparePanel';
 import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
@@ -49,6 +50,8 @@ export interface AppServices {
   er: import('./services/erService').ErService;
   /** M9-AI AI 辅助（概要 §5.12 / D-24）：生成（NL→SQL）/ 解释 / 错误修复三能力 + 设置守卫 */
   ai: import('./services/aiAssistService').AiAssistService;
+  /** 表结构对比（ADR D-29 / 交互稿 §17）：同连接跨库结构 diff（compare.* RPC） */
+  compare: import('./services/schemaCompareService').SchemaCompareService;
   /** 设置中心（交互稿 §16）：打开总设置面板（深链分类） */
   openSettings: (category?: 'ai' | 'queryExport' | 'about') => void;
 }
@@ -66,6 +69,30 @@ export function registerCommands(
   const { store, connections } = services;
   // 删除确认按钮（规则：构造与比较同源翻译，禁止一处 t() 一处裸字面量）
   const delLabel = t('删除');
+
+  // ── M8-ER 面板依赖（D-22/D-28：showErDiagram 与 erFocusTable 共用 openTable 回调与能力断言）──
+  const erPanelDeps = (): ErDiagramPanelDeps => ({
+    er: services.er,
+    logger: services.logger,
+    openTable: async ({ connId: cid, db: d, table }) => {
+      await openTablePanel(context, services, {
+        connId: cid,
+        db: d,
+        obj: table,
+        viewId: `${cid}/${d}/${table}`,
+        title: `${table} @ ${d}`,
+        readOnly: store.get(cid)?.readOnly ?? false,
+        env: store.get(cid)?.env ?? null,
+      });
+    },
+  });
+  const assertErCapable = (connId: string): boolean => {
+    if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
+      void vscode.window.showInformationMessage(t('当前数据库类型不支持 ER 图。'));
+      return false;
+    }
+    return true;
+  };
 
   return [
     vscode.commands.registerCommand('dbExplorer.focus', async () => {
@@ -539,8 +566,7 @@ export function registerCommands(
       if (!connId || !db) {
         return;
       }
-      if (services.connections.getDriver(connId)?.capabilities.supportsErDiagram !== true) {
-        void vscode.window.showInformationMessage(t('当前数据库类型不支持 ER 图。'));
+      if (!assertErCapable(connId)) {
         return;
       }
       try {
@@ -548,28 +574,59 @@ export function registerCommands(
         if (!scope) {
           return; // 用户取消选择（Esc / 空选集），无副作用
         }
-        openErDiagramPanel(
-          context,
-          {
-            er: services.er,
-            logger: services.logger,
-            openTable: async ({ connId: cid, db: d, table }) => {
-              await openTablePanel(context, services, {
-                connId: cid,
-                db: d,
-                obj: table,
-                viewId: `${cid}/${d}/${table}`,
-                title: `${table} @ ${d}`,
-                readOnly: store.get(cid)?.readOnly ?? false,
-                env: store.get(cid)?.env ?? null,
-              });
-            },
-          },
-          { connId, db, scope },
-        );
+        openErDiagramPanel(context, erPanelDeps(), { connId, db, scope });
       } catch (err) {
         void vscode.window.showErrorMessage(
           t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),
+        );
+      }
+    }),
+
+    // ER P2（D-28）：表节点「以该表为中心展开」——邻接 scope（1 度）直接开图，无选择引导；
+    // 无 node 参数（命令面板直呼）时回退树当前选中节点（树命令标准语义）
+    vscode.commands.registerCommand('dbExplorer.erFocusTable', async (rawNode?: DbTreeNode) => {
+      const node = rawNode ?? (await tree.selectedNode());
+      const { connId, db, obj } = node?.payload ?? {};
+      if (!connId || !db || !obj) {
+        return;
+      }
+      if (!assertErCapable(connId)) {
+        return;
+      }
+      try {
+        openErDiagramPanel(context, erPanelDeps(), { connId, db, scope: { kind: 'neighbors', table: obj } });
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          t('打开 ER 图失败：{0}', [err instanceof Error ? err.message : String(err)]),
+        );
+      }
+    }),
+
+    // 表结构对比（ADR D-29 / 交互稿 §17）：database 节点右键「表结构对比」→ QuickPick 选对侧库
+    vscode.commands.registerCommand('dbExplorer.compareSchemas', async (node?: DbTreeNode) => {
+      const { connId, db } = node?.payload ?? {};
+      if (!connId || !db) {
+        return;
+      }
+      const conn = services.connections.getDriver(connId);
+      if (conn?.capabilities.supportsSQL !== true) {
+        void vscode.window.showInformationMessage(t('当前数据源无 SQL 结构语义，不支持结构对比。'));
+        return;
+      }
+      try {
+        const connObj = await services.connections.ensureConnected(connId);
+        const dbs = (await connObj.listDatabases()).map((d) => d.name).filter((n) => n !== db);
+        const picked = await vscode.window.showQuickPick(dbs, {
+          title: t('表结构对比：选择与 {0} 对比的库', [db]),
+          placeHolder: t('选择对侧库（同连接）'),
+        });
+        if (!picked) {
+          return; // Esc 取消无副作用
+        }
+        openSchemaComparePanel(context, { compare: services.compare, logger: services.logger }, { connId, dbA: db, dbB: picked });
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          t('打开结构对比失败：{0}', [err instanceof Error ? err.message : String(err)]),
         );
       }
     }),

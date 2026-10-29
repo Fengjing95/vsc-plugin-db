@@ -92,9 +92,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     private readonly queryFiles?: QueryFilesService,
   ) {}
 
+  private view?: vscode.TreeView<DbTreeNode>;
+
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
-  attachView(_view: vscode.TreeView<DbTreeNode>): void {
-    // P-33 起收起不再依赖 reveal（按 id 代数方案），句柄暂无消费方——保留挂载点
+  attachView(view: vscode.TreeView<DbTreeNode>): void {
+    this.view = view;
+  }
+
+  /** 树当前选中节点（命令面板/桥接直呼 tree 命令时的参数兜底——VSCode 树命令标准语义，
+   *  ER P2 e2e 因宿主不渲染合成右键菜单而改走此链路，P-82 同批注记） */
+  async selectedNode(): Promise<DbTreeNode | undefined> {
+    return this.view?.selection?.[0];
   }
 
   refresh(): void {
@@ -243,6 +251,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             this.dbDropCapable(connId) ? 'dbddl' : null,
             this.dbAlterCapable(connId) ? 'dbddl-alter' : null,
             this.erCapable(connId) ? 'er' : null,
+            this.cmpCapable(connId) ? 'cmp' : null,
           ]
             .filter(Boolean)
             .join(' '),
@@ -390,8 +399,15 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           // 行估算不再上树（M4 评审反馈，交互稿 §8.1 v0.1.2）；注释可得时展示
           description: o.comment,
           collapsibleState: kind === 'table' ? Collapsed : None,
-          // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）
-          contextValue: kind === 'table' && this.ddlCapable(connId) ? `${kind} ddl` : kind,
+          // M8-B2：table 且驱动支持表结构编辑时追加 ddl 令牌（修改表结构/删表/清空入口显隐）；
+          // ER P2（D-28）：table 且 supportsErDiagram 时追加 er 令牌（「以该表为中心展开」入口显隐
+          // ——view 不入图不加；引用 table 令牌的 when 正则已全量扩展，见 package.json menus P-40 清单）
+          contextValue:
+            kind === 'table' && this.ddlCapable(connId)
+              ? `${kind} ddl${this.erCapable(connId) ? ' er' : ''}`
+              : kind === 'table' && this.erCapable(connId)
+                ? `${kind} er`
+                : kind,
           iconId: kind === 'table' ? 'table' : 'eye',
           // rowEstimate 仍随 payload 供表格分页栏“约 N 行”（交互稿 §4.7）
           payload: { connId, db, obj: o.name, rowEstimate: o.rowEstimate },
@@ -530,6 +546,11 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   /** ER 图能力（M8-ER / D-22）：capabilities.supportsErDiagram 声明裁剪；未注册驱动保守为不支持 */
   private erCapable(connId: string): boolean {
     return this.connections.getDriver(connId)?.capabilities.supportsErDiagram === true;
+  }
+
+  /** 表结构对比能力（ADR D-29 / §17）：supportsSQL 数据源才有 SQL 结构语义 */
+  private cmpCapable(connId: string): boolean {
+    return this.connections.getDriver(connId)?.capabilities.supportsSQL === true;
   }
 }
 

@@ -2106,7 +2106,10 @@ const ER_FIXTURE_TABLES = [
  * 前提，PG ORDINALITY 口径）/ 自引用 FK / 无 FK 表。边方向口径：source = FK 子表（多端）、
  * target = 被引用父表（一端）；端点不全的边不绘制、计入 hiddenEdges。
  */
-export async function runRelationGraphChecks(create: () => Promise<IConnection>): Promise<ConformanceSummary> {
+export async function runRelationGraphChecks(
+  create: () => Promise<IConnection>,
+  opts: { fkActions?: 'full' | 'deleteCascadeOnly' } = {},
+): Promise<ConformanceSummary> {
   const results: CheckResult[] = [];
   const conn = await create();
   try {
@@ -2114,6 +2117,10 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
       await skip(results, 'relation-graph', '整组跳过', '驱动未实现 listKeys（supportsErDiagram 未声明）');
       return summarize(results);
     }
+    // FK 动作方言裁剪（@since v0.9.0 / D-28）：'full' = ON DELETE+ON UPDATE 全断言
+    // （mysql/pg/mssql/sqlite/mock）；'deleteCascadeOnly' = 仅 ON DELETE CASCADE（Oracle：
+    // 写侧无 ON UPDATE 语法、ON DELETE 仅 CASCADE/SET NULL，DDL 生成层 E_VALIDATION 兜底）
+    const fkActions = opts.fkActions ?? 'full';
     const dbs = await conn.listDatabases();
     assert(dbs.length > 0, 'listDatabases 返回空数组');
     const db = dbs[0].name;
@@ -2156,8 +2163,23 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
             { name: 'order_yr', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 2 },
             { name: 'order_num', dataType: 'int', nullable: false, isPrimaryKey: false, ordinal: 3 },
           ],
+          // NO ACTION 全 SQL 引擎通用（RESTRICT 非 T-SQL 语法——mssql CI 实跑抓到，本地
+          // mock/sqlite/mysql/pg 均合法故未暴露）；Oracle 裁剪模式下不带动作（SET NULL 要求列可空）
           foreignKeys: [
-            { name: 'cf_er_fk_line', columns: ['order_yr', 'order_num'], refTable: 'cf_er_order', refColumns: ['yr', 'num'] },
+            fkActions === 'full'
+              ? {
+                  name: 'cf_er_fk_line',
+                  columns: ['order_yr', 'order_num'],
+                  refTable: 'cf_er_order',
+                  refColumns: ['yr', 'num'],
+                  onDelete: 'NO ACTION',
+                }
+              : {
+                  name: 'cf_er_fk_line',
+                  columns: ['order_yr', 'order_num'],
+                  refTable: 'cf_er_order',
+                  refColumns: ['yr', 'num'],
+                },
           ],
         },
         {
@@ -2166,7 +2188,16 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
             { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
             { name: 'parent_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
           ],
-          foreignKeys: [{ name: 'cf_er_fk_child', columns: ['parent_id'], refTable: 'cf_er_parent', refColumns: ['id'] }],
+          foreignKeys: [
+            {
+              name: 'cf_er_fk_child',
+              columns: ['parent_id'],
+              refTable: 'cf_er_parent',
+              refColumns: ['id'],
+              onDelete: 'CASCADE',
+              ...(fkActions === 'full' ? { onUpdate: 'CASCADE' as const } : {}),
+            },
+          ],
         },
         {
           name: 'cf_er_self',
@@ -2174,7 +2205,12 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
             { name: 'id', dataType: 'bigint', nullable: false, isPrimaryKey: true, ordinal: 1 },
             { name: 'manager_id', dataType: 'bigint', nullable: true, isPrimaryKey: false, ordinal: 2 },
           ],
-          foreignKeys: [{ name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'] }],
+          // 自引用带 NO ACTION（SQL Server 禁自引用 ON DELETE CASCADE——cascade path 环检测
+          // 报 1785「may cause cycles or multiple cascade paths」，mysql/pg/sqlite 允许；
+          // 动作集审计后 fixture 只用全引擎合法子集：CASCADE / NO ACTION）
+          foreignKeys: [
+            { name: 'cf_er_fk_self', columns: ['manager_id'], refTable: 'cf_er_self', refColumns: ['id'], onDelete: 'NO ACTION' },
+          ],
         },
         {
           name: 'cf_er_loose',
@@ -2236,6 +2272,78 @@ export async function runRelationGraphChecks(create: () => Promise<IConnection>)
         !graph.edges.some((e) => e.sourceTable === 'cf_er_loose'),
         '无 FK 表不应产生出边',
       );
+      // 动作透传（D-28）：边 = KeyMeta 动作原文，未声明的动作不虚构
+      assert(single!.onDelete === 'CASCADE', `child→parent 边 onDelete 应为 CASCADE：${JSON.stringify(single)}`);
+      if (fkActions === 'full') {
+        assert(composite!.onDelete === 'NO ACTION', `line→order 边 onDelete 应为 NO ACTION：${JSON.stringify(composite)}`);
+        assert(single!.onUpdate === 'CASCADE', `child→parent 边 onUpdate 应为 CASCADE：${JSON.stringify(single)}`);
+      }
+      assert(selfEdge!.onDelete === 'NO ACTION', `自引用边 onDelete 应为 NO ACTION：${JSON.stringify(selfEdge)}`);
+    });
+
+    await check(results, 'relation-graph', 'listKeys FK 动作原文带回（不经合并的原始 KeyMeta）', async () => {
+      const keys = await conn.listKeys!(db, 'cf_er_child');
+      const fks = keys.filter((k) => k.kind === 'FK');
+      assert(fks.length === 1, `cf_er_child 应 1 条 FK，实际 ${JSON.stringify(fks)}`);
+      assert(
+        fks[0].onDelete === 'CASCADE',
+        `listKeys FK onDelete 应原文带回 CASCADE：${JSON.stringify(fks[0])}`,
+      );
+      if (fkActions === 'full') {
+        assert(fks[0].onUpdate === 'CASCADE', `listKeys FK onUpdate 应原文带回 CASCADE：${JSON.stringify(fks[0])}`);
+      }
+      const pks = keys.filter((k) => k.kind === 'PK');
+      assert(
+        pks.length === 0 || (pks[0].onDelete === undefined && pks[0].onUpdate === undefined),
+        `PK/UNIQUE 不应携带动作字段：${JSON.stringify(pks[0])}`,
+      );
+    });
+
+    await check(results, 'relation-graph', '邻接 scope：1 度展开（父表方向，列集仅邻接表）', async () => {
+      const g = await collectRelationGraph(conn, db, { kind: 'neighbors', table: 'cf_er_child' });
+      const names = g.tables.map((t) => t.name).sort();
+      assert(
+        names.join(',') === 'cf_er_child,cf_er_parent',
+        `邻接 1 度应恰含 child+parent，实际 ${JSON.stringify(names)}`,
+      );
+      assert(
+        g.edges.length === 1 &&
+          g.edges[0].sourceTable === 'cf_er_child' &&
+          g.edges[0].targetTable === 'cf_er_parent',
+        `邻接图应恰含 child→parent 边：${JSON.stringify(g.edges)}`,
+      );
+      assert(g.edges[0].onDelete === 'CASCADE', `邻接边动作应透传：${JSON.stringify(g.edges[0])}`);
+      assert(g.hiddenEdges === 0, `邻接集内边不应计 hiddenEdges：${g.hiddenEdges}`);
+      const child = g.tables.find((t) => t.name === 'cf_er_child');
+      assert(child !== undefined && child.columns.length === 2, `邻接表列集缺失：${JSON.stringify(child)}`);
+    });
+
+    await check(results, 'relation-graph', '邻接 scope：子表方向 + 自引用 + 无关系表', async () => {
+      const parentFirst = await collectRelationGraph(conn, db, { kind: 'neighbors', table: 'cf_er_parent' });
+      assert(
+        parentFirst.tables.map((t) => t.name).sort().join(',') === 'cf_er_child,cf_er_parent',
+        `邻接展开应双向（父表 focus 也收到子表）：${JSON.stringify(parentFirst.tables.map((t) => t.name))}`,
+      );
+      const self = await collectRelationGraph(conn, db, { kind: 'neighbors', table: 'cf_er_self' });
+      assert(
+        self.tables.map((t) => t.name).join(',') === 'cf_er_self',
+        `自引用不扩展邻接集：${JSON.stringify(self.tables.map((t) => t.name))}`,
+      );
+      assert(self.edges.length === 1, `自引用边应保留：${JSON.stringify(self.edges)}`);
+      const loose = await collectRelationGraph(conn, db, { kind: 'neighbors', table: 'cf_er_loose' });
+      assert(
+        loose.tables.map((t) => t.name).join(',') === 'cf_er_loose' && loose.edges.length === 0 && loose.hiddenEdges === 0,
+        `无关系表邻接图应只有自身：${JSON.stringify(loose)}`,
+      );
+    });
+
+    await check(results, 'relation-graph', '邻接 scope：幽灵表 E_NOT_FOUND', async () => {
+      try {
+        await collectRelationGraph(conn, db, { kind: 'neighbors', table: 'cf_er_ghost' });
+        assert(false, '幽灵 focus 表应抛 E_NOT_FOUND');
+      } catch (err) {
+        assert(isCode(err, 'E_NOT_FOUND'), `应抛 E_NOT_FOUND，实际 ${describeError(err)}`);
+      }
     });
 
     await check(results, 'relation-graph', 'selection 裁剪：边随端点裁剪 + hiddenEdges 计数', async () => {

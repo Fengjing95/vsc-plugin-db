@@ -68,6 +68,8 @@ export class ErService {
       },
       tableCount: graph.tables.length,
       hiddenEdges: graph.hiddenEdges,
+      // 邻接 scope 回传中心表（webview 聚焦高亮，D-28）
+      ...(p.scope.kind === 'neighbors' ? { focusTable: p.scope.table } : {}),
     };
   }
 
