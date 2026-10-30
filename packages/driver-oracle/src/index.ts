@@ -82,6 +82,7 @@ const capabilities: DriverCapabilities = {
   },
   supportsDatabaseDdl: true, // M8-DBDDL / D-19：建/删 schema（= CREATE/DROP USER）；无 ALTER（用户不可重命名）
   supportsErDiagram: true, // M8-ER（D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  lazyCell: true, // ADR D-30：fetchCell 大字段按需拉取（契约组 lazy-cell 实跑）
   hierarchy: ['connection', 'database', 'folder', 'table', 'view', 'column', 'key', 'index'],
   editable: true,
   pagination: 'offset',
@@ -531,6 +532,57 @@ export class OracleConnection implements IConnection {
       primaryKey: pkCols,
       executionMs: Date.now() - started,
     };
+  }
+
+  /** ADR D-30：大字段按需拉取（capabilities.lazyCell）。单列 SELECT 参数化下推（:N 位置占位），
+   *  fetchInfo 按列取回整形同 fetchRows（NUMBER 保精度 / CLOB→STRING / BLOB→BUFFER，P-63①）；
+   *  返回 C-7 整值；未知列 → E_VALIDATION，RowKey 无命中 → E_NOT_FOUND */
+  async fetchCell(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown> {
+    this.assertLive();
+    try {
+      const cols = await this.listColumns(db, obj);
+      const col = cols.find((c) => c.name === column);
+      if (!col) {
+        throw new DriverError('E_VALIDATION', `列不存在: ${column}`);
+      }
+      const typeByName = new Map(cols.map((c) => [c.name, c.normalizedType]));
+      const where: string[] = [];
+      const params: unknown[] = [];
+      for (const key of Object.keys(rowKey)) {
+        if (!typeByName.has(key)) {
+          throw new DriverError('E_VALIDATION', `列不存在: ${key}`);
+        }
+        const v = rowKey[key];
+        if (v === null || v === undefined) {
+          where.push(`${quoteOracleIdentifier(key)} IS NULL`);
+        } else {
+          params.push(toNativeParam(key, v, typeByName));
+          where.push(`${quoteOracleIdentifier(key)} = :${params.length}`);
+        }
+      }
+      if (where.length === 0) {
+        throw new DriverError('E_VALIDATION', '缺少行定位条件（RowKey 为空）');
+      }
+      const fetchInfo = buildFetchInfo<oracledb.DbType>([col], {
+        STRING: oracledb.STRING,
+        BUFFER: oracledb.BUFFER,
+      });
+      const rs = await this.withConnection((conn) =>
+        conn.execute(
+          `SELECT ${quoteOracleIdentifier(column)} FROM ${quoteOracleIdentifier(db)}.${quoteOracleIdentifier(obj)} WHERE ${where.join(' AND ')}`,
+          params,
+          { outFormat: oracledb.OUT_FORMAT_ARRAY, fetchInfo },
+        ),
+      );
+      const rows = (rs.rows as unknown[][] | undefined) ?? [];
+      if (rows.length === 0) {
+        // 不带 meta（rowKey 承载行数据值，C-10 不入日志/错误）
+        throw new DriverError('E_NOT_FOUND', '行不存在或已被删除');
+      }
+      return encodeCell(rows[0][0], col.normalizedType);
+    } catch (err) {
+      throw DriverError.is(err) ? err : toDriverError(err);
+    }
   }
 
   async query(req: QueryRequest): Promise<ResultSet[]> {

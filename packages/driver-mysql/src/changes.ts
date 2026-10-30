@@ -102,7 +102,9 @@ function toMysqlParam(value: unknown): unknown {
   return value;
 }
 
-function appendWhereParts(where: string[], params: unknown[], rowKey: Record<string, unknown>): void {
+/** RowKey → WHERE 片段（值经 toMysqlParam；NULL 生成 IS NULL）。
+ *  fetchCell（ADR D-30）与变更语句同源复用，保证定位语义一致 */
+export function appendWhereParts(where: string[], params: unknown[], rowKey: Record<string, unknown>): void {
   for (const col of Object.keys(rowKey)) {
     appendWhereValue(where, params, col, rowKey[col]);
   }

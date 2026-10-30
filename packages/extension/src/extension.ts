@@ -89,7 +89,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     logger,
     (conn) => connections.connIdOf(conn),
   );
-  const cache = new MetadataCache();
+  // 树缓存 TTL 配置化（§13 tree.*TtlSeconds，清欠批次四）：activate 时读入，重载窗口生效；
+  // objects（表/视图列表）保持设计口径常驻，手动刷新才失效
+  const ttls = vscode.workspace.getConfiguration('dbExplorer.tree');
+  const cache = new MetadataCache({
+    databases: Math.max(1, ttls.get('databaseTtlSeconds', 60)) * 1000,
+    objects: Number.POSITIVE_INFINITY,
+    columns: Math.max(1, ttls.get('columnTtlSeconds', 300)) * 1000,
+  });
   // M4 表格编辑：ChangeSet 权威副本（ADR D-06）+ 视图状态快照 + 编辑护栏（§5.8 / D-03）
   const changesets = new ChangeSetService();
   const viewStates = new ViewStateStore();

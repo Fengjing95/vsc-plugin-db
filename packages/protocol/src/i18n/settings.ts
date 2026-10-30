@@ -62,6 +62,13 @@ export const zhSettings = {
   'settings.qe.dirPlaceholder': '（全局存储）',
   'settings.qe.noPkEdit': '无主键表编辑',
   'settings.qe.noPkEditDesc': '开启后无主键表可用「全列匹配」模式编辑（WHERE 含全部列原值；含二进制列的表仍不可编辑）',
+  'settings.qe.cellMaxChars': '单元格截断阈值',
+  'settings.qe.cellMaxCharsDesc': '超长文本/二进制单元格的传输截断阈值（字符数）；查看器 / 编辑 / 复制自动取整值',
+  'settings.qe.unitChars': '字符',
+  'settings.qe.treeDbTtl': '数据库列表缓存',
+  'settings.qe.treeDbTtlDesc': '连接树「数据库列表」缓存时长（秒）；重载窗口生效',
+  'settings.qe.treeColTtl': '列/键/索引缓存',
+  'settings.qe.treeColTtlDesc': '列/键/索引元数据缓存时长（秒）；重载窗口生效',
 
   // ── 关于（AboutSection）──
   'settings.about.openLog': '打开日志',
@@ -147,6 +154,14 @@ export const enSettings: Partial<Record<SettingsKey, string>> = {
   'settings.qe.noPkEdit': 'Editing tables without a primary key',
   'settings.qe.noPkEditDesc':
     'When enabled, tables without a primary key can be edited in "match all columns" mode (the WHERE clause contains the original values of all columns; tables with binary columns remain non-editable)',
+  'settings.qe.cellMaxChars': 'Cell truncation threshold',
+  'settings.qe.cellMaxCharsDesc':
+    'Transfer truncation threshold in characters for oversized text/binary cells; the viewer, editing and copy fetch the full value automatically',
+  'settings.qe.unitChars': 'chars',
+  'settings.qe.treeDbTtl': 'Database list cache',
+  'settings.qe.treeDbTtlDesc': 'Cache duration in seconds for the tree database list; reload the window to apply',
+  'settings.qe.treeColTtl': 'Column/key/index cache',
+  'settings.qe.treeColTtlDesc': 'Cache duration in seconds for column/key/index metadata; reload the window to apply',
 
   // ── About (AboutSection) ──
   'settings.about.openLog': 'Open Logs',

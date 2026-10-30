@@ -22,13 +22,14 @@ import {
   type PreviewItem,
   type QueryRequest,
   type ResultSet,
+  type RowKey,
   type TestResult,
 } from '@db-explorer/core';
 import { bsonDataTypeOf, columnsFromDocs, encodeValue, normalizedOf } from './document';
 import { buildFilterDoc, buildSearchDoc, buildSortDoc, type ColumnTypes, type Filter } from './filter';
 import { decodeCursorOrThrow, encodeCursor, resumeFilter } from './cursor';
 import { parseMongoArgs } from './commands';
-import { buildChangeOps } from './changes';
+import { buildChangeOps, rowKeyFilter } from './changes';
 import { mongoCompletionSource } from './completion';
 import { toMongoError } from './errors';
 
@@ -55,6 +56,7 @@ const capabilities: DriverCapabilities = {
   hierarchy: ['connection', 'database', 'folder', 'collection', 'column'],
   editable: true, // D-18：字段级 $set 乐观锁（表格编辑；危险/只读护栏在 Host 侧）
   supportsDatabaseDdl: true, // M8-DBDDL / D-19 及修订：建库（首个 collection 隐式创建）+ dropDatabase；无编辑
+  lazyCell: true, // ADR D-30：fetchCell 大字段按需拉取（契约组 lazy-cell 实跑）
   pagination: 'cursor',
 };
 
@@ -460,6 +462,33 @@ export class MongoConnection implements IConnection {
           : undefined,
       executionMs: Date.now() - started,
     };
+  }
+
+  /** ADR D-30：大字段按需拉取（capabilities.lazyCell）。findOne projection 单字段，
+   *  _id 还原 ObjectId（rowKeyFilter 与变更语句同源）；列存在性按采样列集校验（动态列口径
+   *  D-17——列集随采样波动是文档模型既定语义）；返回 C-7 整值（文档缺失字段 = null）；
+   *  未知列 → E_VALIDATION，RowKey 无命中 → E_NOT_FOUND */
+  async fetchCell(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown> {
+    this.assertOpen();
+    await this.getClient(); // 懒连接（db() 句柄依赖）
+    const coll = this.db(db).collection(obj);
+    const cols = await this.listColumns(db, obj);
+    if (!cols.some((c) => c.name === column)) {
+      throw new DriverError('E_VALIDATION', `列不存在: ${column}`);
+    }
+    if (rowKey._id === null || rowKey._id === undefined) {
+      throw new DriverError('E_VALIDATION', '缺少行定位条件（_id）');
+    }
+    const filter: Filter = { _id: rowKeyFilter(rowKey).id };
+    const doc = await this.guard(
+      coll.findOne(filter, { projection: { [column]: 1 } }),
+      15_000,
+    );
+    if (!doc) {
+      // 不带 meta（rowKey 承载行数据值，C-10 不入日志/错误）
+      throw new DriverError('E_NOT_FOUND', '行不存在或已被删除');
+    }
+    return encodeValue((doc as RawDoc)[column]);
   }
 
   // ── mongosh 命令控制台（§5.5：query() 只收单条命令文本，首批只读）─────────────

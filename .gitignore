@@ -21,3 +21,6 @@ website/public/playground/
 e2e/artifacts/
 # e2e bridge 扩展产物（e2e/build.mjs 从 src/bridge 打包；package.json 是源，不入库防漂）
 e2e/test-extension/extension.js
+
+# ZCode 会话本地配置（不进仓库）
+.zcode/

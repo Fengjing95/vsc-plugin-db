@@ -68,6 +68,7 @@ const capabilities: DriverCapabilities = {
   supportsDdl: true,
   supportsDdlEditor: true, // buildCreateTable/buildAlterTable（DDL 走 query() 执行）
   supportsErDiagram: true, // M8-ER（概要 §5.11 / D-22）：listKeys FK 元数据完整——ER 关系收集消费者
+  lazyCell: true, // ADR D-30：fetchCell 大字段按需拉取（契约组 lazy-cell 实跑）
   // 表设计器批次 B（交互稿 §12.2 能力矩阵）：唯一键 alter 走表重建序列；外键 alter 无原地语法
   // → foreignKeyAlter: false（UI alter 态外键 Tab 只读 + 提示，驱动 fail-closed E_UNSUPPORTED）
   tableDesign: {
@@ -431,6 +432,49 @@ export class SqliteConnection implements IConnection {
         primaryKey: pkCols,
         executionMs: Date.now() - started,
       };
+    } catch (err) {
+      throw DriverError.is(err) ? err : toDriverError(err);
+    }
+  }
+
+  /** ADR D-30：大字段按需拉取（capabilities.lazyCell）。返回 C-7 整值（与 fetchRows
+   *  单元格同形）；未知列 → E_VALIDATION，RowKey 无法定位/无命中 → E_VALIDATION/E_NOT_FOUND */
+  async fetchCell(db: string, obj: string, rowKey: RowKey, column: string): Promise<unknown> {
+    this.assertLive();
+    void db; // 单文件单库（D-16）：db 恒 'main'，SQL 内为裸名
+    try {
+      const cols = await this.listColumns(db, obj);
+      const col = cols.find((c) => c.name === column);
+      if (!col) {
+        throw new DriverError('E_VALIDATION', `列不存在: ${column}`);
+      }
+      const typeByName = new Map(cols.map((c) => [c.name, c.normalizedType]));
+      const where: string[] = [];
+      const params: unknown[] = [];
+      for (const key of Object.keys(rowKey)) {
+        if (!typeByName.has(key)) {
+          throw new DriverError('E_VALIDATION', `列不存在: ${key}`);
+        }
+        const v = rowKey[key];
+        if (v === null || v === undefined) {
+          where.push(`${quoteIdentifier(key)} IS NULL`);
+        } else {
+          where.push(`${quoteIdentifier(key)} = ?`);
+          params.push(toNativeParam(key, v, typeByName));
+        }
+      }
+      if (where.length === 0) {
+        throw new DriverError('E_VALIDATION', '缺少行定位条件（RowKey 为空）');
+      }
+      const res = await this.run(
+        `SELECT ${quoteIdentifier(column)} FROM ${quoteIdentifier(obj)} WHERE ${where.join(' AND ')}`,
+        params,
+      );
+      if (res.rows.length === 0) {
+        // 不带 meta（rowKey 承载行数据值，C-10 不入日志/错误）
+        throw new DriverError('E_NOT_FOUND', '行不存在或已被删除');
+      }
+      return encodeCell(res.rows[0][0], col.normalizedType);
     } catch (err) {
       throw DriverError.is(err) ? err : toDriverError(err);
     }

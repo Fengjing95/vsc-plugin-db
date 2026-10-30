@@ -64,9 +64,10 @@ export function tokenizeRedisCommand(line: string): string[] | undefined {
 
 /**
  * 只读命令白名单：undefined = 命令整体只读；Set = 仅列出的子命令只读
- * （如 CONFIG GET 是读、CONFIG SET 是写）。
+ * （如 CONFIG GET 是读、CONFIG SET 是写）。导出供 driver-redis completion.ts 派生补全词表
+ * （C-14：词表归位驱动，安全白名单单一来源仍在 core——editGuard/consoleService 同源消费）。
  */
-const READ_COMMANDS: Readonly<Record<string, ReadonlySet<string> | undefined>> = {
+export const READ_COMMANDS: Readonly<Record<string, ReadonlySet<string> | undefined>> = {
   GET: undefined, MGET: undefined, GETRANGE: undefined, STRLEN: undefined,
   EXISTS: undefined, TYPE: undefined, TTL: undefined, PTTL: undefined,
   EXPIRETIME: undefined, DUMP: undefined, RANDOMKEY: undefined, KEYS: undefined,
@@ -97,8 +98,9 @@ const READ_COMMANDS: Readonly<Record<string, ReadonlySet<string> | undefined>> =
 };
 
 /** 大范围/服务器级破坏命令 → 横幅原因（普通写命令如 SET/DEL 不在此列，仅只读拒绝）。
- *  子命令感知的命令（CONFIG/CLIENT）先经 READ 命中只读子命令，其余子命令保守视为危险。 */
-const DANGEROUS_COMMANDS: Readonly<Record<string, string>> = {
+ *  子命令感知的命令（CONFIG/CLIENT）先经 READ 命中只读子命令，其余子命令保守视为危险。
+ *  导出供 driver-redis completion.ts 派生补全词表（C-14）。 */
+export const DANGEROUS_COMMANDS: Readonly<Record<string, string>> = {
   FLUSHALL: '将清空所有数据库的全部数据',
   FLUSHDB: '将清空当前数据库的全部数据',
   SHUTDOWN: '将关闭 Redis 服务器',
@@ -119,8 +121,8 @@ const DANGEROUS_COMMANDS: Readonly<Record<string, string>> = {
   CLIENT: '将管理客户端连接',
 };
 
-/** 已知普通写命令（只读连接拒绝；不触发横幅） */
-const WRITE_COMMANDS: ReadonlySet<string> = new Set([
+/** 已知普通写命令（只读连接拒绝；不触发横幅）。导出供 driver-redis completion.ts 派生词表（C-14） */
+export const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'SET', 'SETNX', 'SETEX', 'PSETEX', 'MSET', 'MSETNX', 'GETSET', 'GETDEL', 'APPEND', 'SETRANGE',
   'INCR', 'INCRBY', 'INCRBYFLOAT', 'DECR', 'DECRBY',
   'DEL', 'UNLINK', 'EXPIRE', 'PEXPIRE', 'EXPIREAT', 'PEXPIREAT', 'PERSIST',
@@ -138,21 +140,6 @@ const WRITE_COMMANDS: ReadonlySet<string> = new Set([
   'SAVE', 'BGSAVE', 'BGREWRITEAOF',
   'MULTI', 'EXEC', 'WATCH', 'UNWATCH', 'DISCARD',
 ]);
-
-/** 补全用命令名（core 提供，驱动 getCompletionSource 直接引用） */
-export const REDIS_COMMAND_KEYWORDS: readonly string[] = [
-  ...Object.keys(READ_COMMANDS),
-  ...Object.keys(DANGEROUS_COMMANDS),
-  ...WRITE_COMMANDS,
-].sort();
-
-/** 子命令补全（CompletionSource.functions 位） */
-export const REDIS_SUBCOMMAND_KEYWORDS: readonly string[] = [
-  'CONFIG GET', 'CONFIG SET', 'CLIENT LIST', 'CLIENT KILL', 'CLIENT INFO',
-  'OBJECT ENCODING', 'OBJECT FREQ', 'OBJECT IDLETIME', 'OBJECT REFCOUNT',
-  'MEMORY USAGE', 'MEMORY DOCTOR', 'LATENCY HISTORY', 'LATENCY LATEST',
-  'XINFO STREAM', 'XINFO GROUPS', 'ACL WHOAMI', 'ACL LIST', 'ACL CAT',
-];
 
 export interface RedisCommandAssessment {
   /** 大范围破坏/服务器级命令（触发横幅或 prod Modal） */

@@ -1,8 +1,6 @@
 import { createClient, RESP_TYPES, type RedisClientOptions } from 'redis';
 import {
   DriverError,
-  REDIS_COMMAND_KEYWORDS,
-  REDIS_SUBCOMMAND_KEYWORDS,
   splitCommandLines,
   tokenizeRedisCommand,
   type ApplyResult,
@@ -23,6 +21,8 @@ import {
   type ResultSet,
   type TestResult,
 } from '@db-explorer/core';
+// 命令域补全词表（C-14：词表归位驱动 src/completion.ts，派生自 core 安全白名单）
+import { REDIS_COMMAND_KEYWORDS, REDIS_SUBCOMMAND_KEYWORDS } from './completion';
 import { toRedisError } from './errors';
 import {
   contentPrimaryKey,

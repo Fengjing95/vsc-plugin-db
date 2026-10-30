@@ -65,36 +65,44 @@ describe('树菜单 when × contextValue 匹配矩阵（P-40 守卫）', () => {
 
   const matrix: Array<{ command: string; match: string[]; noMatch: string[] }> = [
     {
-      // table/view/collection 通用打开入口（inline + 组内各一条，同 when）
+      // table/view/materialized-view/collection 通用打开入口（inline + 组内各一条，同 when）
+      // 清欠批次四：物化视图上树（contextValue 为裸 kind，无 ddl/er 后缀）
       command: 'dbExplorer.openTable',
-      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl', 'collection'],
+      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl', 'materialized-view', 'collection'],
       noMatch: ['database er', 'database ddl er', 'column ddl', 'folder-columns ddl', 'query', 'index'],
     },
     {
       command: 'dbExplorer.viewDdl',
-      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl'],
+      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl', 'materialized-view'],
       noMatch: ['collection', 'database ddl er'],
     },
     {
       command: 'dbExplorer.generateCode',
-      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl'],
+      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl', 'materialized-view'],
       noMatch: ['collection'],
     },
     {
       command: 'dbExplorer.generateSelect',
-      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl'],
+      match: ['table', 'table ddl', 'table er', 'table ddl er', 'view', 'view ddl', 'materialized-view'],
       noMatch: ['collection'],
     },
     {
-      // 结构编辑只对具备 ddl 能力的 table（er 令牌追加不得破坏）
+      // 复制名称：表/视图/物化视图（regex 面）+ collection/column/index/key（== 面）
+      command: 'dbExplorer.copyName',
+      match: ['table', 'table ddl', 'table ddl er', 'view', 'materialized-view', 'collection', 'column', 'index', 'key'],
+      noMatch: ['database', 'database er', 'query'],
+    },
+    {
+      // 结构编辑只对具备 ddl 能力的 table（er 令牌追加不得破坏；物化视图无 alter/drop——
+      // 引擎侧 DROP MATERIALIZED VIEW 语义不同，树菜单不提供）
       command: 'dbExplorer.alterTable',
       match: ['table ddl', 'table ddl er'],
-      noMatch: ['table', 'table er', 'view', 'view ddl'],
+      noMatch: ['table', 'table er', 'view', 'view ddl', 'materialized-view'],
     },
     {
       command: 'dbExplorer.dropTable',
       match: ['table ddl', 'table ddl er'],
-      noMatch: ['table', 'table er'],
+      noMatch: ['table', 'table er', 'materialized-view'],
     },
     {
       // D-28：邻接入口只在带 er 令牌的 table 节点（table/view 无 er 令牌不得出现）

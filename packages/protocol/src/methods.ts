@@ -223,6 +223,10 @@ export const ResultSetSchema = z.object({
   nextCursor: z.string().optional(),
   executionMs: z.number(),
   truncated: z.boolean().optional(),
+  /** @since v0.11.0（ADR D-30）：被 cellMaxChars 截断的单元格坐标 [rowIndex, colIndex]，
+   *  行内值 = 预览前缀（C-7 同形字符串）；仅 Host 传输层在 capabilities.lazyCell=true
+   *  的连接上写入，驱动永不产生。查看器/编辑/复制经 cell.fetch 取整值 */
+  truncatedCells: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])).optional(),
 });
 export type ResultSetPayload = z.infer<typeof ResultSetSchema>;
 
@@ -1248,6 +1252,10 @@ export const SETTINGS_ALLOWED_KEYS = [
   'dbExplorer.export.chunkRows',
   'dbExplorer.transaction.idleTimeoutMs',
   'dbExplorer.edit.allowNoPrimaryKey',
+  /** @since v0.11.0（清欠批次一/四，ADR D-30 / §13）：单元格传输截断阈值 + 树缓存 TTL */
+  'dbExplorer.edit.cellMaxChars',
+  'dbExplorer.tree.databaseTtlSeconds',
+  'dbExplorer.tree.columnTtlSeconds',
   /** @since AI P2A（交互稿 §15.7 批次 A）：AI 采样参数（设置中心 AiSection 代理编辑） */
   'dbExplorer.ai.temperature',
   'dbExplorer.ai.maxTokens',
@@ -1265,6 +1273,9 @@ export const SETTINGS_KEY_TYPES: Record<SettingsAllowedKey, 'number' | 'number0'
   'dbExplorer.export.chunkRows': 'number',
   'dbExplorer.transaction.idleTimeoutMs': 'number',
   'dbExplorer.edit.allowNoPrimaryKey': 'boolean',
+  'dbExplorer.edit.cellMaxChars': 'number',
+  'dbExplorer.tree.databaseTtlSeconds': 'number',
+  'dbExplorer.tree.columnTtlSeconds': 'number',
   /** number0 = 允许 0 的非负数（temperature=0 是合法的确定性采样） */
   'dbExplorer.ai.temperature': 'number0',
   'dbExplorer.ai.maxTokens': 'number',

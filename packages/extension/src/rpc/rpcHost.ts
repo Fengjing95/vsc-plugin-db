@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DriverError, type DriverHost, type EditOp } from '@db-explorer/core';
+import { DriverError, truncateResultSetCells, type DriverHost, type EditOp } from '@db-explorer/core';
 import {
   ApplyChangesParamsSchema,
   CellFetchParamsSchema,
@@ -177,7 +177,16 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
                 whereSql: p.whereSql,
                 orderBySql: p.orderBySql,
               });
-              respond(true, { result: rs });
+              // ADR D-30：单元格传输截断仅在 lazyCell 连接上生效（无 fetchCell 能力的
+              // 驱动不截断——杜绝「截了取不回」）；导出链路直呼 DriverHost 绕过本层，天然取整值
+              let reply = rs;
+              if (deps.connections?.getDriver(p.connId)?.capabilities.lazyCell === true) {
+                const maxChars = vscode.workspace
+                  .getConfiguration('dbExplorer.edit')
+                  .get<number>('cellMaxChars', 262144);
+                reply = truncateResultSetCells(rs, maxChars).rs;
+              }
+              respond(true, { result: reply });
             } catch (err) {
               // 用户手写 SQL 片段错误：除 webview toast 外，经全局通知呈现
               // （VSCode 通知可点击展开完整详情，满足“看报错详细信息”）

@@ -181,11 +181,13 @@ d('oracle conformance（ORACLE_* 门控实跑）', () => {
     expect(summary.results.filter((r) => !r.skipped)).toHaveLength(3);
   }, 120_000);
 
-  it('lazy-cell 组（能力门控：fetchCell 未实现即整组跳过）', async () => {
+  it('lazy-cell 组（v0.11.0 起实跑；能力声明与 fetchCell 成对，C-3 红绿）', async () => {
+    expect(createOracleDriver().capabilities.lazyCell).toBe(true);
     const summary = await runLazyCellChecks(makeConn);
     logFailures(summary);
     expect(summary.failed).toBe(0);
-  });
+    expect(summary.results.filter((r) => !r.skipped)).toHaveLength(3);
+  }, 120_000);
 
   it('metadata 组（D-23：listDatabases=schema，当前用户首位）', async () => {
     const summary = await runMetadataChecks(makeConn);

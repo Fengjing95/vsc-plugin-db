@@ -12,7 +12,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 /** 语言中立数据（品牌/链接/引擎列表——引擎名本身免翻） */
 export const site = {
   name: 'DB Kit',
-  version: 'v0.10.1',
+  version: 'v0.11.0',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
@@ -242,7 +242,7 @@ const zh: SiteContent = {
     {
       icon: '📊',
       title: '表格即工作台',
-      desc: '虚拟滚动流畅浏览大表；单元格双击直改，提交前给出参数化 SQL 预览，单事务提交 + 字段级乐观锁，并发冲突精准定位到错误行；无主键表默认只读保护。',
+      desc: '虚拟滚动流畅浏览大表；单元格双击直改，提交前给出参数化 SQL 预览，单事务提交 + 字段级乐观锁，并发冲突精准定位到错误行；无主键表默认只读保护。超长文本 / 二进制单元格按阈值传输预览前缀（可配置），▤ 查看器、编辑与复制自动取整值——大字段翻页不再卡传输。',
     },
     {
       icon: '⌨️',
@@ -252,7 +252,7 @@ const zh: SiteContent = {
     {
       icon: '🧱',
       title: '结构管理不写 DDL',
-      desc: '表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库。',
+      desc: '表与列的可视化增删改，语句预览 + 破坏性操作红条告警；库级操作开箱可用：MySQL 建 / 改 / 删库，PostgreSQL 与 SQL Server 建 / 删 schema，MongoDB 建 / 删库；PostgreSQL 物化视图独立目录（浏览 / 查 DDL）。',
     },
     {
       icon: '🤖',
@@ -437,7 +437,7 @@ const en: SiteContent = {
     {
       icon: '📊',
       title: 'The table is the workbench',
-      desc: 'Smoothly browse huge tables with virtual scrolling; double-click any cell to edit, review the parameterized SQL preview before commit, single-transaction commit with field-level optimistic locking that pinpoints conflicting rows; tables without a primary key are read-only by default.',
+      desc: 'Smoothly browse huge tables with virtual scrolling; double-click any cell to edit, review the parameterized SQL preview before commit, single-transaction commit with field-level optimistic locking that pinpoints conflicting rows; tables without a primary key are read-only by default. Oversized text / binary cells transfer a configurable preview prefix — the ▤ viewer, editing and copy fetch the full value automatically.',
     },
     {
       icon: '⌨️',
@@ -447,7 +447,7 @@ const en: SiteContent = {
     {
       icon: '🧱',
       title: 'Schema management without writing DDL',
-      desc: 'Visual create/alter/drop for tables and columns with statement preview and red-bar warnings for destructive operations; database-level operations out of the box: MySQL create/alter/drop database, PostgreSQL and SQL Server create/drop schema, MongoDB create/drop database.',
+      desc: 'Visual create/alter/drop for tables and columns with statement preview and red-bar warnings for destructive operations; database-level operations out of the box: MySQL create/alter/drop database, PostgreSQL and SQL Server create/drop schema, MongoDB create/drop database; PostgreSQL materialized views get their own tree folder (browse / view DDL).',
     },
     {
       icon: '🤖',

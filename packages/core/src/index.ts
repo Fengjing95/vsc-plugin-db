@@ -6,6 +6,7 @@ export * from './driver/emitter';
 export * from './driver/registry';
 export * from './driver/host';
 export * from './services/metadataCache';
+export * from './services/cellTruncation';
 export * from './services/changeSetService';
 export * from './services/sqlScript';
 export * from './services/sqlDanger';
