@@ -1,34 +1,35 @@
-name: 功能需求
-description: 建议 DB Kit 新增或改进某个能力
+name: 功能需求 / Feature request
+description: 建议 DB Kit 新增或改进某个能力 / Suggest a new capability or improvement
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
         感谢提需求！把「想解决什么问题」讲清楚，比「想要什么按钮」更能帮到排期。
+        Thanks for the suggestion! Explaining the problem you want solved helps scheduling more than describing a button.
   - type: textarea
     id: problem
     attributes:
-      label: 需求描述
-      description: 想要什么能力？当前遇到了什么问题或不便？
-      placeholder: 例如：希望 Oracle 的表结构编辑器支持……
+      label: 需求描述 / What do you need?
+      description: 想要什么能力？当前遇到了什么问题或不便？/ What capability is missing? What problem or friction do you face today?
+      placeholder: 例如：希望 Oracle 的表结构编辑器支持…… / e.g. The Oracle table designer should support …
     validations:
       required: true
   - type: textarea
     id: scenario
     attributes:
-      label: 使用场景
-      description: 什么场景下会用到？现在你用什么方式替代（其他工具 / 手写 SQL）？
+      label: 使用场景 / Use case
+      description: 什么场景下会用到？现在你用什么方式替代（其他工具 / 手写 SQL）？/ When would you use it, and what do you use as a workaround today (other tools / hand-written SQL)?
     validations:
       required: false
   - type: dropdown
     id: engine
     attributes:
-      label: 相关数据源
-      description: 与哪个数据库相关？界面 / 导出等通用能力选「通用（不限数据源）」。
+      label: 相关数据源 / Related engine(s)
+      description: 与哪个数据库相关？界面 / 导出等通用能力选「通用（不限数据源）」。/ Which database? Pick "General" for UI/export-wide capabilities.
       multiple: true
       options:
-        - 通用（不限数据源）
+        - 通用（不限数据源） / General (any engine)
         - MySQL
         - PostgreSQL
         - SQL Server
@@ -41,7 +42,7 @@ body:
   - type: textarea
     id: extra
     attributes:
-      label: 补充信息
-      description: 截图、草图，或参考工具（DataGrip / Navicat / TablePlus 等）里的对应功能。
+      label: 补充信息 / Anything else?
+      description: 截图、草图，或参考工具（DataGrip / Navicat / TablePlus 等）里的对应功能。/ Screenshots, sketches, or the equivalent feature in other tools (DataGrip / Navicat / TablePlus …).
     validations:
       required: false

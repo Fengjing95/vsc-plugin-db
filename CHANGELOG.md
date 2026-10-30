@@ -6,6 +6,7 @@
 
 ### 工程设施
 
+- **官网 `/en/` 双构建 + Issue 模板双语（D-25 P2 落地）**：官网构建改为 zh（根路径）+ en（`/en/` 前缀）双产物——en 版 `<html lang>`/title/meta/og/twitter/canonical 落死英文（en 文案单一来源 = site.ts en 词典，无第二份硬编码），切换器跨构建互链（zh 页「English」↔ en 页「中文」），EdgeOne 静态子目录直接命中、部署侧零配置；Playground 随 `/en/` 副本自洽（P-71 注入链不变）；GitHub Issue 模板（bug/feature）出双语字段（zh 主体）；CI 官网门禁断言双 index.html。dev 模式保留原客户端切换行为
 - **perf/ 独立基准跑批（§12.4 / 遗留 #9 落地）**：顶层 `perf/` 目录（不进根 vitest 扫描面与四道门禁），入口 `pnpm perf`——§9 四项指标（1000×20 取数 / 5 万行分页取尽 / 100 条变更提交 / 补全缓存命中）对 sqlite（零依赖恒跑）与 MySQL（`MYSQL_HOST` 门控，契约同口径）同口径测量；`perf/baselines/*.json` 入库基线 +「设计绝对阈值 + 基线 ×1.2+15ms」双闸，超限退出码非零；CI 挂 `perf.yml`（workflow_dispatch 手动触发，不进 PR 门禁防 flaky）。取样口径 = 最快轮（环境噪声只会拖慢不会加快），回归闸按录制平台匹配启用（跨平台基线不互比）
 
 ## [0.11.0] - 2026-10-29

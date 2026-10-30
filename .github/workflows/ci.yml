@@ -89,10 +89,12 @@ jobs:
         run: pnpm build
 
       # 官网并入门禁（typecheck/lint 经根脚本已覆盖）；P-55：--filter 空转防复发，构建后断言产物
+      # （v0.11.0 双构建：zh 根路径 + en /en/ 前缀，build-all.mjs 自带双 index.html 断言）
       - name: 构建官网
         run: |
           pnpm --filter db-kit-website build
           test -f website/dist/index.html
+          test -f website/dist/en/index.html
 
       # 错误密码用例（E_AUTH）的认证实例：service options 只接受 docker create 旗标，
       # --requirepass（redis-server 参数）会让 create exit 125（P-52）；bitnami 版本 tag 又因

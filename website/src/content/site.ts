@@ -5,7 +5,9 @@
 import type { SiteLang } from '../i18n/lang';
 
 const REPO = 'https://github.com/Fengjing95/vsc-plugin-db';
-const BASE = import.meta.env.BASE_URL; // '/vsc-plugin-db/'（本地 dev 为 '/'）
+// vite 配置加载期（build-all 双构建）也会 import 本模块——彼时 import.meta.env 未就绪，
+// 可选链兜底 '/'（BASE_URL 在站点构建里恒 '/'，见 vite.config.ts base 口径）
+const BASE = import.meta.env?.BASE_URL ?? '/'; // '/vsc-plugin-db/'（本地 dev 为 '/'）
 
 export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 
