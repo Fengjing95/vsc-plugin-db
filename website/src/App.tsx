@@ -4,7 +4,6 @@ import { Hero } from './components/Hero';
 import { SupportMatrix } from './components/SupportMatrix';
 import { Features } from './components/Features';
 import { Screenshots } from './components/Screenshots';
-import { ComingSoon } from './components/ComingSoon';
 import { QuickStart } from './components/QuickStart';
 import { Footer } from './components/Footer';
 import { useSiteLang } from './i18n/lang';
@@ -32,7 +31,6 @@ export default function App() {
         <SupportMatrix />
         <Features />
         <Screenshots />
-        <ComingSoon />
         <QuickStart />
       </main>
       <Footer />

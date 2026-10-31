@@ -53,7 +53,6 @@ export type CellValue = 'yes' | 'no' | string; // 'yes'=✓，'no'=—，其余�
 
 export type Feature = { icon: string; title: string; desc: string };
 export type Screenshot = { file: string; title: string; desc: string };
-export type ComingItem = { name: string; desc: string; tags?: string[] };
 
 /** 各语言文案包：zh/en 同构（形状由本类型锁定，缺键 = 编译错） */
 export type SiteContent = {
@@ -88,15 +87,6 @@ export type SiteContent = {
     matrix: { yesAria: string; noAria: string; kicker: string; heading: string; sub: string; capability: string };
     features: { kicker: string; heading: string; sub: string };
     screenshots: { kicker: string; heading: string; sub: string; alt: string };
-    comingSoon: {
-      kicker: string;
-      heading: string;
-      sub: string;
-      badge: string;
-      candidatesAria: string;
-      cta: string;
-      ctaAria: string;
-    };
     quickStart: { kicker: string; heading: string; stepLabel: string; installHeading: string; downloadNote: string };
     footer: { tagline: string; linksAria: string; bugFeedback: string; designDocs: string; copyright: string };
     copy: { aria: string; copied: string; copy: string };
@@ -106,7 +96,6 @@ export type SiteContent = {
   features: Feature[];
   screenshots: Screenshot[];
   heroShot: { file: string; title: string; desc: string };
-  comingSoon: ComingItem[];
   quickStart: {
     install: { title: string; desc: string }[];
     steps: { title: string; desc: string }[];
@@ -210,15 +199,6 @@ const zh: SiteContent = {
     },
     features: { kicker: '功能亮点', heading: '为日常数据库工作流而造', sub: '从看结构、查数据到改数据、导数据，每一步都有护栏' },
     screenshots: { kicker: '界面一览', heading: '长在你的编辑器里', sub: '与 VSCode 深色主题同源，零割裂感', alt: 'DB Kit 界面：{0}' },
-    comingSoon: {
-      kicker: 'Coming Soon',
-      heading: '在路上，由你定优先级',
-      sub: '以下驱动在规划中，尚未开始适配——你的 issue 就是排期依据',
-      badge: '规划中',
-      candidatesAria: '候选范围',
-      cta: '期待它？去 issue 说一句',
-      ctaAria: '到 GitHub 提需求：{0}',
-    },
     quickStart: { kicker: '快速上手', heading: '30 秒，从安装到看到数据', stepLabel: '第一步', installHeading: '安装（三选一）', downloadNote: '前往 GitHub Releases 下载 VSIX' },
     footer: {
       tagline: '在 VSCode 里搞定数据库的一切。',
@@ -283,13 +263,6 @@ const zh: SiteContent = {
     title: '资源树 + 表格工作台',
     desc: '左侧资源树一键展开库 / 表 / 列 / 键 / 索引；右侧筛选、排序、搜索全部参数化下推到数据库执行——不拉全表，千万行级也只取你看到的那一页。',
   },
-  comingSoon: [
-    {
-      name: '国产数据库（信创）',
-      desc: '三家均已纳入规划、尚未开始适配——呼声越高，排期越早。',
-      tags: ['达梦', '人大金仓', 'openGauss'],
-    },
-  ],
   quickStart: {
     install: [
       { title: '扩展面板安装', desc: 'VSCode 扩展面板搜索 DB Kit，一键安装' },
@@ -405,15 +378,6 @@ const en: SiteContent = {
     },
     features: { kicker: 'Features', heading: 'Built for the daily database workflow', sub: 'From schema browsing to querying, editing and exporting — with guardrails at every step' },
     screenshots: { kicker: 'Screenshots', heading: 'Lives inside your editor', sub: 'Same dark theme as VSCode — no visual disconnect', alt: 'DB Kit screenshot: {0}' },
-    comingSoon: {
-      kicker: 'Coming Soon',
-      heading: 'On the roadmap — you set the priority',
-      sub: 'The drivers below are planned but not started — your issue drives the schedule',
-      badge: 'Planned',
-      candidatesAria: 'Candidate scope',
-      cta: 'Want it sooner? Say so on GitHub',
-      ctaAria: 'Request on GitHub: {0}',
-    },
     quickStart: { kicker: 'Quick Start', heading: 'From install to data in 30 seconds', stepLabel: 'Step', installHeading: 'Install (choose one)', downloadNote: 'Download the VSIX from GitHub Releases' },
     footer: {
       tagline: 'Do everything with databases inside VSCode.',
@@ -483,13 +447,6 @@ const en: SiteContent = {
     title: 'Resource tree + table workbench',
     desc: 'Expand databases / tables / columns / keys / indexes from the tree on the left; filtering, sorting and search on the right are all pushed down to the database with parameterized SQL — no full-table scans; at tens of millions of rows you still fetch only the page you see.',
   },
-  comingSoon: [
-    {
-      name: 'Chinese domestic databases (Xinchuang)',
-      desc: 'All three are on the roadmap, adaptation not yet started — the louder the demand, the earlier the slot.',
-      tags: ['DM', 'KingbaseES', 'openGauss'],
-    },
-  ],
   quickStart: {
     install: [
       { title: 'From the Extensions panel', desc: 'Search for DB Kit in the VSCode Extensions panel and install with one click' },
