@@ -157,3 +157,17 @@ describe('树菜单 when × contextValue 匹配矩阵（P-40 守卫）', () => {
     });
   }
 });
+
+describe('view/title 菜单限定守卫（标题栏泄漏红线）', () => {
+  it('view/title 的每个贡献项必须限定在本插件视图（无 when 会泄漏到所有视图标题栏）', () => {
+    const menus = loadMenus();
+    const entries = menus['view/title'] ?? [];
+    expect(entries.length, 'view/title 应有贡献项').toBeGreaterThan(0);
+    for (const e of entries) {
+      expect(
+        e.when,
+        `view/title 的 ${e.command} 缺 when 子句——VSCode 会把它渲染进所有视图标题栏（资源管理器/其它扩展视图），必须加 "view == dbExplorer.connections"`,
+      ).toBe('view == dbExplorer.connections');
+    }
+  });
+});
