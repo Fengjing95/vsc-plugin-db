@@ -2,7 +2,11 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
-## [Unreleased]
+## [0.11.1] - 2026-11-03
+
+### 修复
+
+- **树标题栏按钮泄漏到所有视图**：资源管理器的「打开的编辑器」/工作区文件夹等全部视图标题栏出现「新建连接 / 设置 / 刷新」按钮——`view/title` 菜单贡献自 M0 起缺 `when` 限定（VSCode 对无 `when` 的 `view/title` 项渲染进所有视图标题栏），补 `view == dbExplorer.connections` 后按钮回归数据库视图专属；`treeWhenClauses.test.ts` 新增「view/title 菜单限定守卫」程序化断言防复发
 
 ### 工程设施
 
