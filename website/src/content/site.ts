@@ -54,6 +54,14 @@ export type CellValue = 'yes' | 'no' | string; // 'yes'=✓，'no'=—，其余�
 export type Feature = { icon: string; title: string; desc: string };
 export type Screenshot = { file: string; title: string; desc: string };
 
+/** docs 区内容块：段落 / 无序列表 / 提示条（风险或要点），按 kind 渲染，不做 markdown 解析 */
+export type DocsBlock =
+  | { kind: 'p'; text: string }
+  | { kind: 'ul'; items: string[] }
+  | { kind: 'note'; text: string };
+export type DocsSection = { h: string; blocks: DocsBlock[] };
+export type DocsArticle = { id: string; title: string; intro: string; sections: DocsSection[] };
+
 /** 各语言文案包：zh/en 同构（形状由本类型锁定，缺键 = 编译错） */
 export type SiteContent = {
   /** <title> 与 meta description（语言切换时客户端同步更新） */
@@ -99,6 +107,13 @@ export type SiteContent = {
   quickStart: {
     install: { title: string; desc: string }[];
     steps: { title: string; desc: string }[];
+  };
+  docs: {
+    kicker: string;
+    heading: string;
+    sub: string;
+    navAria: string;
+    articles: DocsArticle[];
   };
   playground: {
     quickOpen: { name: string; desc: string }[];
@@ -168,6 +183,7 @@ const zh: SiteContent = {
         { href: '#screenshots', label: '界面' },
         { href: '#roadmap', label: '路线图' },
         { href: '#quickstart', label: '快速上手' },
+        { href: '#docs', label: '文档' },
       ],
       homeAria: 'DB Kit 首页',
       navAria: '页面导航',
@@ -251,6 +267,11 @@ const zh: SiteContent = {
       title: '连接开箱即用',
       desc: '每驱动动态连接表单；SSH 隧道（TOFU 指纹校验）与 SSL/TLS；密码只存系统密钥链，零遥测、不落盘。',
     },
+    {
+      icon: '📈',
+      title: '图表与结构对比',
+      desc: 'Console 结果一键生成图表 Tab：折线 / 柱状，可选 X 轴与数值列，大结果自动抽稀防卡顿，可导出 SVG/PNG；同连接跨库结构对比，表与列左右对齐——环境核对不用手写 diff SQL。',
+    },
   ],
   screenshots: [
     { file: 'console.png', title: 'SQL Console', desc: '上下文补全、危险语句拦截、EXPLAIN 树形缩进与行内执行注记' },
@@ -273,6 +294,412 @@ const zh: SiteContent = {
       { title: '新建连接', desc: '安装后点活动栏「数据库」图标 → ＋ 新建连接' },
       { title: '浏览与编辑', desc: '单击表名打开表格视图；双击单元格直改，提交前给出参数化 SQL 预览' },
       { title: '写 SQL', desc: '树中「新增查询」写 SQL，Ctrl+Enter 执行' },
+    ],
+  },
+  docs: {
+    kicker: '使用文档',
+    heading: '连接指南 · 核心概念 · 常见问题',
+    sub: '面向使用者的三篇速查：把数据库连进来、把每个功能用明白、出问题时先查这里。',
+    navAria: '文档导航',
+    articles: [
+      {
+        id: 'connect',
+        title: '连接指南',
+        intro: '新建连接的通用设置、七类数据源各自的连接要点，以及 SSH 隧道与密码安全。',
+        sections: [
+          {
+            h: '新建连接与通用设置',
+            blocks: [
+              {
+                kind: 'p',
+                text: '活动栏「数据库」图标 → 视图标题栏「＋ 新建连接」→ 选择数据源类型。连接表单由该数据源的驱动动态生成，必填项自带校验；所有连接都支持命名、颜色分组、环境标记与只读开关。',
+              },
+              {
+                kind: 'ul',
+                items: [
+                  '环境标记：开发 / 测试 / 生产。生产环境连接的所有写操作与危险语句强制二次确认（表格提交需输入表名匹配），该约束不可关闭',
+                  '只读开关：开启后任何非读语句 / 命令在扩展内直接拒绝（fail-closed），适合只看不改的场景',
+                  '连接超时：默认值可在设置 dbExplorer.connection.connectTimeoutMs 调整（含 SSH 隧道建立时间）',
+                ],
+              },
+              {
+                kind: 'note',
+                text: '密码只存 VSCode 系统密钥链（SecretStorage），不写入配置文件、日志与导出文件；扩展零遥测。',
+              },
+            ],
+          },
+          {
+            h: 'MySQL',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '主机 / 端口（默认 3306）/ 用户名 / 密码',
+                  '「数据库」可留空：树上会列出该账号可见的全部库；留空时新建 Console 会提示选择',
+                  'SSL 开关与连接池上限（并发查询复用池内连接）',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'PostgreSQL',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '连接的是数据库（database），树上按 schema 组织表、视图等对象',
+                  'SSL 开关 +「跳过证书校验」：开启后不校验服务器证书（sslmode=require），存在中间人风险，仅建议开发 / 自签证书环境使用',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SQL Server',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '主机 / 端口（默认 1433）/ 用户名 / 密码，可指定默认库',
+                  '「跳过证书校验」（trustServerCertificate）带同样的中间人风险标注',
+                  '跨库访问用三段名对象名（库.schema.对象），不要依赖 USE——连接池下 USE 只作用于单个物理连接',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Oracle',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '服务名（service name）寻址，通常连 PDB；thin 纯 JS 驱动，支持 Oracle 19c 及以上',
+                  'TCPS（TLS 直连加密）暂不支持；需要加密链路时可用 SSH 隧道',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SQLite',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '本地数据库文件路径，可点「浏览」按钮选择',
+                  '打开前校验 SQLite 文件魔数：误选普通小文件会被拒绝而不是被清空；0 字节文件视为新库',
+                  '整库载入内存 + 写批次原子落盘，建议文件 ≤ 100MB',
+                  '同步执行：正在运行的查询不可取消（见 FAQ）',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'MongoDB',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '主机 / 端口（默认 27017）/ 用户名（可留空）/ 密码',
+                  '认证库 authDatabase 默认 admin；「数据库」可留空（树上列全部库）',
+                  '直连单节点（本地单机 / 指定副本成员）时开启 directConnection',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Redis',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '主机 / 端口（默认 6379）/ 密码 / db 编号',
+                  'TLS 开关 +「跳过证书校验」：开启后连接可被中间人窃听 / 篡改，仅限自签证书的受信内网环境',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SSH 隧道（通用）',
+            blocks: [
+              {
+                kind: 'p',
+                text: '数据库在内网时，在连接表单的 SSH 区块填入跳板机地址、端口、用户与认证方式（密码或私钥），扩展先建隧道再连数据库。',
+              },
+              {
+                kind: 'ul',
+                items: [
+                  '首次连接记录跳板机主机指纹（TOFU）；后续连接指纹变化会被拒绝并明确提示（防中间人劫持）',
+                  '确认是跳板机正常变更（重装 / 换机）后，可在连接的高级选项临时开启「跳过主机指纹校验」重连，之后建议关闭该开关',
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'concepts',
+        title: '核心概念手册',
+        intro: '资源树、表格编辑、Console、事务、结构管理到 AI 辅助——每个功能的行为与默认值。',
+        sections: [
+          {
+            h: '资源树与懒加载',
+            blocks: [
+              {
+                kind: 'p',
+                text: '树按需展开（连接 → 库 → 表 → 列 / 键 / 索引），不预取全量元数据。库列表缓存默认 60 秒、列 / 键 / 索引缓存默认 300 秒（dbExplorer.tree.databaseTtlSeconds / columnTtlSeconds，修改后重载窗口生效）；节点右键可强制刷新。',
+              },
+            ],
+          },
+          {
+            h: '表格视图与数据编辑',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '筛选、排序、搜索全部参数化下推到数据库执行，不拉全表；单次传输上限 5000 行 / 5MB，取数行数上限默认 1000（dbExplorer.query.maxRows）',
+                  '双击 / Enter / F2 编辑单元格，改动先进入「变更集」；工具栏「提交变更(N)」→ 参数化 SQL 预览 → 单事务提交',
+                  '提交用乐观锁（WHERE 携带原值）：并发冲突会精确定位到错误行，其余变更不半提交',
+                  'NULL 与空串严格区分，单元格右键可切换',
+                  '无主键表默认只读：可用 dbExplorer.edit.allowNoPrimaryKey 开启「全列匹配」编辑模式（含二进制列的表仍不可编辑）',
+                ],
+              },
+            ],
+          },
+          {
+            h: '单元格查看器与大字段',
+            blocks: [
+              {
+                kind: 'p',
+                text: '超长文本 / 二进制单元格默认按 262,144 字符（256KB，dbExplorer.edit.cellMaxChars）截断传输预览前缀；点击 ▤ 打开查看器（大文本 / JSON 树 / 二进制十六进制与图片预览），打开查看器、编辑或复制时会自动取整值，不受截断影响。',
+              },
+            ],
+          },
+          {
+            h: 'SQL Console',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '树查询目录「新增查询」或任意 .sql 文件；Ctrl+Enter 执行光标所在语句，Ctrl+Shift+Enter 执行全部',
+                  '按上下文补全库 / 表 / 列与方言关键字；查询历史上限 500 条',
+                  '每条语句行内注记耗时 / 错误 / 取消状态；EXPLAIN 结果自动树形缩进',
+                  '结果面板跟随 Console 绑定的库；跨库 SQL（如三段名对象名）按数据库原生语义执行',
+                ],
+              },
+              {
+                kind: 'note',
+                text: '危险语句默认拦下要求确认：无 WHERE 的 UPDATE / DELETE、DROP、TRUNCATE 等在开发 / 测试环境弹结果面板横幅（继续 / 取消），生产环境弹模态确认；取消后语句不落历史。只读连接的非读语句直接拒绝。',
+              },
+            ],
+          },
+          {
+            h: '交互式事务',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Console 工具栏 BEGIN / COMMIT / ROLLBACK；会话空闲默认 5 分钟自动 ROLLBACK 并通知（dbExplorer.transaction.idleTimeoutMs），防遗忘占锁。单连接同一时刻一个交互会话。',
+              },
+            ],
+          },
+          {
+            h: '结构管理',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '表设计器：可视化建表 / 改列 / 键 / 外键 / 索引，语句预览 + 破坏性操作红条告警',
+                  '库级操作：MySQL 建 / 改 / 删库；PostgreSQL 与 SQL Server 建 / 删 schema；MongoDB 建 / 删库',
+                  '「查看 DDL」随时打开建表语句；结构对比：同连接跨库的表 / 列结构 diff，适合环境核对',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'ER 图',
+            blocks: [
+              {
+                kind: 'p',
+                text: '自动从外键收集表间关系，以某表为中心可做 1~3 度邻接展开；边标注外键级联动作（ON DELETE / ON UPDATE）。支持导出 SVG / PNG；表数超过 300 的库会先让用户选表再出图。',
+              },
+            ],
+          },
+          {
+            h: '结果图表',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Console 结果一键生成图表 Tab：折线 / 柱状，可选 X 轴与数值列；大结果自动抽稀防卡顿；可导出 SVG / PNG。',
+              },
+            ],
+          },
+          {
+            h: '导出',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '六种格式：CSV / JSON / XLSX / NDJSON / Markdown / SQL INSERT（表格视图与 Console 结果都可导出；INSERT 仅表格视图——结果集没有单一目标表）',
+                  '导出在后台任务执行：通知中心看进度、随时取消、多任务并发，完成后一键定位文件',
+                  '默认格式与分页批量可配（dbExplorer.export.defaultFormat / chunkRows）',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'AI 辅助（BYOK）',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '六个能力：自然语言生成 SQL（直插编辑器，可「再来一个」）、选中 SQL 即时解释、EXPLAIN 结果一键解读、报错一键生成修复建议（编辑器内联 diff，确认后才落地）、表格筛选栏自然语言生成 WHERE 条件、生成结果重试',
+                  '设置中心接入自己的 OpenAI 兼容服务（DeepSeek / Moonshot / ollama 等）：填 endpoint / 模型 / API Key，密钥只存系统密钥链',
+                  '采样参数（temperature / maxTokens）与 token 用量统计在设置中心可见',
+                ],
+              },
+              {
+                kind: 'note',
+                text: '隐私边界：默认只发送表结构（表 / 列 / 类型 / 注释），不发送任何数据行；AI 产物照常经过危险语句拦截。',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'faq',
+        title: 'FAQ / 故障排查',
+        intro: '只收使用中真实会遇到的问题：安装、连接、编辑、行为与环境。',
+        sections: [
+          {
+            h: 'Marketplace 与 Open VSX 有什么区别？',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'VSCode 官方发行版从 VSCode Marketplace 安装（扩展面板搜索 DB Kit）；VSCodium 等使用 Open VSX 源的兼容发行版从 Open VSX 安装；也可以从 GitHub Releases 下载 VSIX 手动安装（任何桌面版 VSCode 系发行版通用，1.85+）。VSCode Web 版（github.dev）暂不支持。',
+              },
+            ],
+          },
+          {
+            h: '连接不上数据库，按什么顺序排查？',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '先看错误提示：连接超时多是主机 / 端口 / 防火墙问题；认证失败核对用户名、密码与认证库',
+                  '网络慢可调大 dbExplorer.connection.connectTimeoutMs；查询慢 / 超时调大 dbExplorer.query.timeoutMs',
+                  'SSL 报证书错误：自签 / 内网环境可按表单风险提示临时开「跳过证书校验」（仅限受信网络）',
+                  '走 SSH 隧道的先确认跳板机可登录；指纹变更被拒见下一条',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SSH 连接提示「主机指纹已变更」？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '这是 TOFU 保护：首连记录的跳板机指纹与本次不符（跳板机重装 / 换机，或潜在中间人）。先人工确认跳板机确有变更，再在连接的高级选项临时开启「跳过主机指纹校验」重连；确认无误后建议关闭该开关。',
+              },
+            ],
+          },
+          {
+            h: 'SQLite 打开文件被拒 / 提示不是数据库？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '扩展在打开前校验 SQLite 文件魔数，误选普通文件会被拒绝（而不是当作空库清空内容）；0 字节文件视为新库。SQLite 整库载入内存，建议 ≤ 100MB；正在执行的查询不可取消。',
+              },
+            ],
+          },
+          {
+            h: 'Oracle 报 TCPS / 加密相关错误？',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Oracle 驱动为 thin 纯 JS 模式（19c+），暂不支持 TCPS（TLS 直连）；需要加密链路时用 SSH 隧道。另注意 Oracle 引擎语义：空串即 NULL，Console 中超大整数精度受限。',
+              },
+            ],
+          },
+          {
+            h: '树上「数据库」和表之间多了一层 schema？',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'PostgreSQL / SQL Server / Oracle 的库节点下按 schema 组织对象（如 public / dbo），这是数据库原生层级；SQLite 是单库单 schema，MongoDB 树上为库 → collection → 字段目录。',
+              },
+            ],
+          },
+          {
+            h: '为什么这张表不能编辑？',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '无主键表默认只读（无法定位行）；可开 dbExplorer.edit.allowNoPrimaryKey 全列匹配模式，但含二进制列的表仍不可编辑',
+                  '连接开了「只读」开关：所有非读语句直接拒绝',
+                  'Redis 为只读浏览（键值数据源暂未开放编辑）',
+                ],
+              },
+            ],
+          },
+          {
+            h: '提交变更提示乐观锁冲突？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '该行在你编辑期间被其他会话修改过。冲突行会精确定位，其余变更未提交（无半提交）；刷新数据后对最新值重做该行变更即可。',
+              },
+            ],
+          },
+          {
+            h: 'SQL Server 提交 / 插入报触发器相关错误？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '带触发器的表不支持 INSERT 回填（OUTPUT 子句被服务端拒绝），也不支持 GO 批；可先预览生成的 SQL 手动执行。',
+              },
+            ],
+          },
+          {
+            h: 'MongoDB 能建索引 / 改集合吗？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '结构类 mongosh 命令（建索引、改集合等）不支持——结构变更请用 mongosh 等原生工具；文档浏览、命令控制台与文档编辑（字段级 $set 乐观锁、逐条应用失败即停）在支持范围内。',
+              },
+            ],
+          },
+          {
+            h: '长查询怎么取消？SQLite 卡住了？',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'SQL 类驱动的查询可取消（扩展向服务端下发取消请求）；SQLite 为进程内同步执行，不可取消——大表查询先加条件或缩小范围。',
+              },
+            ],
+          },
+          {
+            h: 'VSCode 弹「Unable to resolve your shell environment」通知？',
+            blocks: [
+              {
+                kind: 'p',
+                text: '这是 VSCode 自身的 shell 环境解析提示，与本插件无关，也不影响插件功能，可忽略或在 VSCode 设置中处理。',
+              },
+            ],
+          },
+          {
+            h: '界面语言 / 我的数据会传到哪里？',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '界面语言跟随 VSCode 显示语言（中文为源语言，英文为辅助翻译）',
+                  '扩展零遥测：不收集、不上报任何使用数据',
+                  '密码 / API 密钥只存系统密钥链；AI 辅助默认只发送表结构、不发送数据行',
+                ],
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
   playground: {
@@ -347,6 +774,7 @@ const en: SiteContent = {
         { href: '#screenshots', label: 'Screenshots' },
         { href: '#roadmap', label: 'Roadmap' },
         { href: '#quickstart', label: 'Quick Start' },
+        { href: '#docs', label: 'Docs' },
       ],
       homeAria: 'DB Kit home',
       navAria: 'Page navigation',
@@ -457,6 +885,412 @@ const en: SiteContent = {
       { title: 'Create a connection', desc: 'After installing, click the Database icon in the activity bar → + New Connection' },
       { title: 'Browse and edit', desc: 'Click a table name to open the table view; double-click a cell to edit, with a parameterized SQL preview before commit' },
       { title: 'Write SQL', desc: 'Use "New Query" in the tree to write SQL, Ctrl+Enter to run' },
+    ],
+  },
+  docs: {
+    kicker: 'Documentation',
+    heading: 'Connect · Concepts · FAQ',
+    sub: 'Three quick references for users: get connected, understand every feature, and know where to look when something misbehaves.',
+    navAria: 'Docs navigation',
+    articles: [
+      {
+        id: 'connect',
+        title: 'Connection Guide',
+        intro: 'General connection settings, per-engine essentials for all seven data sources, plus SSH tunneling and password safety.',
+        sections: [
+          {
+            h: 'New connection & general settings',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Click the Database icon in the activity bar → ＋ New Connection in the view title bar → pick a data source type. The connection form is generated dynamically by that engine\u2019s driver, with validation on required fields; every connection supports naming, color groups, an environment label and a read-only switch.',
+              },
+              {
+                kind: 'ul',
+                items: [
+                  'Environment label: dev / test / prod. On prod connections every write or dangerous statement requires a forced second confirmation (table edits require typing the table name) — this cannot be turned off',
+                  'Read-only switch: once enabled, any non-read statement / command is rejected outright inside the extension (fail-closed) — for browse-only scenarios',
+                  'Connect timeout: adjust the default in dbExplorer.connection.connectTimeoutMs (includes SSH tunnel establishment)',
+                ],
+              },
+              {
+                kind: 'note',
+                text: 'Passwords live only in the VSCode system keychain (SecretStorage) — never in settings files, logs or exports; the extension has zero telemetry.',
+              },
+            ],
+          },
+          {
+            h: 'MySQL',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Host / port (default 3306) / username / password',
+                  'The "database" field is optional: the tree lists all databases visible to the account; if left empty, a new Console will prompt you to pick one',
+                  'SSL switch and connection pool size (concurrent queries reuse pooled connections)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'PostgreSQL',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'You connect to a database; the tree organizes tables and views by schema',
+                  'SSL switch + "skip certificate verification": skips server certificate validation (sslmode=require) — man-in-the-middle risk, recommended only for dev / self-signed environments',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SQL Server',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Host / port (default 1433) / username / password, with an optional default database',
+                  '"Skip certificate verification" (trustServerCertificate) carries the same man-in-the-middle warning',
+                  'Cross-database access: use three-part object names (db.schema.object) — do not rely on USE, which under connection pooling only affects a single physical connection',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Oracle',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Addressed by service name, usually a PDB; thin pure-JS driver, Oracle 19c and above',
+                  'TCPS (TLS direct encryption) is not supported yet; use an SSH tunnel when you need an encrypted link',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SQLite',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Path to a local database file; use the "Browse" button to pick one',
+                  'The SQLite file magic number is verified before opening: accidentally picking a regular small file is rejected rather than wiped; a 0-byte file counts as a new database',
+                  'Whole database loads into memory + atomic flush per write batch; files up to 100MB recommended',
+                  'Synchronous execution: a running query cannot be canceled (see FAQ)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'MongoDB',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Host / port (default 27017) / username (optional) / password',
+                  'Auth database defaults to admin; the "database" field is optional (the tree lists all databases)',
+                  'Enable directConnection when connecting straight to a single node (local standalone / a chosen replica member)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Redis',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Host / port (default 6379) / password / db number',
+                  'TLS switch + "skip certificate verification": the connection can be intercepted or tampered with — only for trusted internal networks with self-signed certificates',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SSH tunnel (general)',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'When the database sits behind a jump host, fill in the SSH section of the connection form (host, port, user and password or private key); the extension establishes the tunnel before connecting to the database.',
+              },
+              {
+                kind: 'ul',
+                items: [
+                  'The jump host fingerprint is recorded on first connect (TOFU); a changed fingerprint on later connections is rejected with an explicit warning (anti man-in-the-middle)',
+                  'After confirming the jump host legitimately changed (reinstall / replacement), you can temporarily enable "skip host fingerprint verification" in the advanced options to reconnect — then turn it back off',
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'concepts',
+        title: 'Core Concepts',
+        intro: 'From the resource tree, table editing and the Console to transactions, schema management and the AI assistant — how each feature behaves, with defaults.',
+        sections: [
+          {
+            h: 'Resource tree & lazy loading',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'The tree expands on demand (connection → database → table → columns / keys / indexes) without prefetching everything. The database list is cached for 60 seconds and column / key / index metadata for 300 seconds by default (dbExplorer.tree.databaseTtlSeconds / columnTtlSeconds; changes apply after a window reload); right-click any node to force refresh.',
+              },
+            ],
+          },
+          {
+            h: 'Table view & data editing',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Filtering, sorting and search are all pushed down to the database with parameterized SQL — no full-table pulls; transfer is capped at 5000 rows / 5MB per query, with a default row cap of 1000 (dbExplorer.query.maxRows)',
+                  'Double-click / Enter / F2 to edit a cell; changes first land in the change set; "Commit Changes (N)" in the toolbar → parameterized SQL preview → single-transaction commit',
+                  'Commits use optimistic locking (WHERE carries original values): concurrent conflicts are pinpointed to the offending rows, and the rest of the batch is not half-committed',
+                  'NULL and empty string are strictly distinct; right-click a cell to switch between them',
+                  'Tables without a primary key are read-only by default: enable dbExplorer.edit.allowNoPrimaryKey for "all-column match" editing (tables containing binary columns remain non-editable)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Cell viewer & large values',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Oversized text / binary cells transfer a preview prefix truncated at 262,144 characters (256KB, dbExplorer.edit.cellMaxChars) by default; click ▤ to open the viewer (long text / JSON tree / binary hex and image preview). Opening the viewer, editing or copying fetches the full value automatically — truncation never affects those paths.',
+              },
+            ],
+          },
+          {
+            h: 'SQL Console',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  '"New Query" in the tree query folder or any .sql file; Ctrl+Enter runs the statement at the cursor, Ctrl+Shift+Enter runs all',
+                  'Context-aware completion for databases / tables / columns and dialect keywords; query history keeps the last 500 entries',
+                  'Per-statement inline annotations for duration / error / canceled status; EXPLAIN results are auto-indented as a tree',
+                  'The result panel follows the Console\u2019s bound database; cross-database SQL (e.g. three-part names) follows native database semantics',
+                ],
+              },
+              {
+                kind: 'note',
+                text: 'Dangerous statements stop for confirmation by default: UPDATE / DELETE without WHERE, DROP, TRUNCATE and friends show a result-panel banner on dev / test (proceed / cancel) and a modal on prod; a canceled run leaves no history. Non-read statements on read-only connections are rejected outright.',
+              },
+            ],
+          },
+          {
+            h: 'Interactive transactions',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'BEGIN / COMMIT / ROLLBACK from the Console toolbar; an idle session is rolled back automatically after 5 minutes by default with a notification (dbExplorer.transaction.idleTimeoutMs), so forgotten locks never linger. One interactive session per connection at a time.',
+              },
+            ],
+          },
+          {
+            h: 'Schema management',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Table designer: visual create / alter for tables, columns, keys, foreign keys and indexes, with statement preview and red-bar warnings for destructive operations',
+                  'Database-level operations: MySQL create / alter / drop database; PostgreSQL and SQL Server create / drop schema; MongoDB create / drop database',
+                  '"View DDL" opens the CREATE statement anytime; schema compare diffs tables / columns across databases within a connection — handy for environment checks',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'ER diagram',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Relationships are collected automatically from foreign keys, with 1- to 3-degree neighbor expansion centered on any table; edges are labeled with referential actions (ON DELETE / ON UPDATE). SVG / PNG export included; databases with more than 300 tables ask you to pick a table first.',
+              },
+            ],
+          },
+          {
+            h: 'Result charts',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'One click turns a Console result into a chart tab: line / bar with selectable X axis and numeric series; large results are downsampled automatically to stay smooth; export as SVG / PNG.',
+              },
+            ],
+          },
+          {
+            h: 'Export',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Six formats: CSV / JSON / XLSX / NDJSON / Markdown / SQL INSERT (both the table view and Console results export; INSERT is table-view-only — a result set has no single target table)',
+                  'Exports run as background tasks: progress in the notification center, cancel anytime, tasks run concurrently, one click to reveal the file when done',
+                  'Default format and batch size are configurable (dbExplorer.export.defaultFormat / chunkRows)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'AI assistant (BYOK)',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Six abilities: generate SQL from natural language (inserted into the editor, with "Try Again"), explain a selection instantly, one-click EXPLAIN interpretation, one-click fix suggestions for SQL errors (inline editor diff, applied only after confirmation), natural-language WHERE conditions in the table filter bar, and retrying a generation',
+                  'Plug in your own OpenAI-compatible service (DeepSeek / Moonshot / ollama and more) from the Settings hub: endpoint / model / API key, with the key kept only in the system keychain',
+                  'Sampling parameters (temperature / maxTokens) and token usage stats are visible in the Settings hub',
+                ],
+              },
+              {
+                kind: 'note',
+                text: 'Privacy boundary: only table structure is sent by default (tables / columns / types / comments) — never data rows; AI output still passes danger checks.',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'faq',
+        title: 'FAQ / Troubleshooting',
+        intro: 'Only problems users actually hit, grouped by install, connection, editing, behavior and environment.',
+        sections: [
+          {
+            h: 'VSCode Marketplace vs Open VSX?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'The official VSCode distribution installs from the VSCode Marketplace (search DB Kit in the Extensions panel); VSCodium and other Open VSX-based distributions install from Open VSX; you can also download a VSIX from GitHub Releases for a manual install (works on any desktop VSCode-based distribution, 1.85+). VSCode for the Web (github.dev) is not supported.',
+              },
+            ],
+          },
+          {
+            h: 'Cannot connect — what to check, in order?',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Read the error first: connect timeouts are usually host / port / firewall; auth failures mean username, password or auth database',
+                  'Raise dbExplorer.connection.connectTimeoutMs on slow networks; raise dbExplorer.query.timeoutMs for slow queries',
+                  'SSL certificate errors: on self-signed / internal networks you can temporarily enable "skip certificate verification" per the form\u2019s risk note (trusted networks only)',
+                  'For SSH tunnels, first confirm the jump host is reachable; a rejected fingerprint is covered next',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'SSH says "host fingerprint changed"?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'That is TOFU protection: the fingerprint recorded on first connect no longer matches (the jump host was reinstalled / replaced, or there is a man in the middle). Confirm the host legitimately changed, then temporarily enable "skip host fingerprint verification" in the advanced options to reconnect — and turn it back off afterwards.',
+              },
+            ],
+          },
+          {
+            h: 'SQLite refuses to open a file / says it is not a database?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'The SQLite file magic number is verified before opening: accidentally picking a regular file is rejected (instead of treating it as an empty database and wiping content); a 0-byte file counts as a new database. The whole database loads into memory — 100MB or less recommended; a running query cannot be canceled.',
+              },
+            ],
+          },
+          {
+            h: 'Oracle errors about TCPS / encryption?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'The Oracle driver is thin pure-JS (19c+) and does not support TCPS (TLS direct encryption) yet; use an SSH tunnel when you need an encrypted link. Also note Oracle engine semantics: empty string is NULL, and very large integers have reduced precision in the Console.',
+              },
+            ],
+          },
+          {
+            h: 'There is a schema layer between the database and tables?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'PostgreSQL / SQL Server / Oracle organize objects under a database by schema (public / dbo and friends) — that is the native hierarchy; SQLite is single-database single-schema, and MongoDB shows database → collection → field catalog.',
+              },
+            ],
+          },
+          {
+            h: 'Why is this table not editable?',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'Tables without a primary key are read-only by default (rows cannot be addressed); enable dbExplorer.edit.allowNoPrimaryKey for all-column match — tables with binary columns stay read-only',
+                  'The connection has the read-only switch on: non-read statements are rejected outright',
+                  'Redis is browse-only (key-value sources have no editing yet)',
+                ],
+              },
+            ],
+          },
+          {
+            h: 'Committing says optimistic-lock conflict?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'That row was modified by another session while you were editing. The conflicting rows are pinpointed and the rest of the batch is not committed (no half-commit); refresh and redo that row against the latest values.',
+              },
+            ],
+          },
+          {
+            h: 'SQL Server errors about triggers on commit / insert?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Tables with triggers do not support INSERT back-fill (the OUTPUT clause is rejected by the server), and GO batches are not supported; preview the generated SQL and run it manually instead.',
+              },
+            ],
+          },
+          {
+            h: 'Can MongoDB create indexes / alter collections?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Structural mongosh commands (create index, alter collection, etc.) are not supported — do structural changes with mongosh or other native tools; document browsing, the command console and document editing (field-level $set optimistic locking, applied one by one and stopping at the first failure) are supported.',
+              },
+            ],
+          },
+          {
+            h: 'How do I cancel a long query? SQLite is stuck?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'Queries on SQL drivers can be canceled (the extension sends a cancellation to the server); SQLite executes synchronously in-process and cannot be canceled — narrow big-table queries with conditions first.',
+              },
+            ],
+          },
+          {
+            h: 'VSCode shows "Unable to resolve your shell environment"?',
+            blocks: [
+              {
+                kind: 'p',
+                text: 'That is VSCode\u2019s own shell-resolution notice, unrelated to this extension and harmless to it — ignore it or address it in VSCode settings.',
+              },
+            ],
+          },
+          {
+            h: 'UI language / where does my data go?',
+            blocks: [
+              {
+                kind: 'ul',
+                items: [
+                  'The UI language follows the VSCode display language (Chinese is the source language; English is the auxiliary translation)',
+                  'Zero telemetry: nothing is collected or reported',
+                  'Passwords / API keys live only in the system keychain; the AI assistant sends table structure only by default — never data rows',
+                ],
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
   playground: {

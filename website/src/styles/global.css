@@ -1237,3 +1237,132 @@ a {
     animation: none;
   }
 }
+
+/* ---------- 文档区（连接指南 / 核心概念 / FAQ） ---------- */
+.docs__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: -20px 0 26px;
+}
+
+.docs__nav a {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 7px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.docs__nav a:hover {
+  color: var(--text);
+  border-color: var(--brand-1);
+  background: rgba(43, 127, 255, 0.08);
+}
+
+.docs__list {
+  max-width: 860px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.docs__article {
+  overflow: hidden;
+}
+
+.docs__article summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.docs__article summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs__article-head h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.docs__article-head p {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 0.87rem;
+}
+
+.docs__chevron {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-right: 1.6px solid var(--text-faint);
+  border-bottom: 1.6px solid var(--text-faint);
+  transform: rotate(45deg);
+  transition: transform 0.2s;
+}
+
+.docs__article[open] .docs__chevron {
+  transform: rotate(225deg);
+}
+
+.docs__article[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.docs__body {
+  padding: 8px 24px 24px;
+  display: grid;
+  gap: 20px;
+}
+
+.docs__body h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.docs__body p,
+.docs__body li {
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.75;
+}
+
+.docs__body ul {
+  padding-left: 18px;
+  display: grid;
+}
+
+.docs__body li::marker {
+  color: var(--brand-1);
+}
+
+.docs__note {
+  border-left: 2px solid var(--brand-1);
+  border-radius: 0 10px 10px 0;
+  background: rgba(43, 127, 255, 0.08);
+  padding: 10px 14px;
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .docs__article summary {
+    padding: 16px 18px;
+  }
+
+  .docs__body {
+    padding: 6px 18px 18px;
+  }
+}
