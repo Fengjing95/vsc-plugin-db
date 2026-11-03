@@ -36,7 +36,13 @@ More capabilities: AI assistant (BYOK: natural-language → SQL, SQL explanation
 
 ## Install
 
-**VSIX (recommended, GitHub Release)**: download the latest `db-kit-<version>.vsix` from [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) → "…" at the top right of the VSCode Extensions view → **Install from VSIX…**; or from the command line:
+**From the Extensions panel (recommended)**: search **DB Kit** in the VSCode Extensions panel, or open the [marketplace listing](https://marketplace.visualstudio.com/items?itemName=db-explorer-dev.db-kit); from the command line:
+
+```bash
+ext install db-explorer-dev.db-kit
+```
+
+**Manual VSIX install (GitHub Release)**: download the latest `db-kit-<version>.vsix` from [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) → "…" at the top right of the VSCode Extensions view → **Install from VSIX…**; or from the command line:
 
 ```bash
 code --install-extension db-kit-<version>.vsix

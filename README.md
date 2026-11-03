@@ -34,7 +34,13 @@
 
 ## 安装
 
-**VSIX（推荐，GitHub Release）**：从 [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) 下载最新 `db-kit-<版本>.vsix` → VSCode 扩展视图右上角「…」→ **Install from VSIX…**；或命令行：
+**扩展面板搜索安装（推荐）**：VSCode 扩展面板搜索 **DB Kit**，或 [扩展详情页](https://marketplace.visualstudio.com/items?itemName=db-explorer-dev.db-kit) 安装；命令行：
+
+```bash
+ext install db-explorer-dev.db-kit
+```
+
+**VSIX 手动安装（GitHub Release）**：从 [Releases](https://github.com/Fengjing95/vsc-plugin-db/releases) 下载最新 `db-kit-<版本>.vsix` → VSCode 扩展视图右上角「…」→ **Install from VSIX…**；或命令行：
 
 ```bash
 code --install-extension db-kit-<版本>.vsix
