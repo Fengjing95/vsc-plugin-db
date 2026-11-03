@@ -5,6 +5,7 @@ import { SupportMatrix } from './components/SupportMatrix';
 import { Features } from './components/Features';
 import { Screenshots } from './components/Screenshots';
 import { QuickStart } from './components/QuickStart';
+import { Docs } from './components/Docs';
 import { Footer } from './components/Footer';
 import { useSiteLang } from './i18n/lang';
 import { getSiteContent } from './content/site';
@@ -32,6 +33,7 @@ export default function App() {
         <Features />
         <Screenshots />
         <QuickStart />
+        <Docs />
       </main>
       <Footer />
     </>

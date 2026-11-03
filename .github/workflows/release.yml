@@ -1,12 +1,16 @@
 # 发布流水线（D-20）：tag `vX.Y.Z` 触发 → 版本/CHANGELOG 守卫 → 四道门禁（含全部契约 service 实跑）
-# → minify 构建 → vsce 打包（--no-dependencies，external 闭包随包见 esbuild.mjs）→ GitHub Release 附 VSIX。
+# → minify 构建 → vsce 打包（--no-dependencies，external 闭包随包见 esbuild.mjs）→ GitHub Release 附 VSIX
+# → VSCode Marketplace + Open VSX 双渠道自动发布。
 # 发布三处同步纪律：package.json version ↔ tag ↔ CHANGELOG 条目，守卫步骤强制检查。
+# workflow_dispatch = 手动渠道验证入口：不 bump 版本，走完整门禁与打包后只发布 Open VSX
+# （GitHub Release / Marketplace 步骤仅 tag 推送执行——Marketplace 拒绝同版本重复发布）。
 name: Release
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write # gh release create
@@ -157,7 +161,9 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      # 守卫仅 tag 推送执行（workflow_dispatch 是渠道验证，无 tag/version 语境）
       - name: 发布守卫（tag = package.json version，且 CHANGELOG 有对应条目）
+        if: github.event_name == 'push'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           PKG_VERSION="$(node -p "require('./packages/extension/package.json').version")"
@@ -279,7 +285,9 @@ jobs:
       - name: 打包 VSIX
         run: pnpm --filter db-kit exec vsce package --no-dependencies
 
+      # 仅 tag 推送执行——workflow_dispatch 下 GITHUB_REF_NAME 是分支名，不应产出 Release
       - name: 创建 GitHub Release 并附产物
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -293,8 +301,10 @@ jobs:
 
       # Marketplace 自动发布：仓库 Secret VSCE_PAT（Azure DevOps PAT，Marketplace→Manage
       # scope + All accessible organizations）存在时执行；未配置则跳过（Web 上传兜底）。
-      # Marketplace 拒绝同版本重复发布——重跑同 tag 前先 bump 版本
+      # 仅 tag 推送执行——Marketplace 拒绝同版本重复发布（重跑同 tag 前先 bump 版本）；
+      # workflow_dispatch 手动运行只验证 Open VSX 渠道，不在 Marketplace 重发。
       - name: 发布到 VSCode Marketplace
+        if: github.event_name == 'push'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
@@ -306,3 +316,25 @@ jobs:
           # 仓库级绝对路径，包内相对路径会变成双重前缀 ENOENT（CI 实测）
           pnpm --filter db-kit exec vsce publish -p "$VSCE_PAT" \
             --packagePath "$GITHUB_WORKSPACE"/packages/extension/db-kit-*.vsix
+
+      # Open VSX 自动发布：复用打包产物同一个 VSIX（不二次打包）。仓库 Secret OVSX_PAT
+      # 缺失时 notice 跳过（同 VSCE_PAT 口径，不设 required）；未配置前恒跳过属预期。
+      # PAT 获取指引（用户侧一次性操作，详见 docs/发布页自查清单.md）：
+      #   1. 用 GitHub 账号登录 https://open-vsx.org → 头像 → Settings → Access Tokens →
+      #      Generate New Token（关闭弹窗后不再显示，立即复制）
+      #   2. 认领 publisher 命名空间（须与 package.json publisher 一致）：
+      #      npx ovsx create-namespace db-explorer-dev -p <token>
+      #      与 Marketplace 同名扩展要求该命名空间的 owner 权限；未走所有权认领流程前
+      #      页面会带 Unverified 标注（不影响安装，可后续在 open-vsx.org 提交 ownership 认领）
+      #   3. 仓库 Settings → Secrets and variables → Actions → New repository secret，
+      #      名称 OVSX_PAT，值为第 1 步的 token
+      # 重跑同 tag 时若该版本已在 Open VSX 存在，publish 报错属预期（渠道此前已验证通过）。
+      - name: 发布到 Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::notice::未配置 Secret OVSX_PAT，跳过 Open VSX 自动发布（获取指引见本步骤上方注释）"
+            exit 0
+          fi
+          npx ovsx publish "$GITHUB_WORKSPACE"/packages/extension/db-kit-*.vsix -p "$OVSX_PAT"
