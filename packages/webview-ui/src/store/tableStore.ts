@@ -4,6 +4,9 @@ import type {
   ExportFormat,
   GetDdlResult,
   HandshakeResult,
+  ImportDoneEvent,
+  ImportMappingPayload,
+  ImportParseResult,
   PreviewChangesResult,
   PreviewItemPayload,
   ResultSetPayload,
@@ -46,6 +49,24 @@ export interface ExportProgress {
   exportId: string;
   rows: number;
   bytes: number;
+}
+
+/** 数据导入映射 Dialog（v0.12.0 / §5.13 / D-32）：parse 结果 + 用户可调映射草稿 */
+export interface ImportDialogState {
+  parse: ImportParseResult | null;
+  /** 用户调整后的映射草稿（parse 映射建议的初始副本；tableColumn null = 忽略） */
+  mapping: ImportMappingPayload[];
+  /** 空字段语义：true = NULL（默认，与导出互逆）；false = 空串 */
+  emptyAsNull: boolean;
+  parsing: boolean;
+  starting: boolean;
+}
+
+export interface ImportProgress {
+  /** Host 后台任务 id（evt:import.progress/done 按 id 过滤） */
+  importId: string;
+  written: number;
+  total: number;
 }
 
 export interface ToastState {
@@ -117,6 +138,10 @@ interface TableState {
 
   exportProgress: ExportProgress | null;
 
+  /** v0.12.0 数据导入（§5.13 / D-32）：映射 Dialog 态 + 后台进度 chip */
+  importDialog: ImportDialogState;
+  importProgress: ImportProgress | null;
+
   // ── M4 编辑态 ──
   editEnabled: boolean;
   editReason?: string;
@@ -160,6 +185,18 @@ interface TableState {
   runExport(format: ExportFormat, scope: 'page' | 'result'): Promise<void>;
   cancelExport(): Promise<void>;
   setExportProgress(p: ExportProgress | null): void;
+
+  // ── 数据导入（v0.12.0 / §5.13 / D-32）──
+  /** file 缺省 = Host 弹 OpenDialog（工具栏入口）；命令/自动化链路直传路径（importFile 引导参数） */
+  startImport(file?: string): Promise<void>;
+  closeImportDialog(): void;
+  setImportMapping(fileColumn: string, tableColumn: string | null): void;
+  setImportEmptyAsNull(v: boolean): void;
+  confirmImport(): Promise<void>;
+  cancelImport(): Promise<void>;
+  setImportProgress(p: ImportProgress | null): void;
+  /** evt:import.done：匹配本视图时清 chip 并刷新（写入行已落库） */
+  handleImportDone(p: ImportDoneEvent): void;
 
   // ── M4 编辑动作 ──
   applyHandshake(hs: HandshakeResult): void;
@@ -250,6 +287,9 @@ export const useTableStore = create<TableState>((set, get) => ({
   visibleColumns: null,
 
   exportProgress: null,
+
+  importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: false, starting: false },
+  importProgress: null,
 
   cursors: [undefined],
 
@@ -468,6 +508,133 @@ export const useTableStore = create<TableState>((set, get) => ({
 
   setExportProgress(p) {
     set({ exportProgress: p });
+  },
+
+  // ── 数据导入（v0.12.0 / §5.13 / D-32）──────────────────────
+
+  async startImport(file) {
+    const s = get();
+    if (!s.editEnabled || s.importDialog.parsing || s.importProgress) {
+      return;
+    }
+    set({ importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: true, starting: false } });
+    try {
+      // 大文件解析 + OpenDialog 用户交互：不限时（export.run 同口径）
+      const r = await request<ImportParseResult>('import.parse', {
+        connId: s.connId,
+        db: s.db,
+        obj: s.obj,
+        ...(file ? { file } : {}),
+      }, 0);
+      if (r.canceled) {
+        set({ importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: false, starting: false } });
+        return;
+      }
+      set({
+        importDialog: {
+          parse: r,
+          mapping: r.mapping.map((m) => ({ ...m })),
+          emptyAsNull: true,
+          parsing: false,
+          starting: false,
+        },
+      });
+    } catch (err) {
+      set({ importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: false, starting: false } });
+      get().showToast({
+        kind: 'error',
+        text: t('table.toast.importParseFailed', [err instanceof Error ? err.message : String(err)]),
+      }, 6000);
+    }
+  },
+
+  closeImportDialog() {
+    set({ importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: false, starting: false } });
+  },
+
+  setImportMapping(fileColumn, tableColumn) {
+    const s = get();
+    set({
+      importDialog: {
+        ...s.importDialog,
+        mapping: s.importDialog.mapping.map((m) =>
+          m.fileColumn === fileColumn ? { ...m, tableColumn } : m,
+        ),
+      },
+    });
+  },
+
+  setImportEmptyAsNull(v) {
+    set({ importDialog: { ...get().importDialog, emptyAsNull: v } });
+  },
+
+  async confirmImport() {
+    const s = get();
+    const d = s.importDialog;
+    if (!d.parse || d.starting) {
+      return;
+    }
+    // 轻校验（Host 侧 fail-closed 重验）：至少一个映射 + 无重复目标列
+    const targets = d.mapping.filter((m) => m.tableColumn !== null).map((m) => m.tableColumn as string);
+    if (targets.length === 0) {
+      get().showToast({ kind: 'info', text: t('table.import.selectColumn') });
+      return;
+    }
+    if (new Set(targets).size !== targets.length) {
+      get().showToast({ kind: 'error', text: t('table.import.selectColumn') });
+      return;
+    }
+    set({ importDialog: { ...d, starting: true } });
+    try {
+      // prod 确认（DangerGuard 表名输入框）是用户交互：不限时（export.run 同口径）
+      const ack = await request<{ importId: string }>('import.run', {
+        connId: s.connId,
+        db: s.db,
+        obj: s.obj,
+        file: d.parse.file,
+        format: d.parse.format,
+        delimiter: d.parse.delimiter,
+        mapping: d.mapping,
+        emptyAsNull: d.emptyAsNull,
+      }, 0);
+      set({
+        importProgress: { importId: ack.importId, written: 0, total: d.parse.validRows },
+        importDialog: { parse: null, mapping: [], emptyAsNull: true, parsing: false, starting: false },
+      });
+    } catch (err) {
+      set({ importDialog: { ...get().importDialog, starting: false } });
+      get().showToast({
+        kind: 'error',
+        text: t('table.toast.importStartFailed', [err instanceof Error ? err.message : String(err)]),
+      }, 6000);
+    }
+  },
+
+  async cancelImport() {
+    const p = get().importProgress;
+    if (!p) {
+      return;
+    }
+    try {
+      await request('import.cancel', { importId: p.importId });
+    } catch {
+      // 取消失败静默（批间取消位/超时兜底）
+    }
+  },
+
+  setImportProgress(p) {
+    set({ importProgress: p });
+  },
+
+  handleImportDone(p) {
+    const s = get();
+    if (p.connId !== s.connId || p.db !== s.db || p.obj !== s.obj) {
+      return; // 其它表的导入任务不打扰本视图
+    }
+    set({ importProgress: null });
+    if (p.written > 0 || p.status === 'ok') {
+      void get().refresh();
+    }
   },
 
   // ── M4 编辑动作 ──────────────────────────────────────────

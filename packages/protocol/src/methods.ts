@@ -66,6 +66,15 @@ export const RpcMethods = {
   settingsHubAction: 'settings.hubAction',
   copyText: 'sys.copyText',
   pickFile: 'sys.pickFile',
+  /** @since v0.12.0（数据导入，概要 §5.13 / ADR D-32）：追加到既有表——Host 解析 + 分批
+   *  构造 inserts-only ChangeSet 调 applyChanges（禁止导入管线自拼 SQL，P-53） */
+  importParse: 'import.parse',
+  importRun: 'import.run',
+  importCancel: 'import.cancel',
+  /** @since v0.12.0（连接配置导入/导出，§5.2 P2 关账 / ADR D-32）：服务函数单一来源
+   *  configTransfer，RPC 为 webview 双通道预留（实际入口 = 树/视图命令） */
+  connExportConfigs: 'conn.exportConfigs',
+  connImportConfigs: 'conn.importConfigs',
   /** @since 单元格查看器批次（交互稿 §4.6）：大字段按需拉取（capabilities.lazyCell 驱动声明后才走 RPC） */
   cellFetch: 'cell.fetch',
   /** @since 单元格查看器批次：二进制查看器「另存为文件」（SaveDialog + 写盘在 Host 侧） */
@@ -76,6 +85,9 @@ export const RpcMethods = {
 export const RpcEvents = {
   exportProgress: 'evt:export.progress',
   exportDone: 'evt:export.done',
+  /** @since v0.12.0（数据导入，§5.13 / D-32）：对齐 export 模式（后台分批 + 终态回执） */
+  importProgress: 'evt:import.progress',
+  importDone: 'evt:import.done',
   changesetUpdated: 'evt:changeset.updated',
   rowError: 'evt:row.error',
   consoleBanner: 'evt:console.banner',
@@ -428,6 +440,152 @@ export const ExportDoneEventSchema = z.object({
     .optional(),
 });
 export type ExportDoneEvent = z.infer<typeof ExportDoneEventSchema>;
+
+// ── import.parse / import.run / import.cancel（v0.12.0 数据导入，§5.13 / D-32）────────
+// 追加到既有表：Host 解析（C-13 大文件不进 webview）→ 映射 Dialog → 分批 inserts-only
+// ChangeSet 调 driver.applyChanges（单事务/批，失败批回滚、已写批保留、失败即停）。
+
+export const ImportFormatSchema = z.enum(['csv', 'json', 'ndjson', 'xlsx']);
+export type ImportFormat = z.infer<typeof ImportFormatSchema>;
+
+export const ImportMappingSchema = z.object({
+  fileColumn: z.string().min(1),
+  /** null = 忽略该文件列 */
+  tableColumn: z.string().min(1).nullable(),
+  /** 目标列 normalizedType（Host 按表结构填充，转换依据 C-7） */
+  type: z.string().min(1),
+});
+export type ImportMappingPayload = z.infer<typeof ImportMappingSchema>;
+
+export const ImportParseParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  /** 绝对路径；缺省 = Host 弹 OpenDialog（工具栏入口）。命令/自动化链路直接传（P-82 口子） */
+  file: z.string().min(1).optional(),
+});
+export type ImportParseParams = z.infer<typeof ImportParseParamsSchema>;
+
+export const ImportTableColumnSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  isPrimaryKey: z.boolean(),
+  autoIncrement: z.boolean(),
+  nullable: z.boolean(),
+});
+export type ImportTableColumnPayload = z.infer<typeof ImportTableColumnSchema>;
+
+export const ImportParseResultSchema = z.object({
+  /** true = 用户取消文件选择（其余字段缺省，Dialog 不打开） */
+  canceled: z.boolean().optional(),
+  /** 实际解析的文件绝对路径 + 文件名（Dialog 展示） */
+  file: z.string(),
+  fileName: z.string(),
+  format: ImportFormatSchema,
+  /** csv 的嗅探分隔符（其余格式缺省） */
+  delimiter: z.string().optional(),
+  fileColumns: z.array(z.string().min(1)),
+  /** 数据行计数（表头行不计） */
+  rowsTotal: z.number().int().nonnegative(),
+  /** 试转换通过 / 错行（解析坏行 + 类型不符行，均不写入） */
+  validRows: z.number().int().nonnegative(),
+  skippedRows: z.number().int().nonnegative(),
+  /** 错行样本（≤20 条，row = 1-based 数据行号）与全量计数 */
+  errors: z.array(z.object({ row: z.number().int(), message: z.string() })),
+  errorsTotal: z.number().int().nonnegative(),
+  /** 映射建议（按名对齐；autoIncrement 列不映射） */
+  mapping: z.array(ImportMappingSchema),
+  /** 表列元数据（Dialog 下拉 + 类型提示） */
+  tableColumns: z.array(ImportTableColumnSchema),
+  /** 前 10 行 × 文件列原值预览 */
+  preview: z.array(z.array(z.unknown())),
+});
+export type ImportParseResult = z.infer<typeof ImportParseResultSchema>;
+
+export const ImportRunParamsSchema = z.object({
+  connId: z.string().min(1),
+  db: z.string().min(1),
+  obj: z.string().min(1),
+  /** 解析时的文件绝对路径（run 重读重解析——数据全程不经 webview，C-13） */
+  file: z.string().min(1),
+  format: ImportFormatSchema,
+  /** csv 分隔符（parse 嗅探结果原样回传） */
+  delimiter: z.string().max(1).optional(),
+  mapping: z.array(ImportMappingSchema).min(1),
+  /** true = 空字段写 NULL（默认，与导出「NULL→空串」互逆）；false = 按空串写入 */
+  emptyAsNull: z.boolean(),
+});
+export type ImportRunParams = z.infer<typeof ImportRunParamsSchema>;
+
+/** 调度即回执（护栏确认后）：导入在 Host 后台分批执行，进度/终态经 evt 推送 */
+export const ImportRunResultSchema = z.object({
+  importId: z.string(),
+});
+export type ImportRunResult = z.infer<typeof ImportRunResultSchema>;
+
+export const ImportCancelParamsSchema = z.object({
+  importId: z.string().min(1),
+});
+export type ImportCancelParams = z.infer<typeof ImportCancelParamsSchema>;
+
+/** evt:import.progress 负载 */
+export const ImportProgressEventSchema = z.object({
+  importId: z.string(),
+  written: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type ImportProgressEvent = z.infer<typeof ImportProgressEventSchema>;
+
+/** evt:import.done 负载（终态回执三路：ok/canceled/error；connId/db/obj 供 webview 过滤刷新） */
+export const ImportDoneEventSchema = z.object({
+  importId: z.string(),
+  connId: z.string(),
+  db: z.string(),
+  obj: z.string(),
+  status: z.enum(['ok', 'canceled', 'error']),
+  /** total = 试转换通过的行数（预期写入量）；skipped = 错行数；failedRows = 失败批内行数 */
+  total: z.number().int().nonnegative(),
+  written: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  failedRows: z.number().int().nonnegative(),
+  executionMs: z.number().nonnegative(),
+  /** 错行/批失败样本（≤50 条，row = 1-based 数据行号；批失败以失败批首行号 + 消息承载） */
+  errors: z.array(z.object({ row: z.number().int(), message: z.string() })).optional(),
+  error: z.object({ code: z.string(), message: z.string() }).optional(),
+});
+export type ImportDoneEvent = z.infer<typeof ImportDoneEventSchema>;
+
+// ── conn.exportConfigs / conn.importConfigs（v0.12.0 连接配置导入/导出，§5.2 P2 / D-32）──
+// 导出不含密码（hasSecret 以 `${secret}` 占位标记补录点，C-10：密码只存 SecretStorage）；
+// connId/secretRef 不导出（导入侧重生成 + secretRefOf 重写）。实际入口 = 树/视图命令，
+// RPC 为 webview 双通道预留（服务函数单一来源 configTransfer）。
+
+export const ConnExportConfigsParamsSchema = z.object({
+  /** 缺省 = 导出全部连接 */
+  connId: z.string().min(1).optional(),
+});
+export type ConnExportConfigsParams = z.infer<typeof ConnExportConfigsParamsSchema>;
+
+export const ConnExportConfigsResultSchema = z.object({
+  /** 导出文件内容（JSON 文本） */
+  json: z.string(),
+  count: z.number().int().nonnegative(),
+});
+export type ConnExportConfigsResult = z.infer<typeof ConnExportConfigsResultSchema>;
+
+export const ConnImportConfigsParamsSchema = z.object({
+  /** 导出文件内容（JSON 文本；ExportFile 形状或裸数组，后者宽容解析） */
+  json: z.string().min(1),
+});
+export type ConnImportConfigsParams = z.infer<typeof ConnImportConfigsParamsSchema>;
+
+export const ConnImportConfigsResultSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  /** 导入后的新 connId 清单（成功项） */
+  connIds: z.array(z.string()),
+  skipped: z.array(z.object({ name: z.string(), reason: z.string() })),
+});
+export type ConnImportConfigsResult = z.infer<typeof ConnImportConfigsResultSchema>;
 
 // ── conn.getMeta / conn.getSchema ─────────────────────────────
 export const DriverSummarySchema = z.object({

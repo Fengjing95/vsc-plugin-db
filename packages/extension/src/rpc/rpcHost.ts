@@ -25,6 +25,8 @@ import {
   type RpcError,
 } from '@db-explorer/protocol';
 import type { ExportTaskRunner } from '../services/exportTasks';
+import type { ImportTaskRunner } from '../services/importTasks';
+import type { ConfigTransferService } from '../services/configTransfer';
 import type { ConnectionManager } from '../services/connectionManager';
 import type { ChangeSetService } from '@db-explorer/core';
 import type { EditGuard, ViewStateStore } from '../services/editGuard';
@@ -49,6 +51,10 @@ export interface RpcHostDeps {
   host?: DriverHost;
   /** 表格导出（export.run / export.cancel），仅表格视图注入 */
   exporter?: ExportTaskRunner;
+  /** 表格数据导入（import.parse / import.run / import.cancel），仅表格视图注入（§5.13 / D-32） */
+  importer?: ImportTaskRunner;
+  /** 连接配置导入/导出（conn.exportConfigs / conn.importConfigs，§5.2 P2 / D-32） */
+  configTransfer?: ConfigTransferService;
   /** 页面自有方法（conn.* 等），命中后优先于内置分发 */
   handlers?: Record<string, (params: unknown) => Promise<unknown>>;
   /** M4 表格编辑：ChangeSet 权威副本（ADR D-06），表格视图注入 */
@@ -333,6 +339,49 @@ export function attachRpcHost(webview: vscode.Webview, deps: RpcHostDeps): vscod
           if (deps.exporter) {
             deps.exporter.cancel(req.params);
             respond(true, { result: {} });
+            return;
+          }
+          break;
+        }
+
+        // ── 数据导入（§5.13 / D-32）：parse/run/cancel 对齐 export 模式 ──
+        case RpcMethods.importParse: {
+          if (deps.importer) {
+            respond(true, { result: await deps.importer.parse(req.params) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.importRun: {
+          if (deps.importer) {
+            respond(true, { result: await deps.importer.run(req.params) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.importCancel: {
+          if (deps.importer) {
+            deps.importer.cancel(req.params);
+            respond(true, { result: {} });
+            return;
+          }
+          break;
+        }
+
+        // ── 连接配置导入/导出（§5.2 P2 / D-32）：服务函数单一来源，RPC 为 webview 双通道预留 ──
+        case RpcMethods.connExportConfigs: {
+          if (deps.configTransfer) {
+            respond(true, { result: await deps.configTransfer.exportConfigs(req.params) });
+            return;
+          }
+          break;
+        }
+
+        case RpcMethods.connImportConfigs: {
+          if (deps.configTransfer) {
+            respond(true, { result: await deps.configTransfer.importConfigs(req.params) });
             return;
           }
           break;

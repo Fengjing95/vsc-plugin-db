@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { DriverRegistry } from '@db-explorer/core';
+import type { DriverRegistry, MetadataCache } from '@db-explorer/core';
 import type { ConnectionManager } from './services/connectionManager';
 import type { ConsoleService } from './services/consoleService';
 import { pickHistoryItem } from './services/consoleHistory';
@@ -12,6 +13,8 @@ import type { QueryFilesService } from './services/queryFiles';
 import { codegenLanguageId, generateCode, getCodegenLanguages, type CodegenLanguage } from './services/codegen';
 import { t } from './services/i18n';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
+import type { ConfigTransferService } from './services/configTransfer';
+import { safeFileName } from './services/csvJson';
 import type { ConnectionsTreeProvider, DbTreeNode } from './tree/treeDataProvider';
 import type { DdlService } from './services/ddlService';
 import { openConnectionForm } from './views/connectionFormPanel';
@@ -34,6 +37,8 @@ export interface AppServices {
   changesets: import('@db-explorer/core').ChangeSetService;
   viewStates: ViewStateStore;
   editGuard: EditGuard;
+  /** 列元数据缓存（§7.5；表格视图导入映射建议的类型依据） */
+  cache: MetadataCache;
   /** M5 SQL Console */
   console: ConsoleService;
   /** M5 执行历史 */
@@ -52,6 +57,8 @@ export interface AppServices {
   ai: import('./services/aiAssistService').AiAssistService;
   /** 表结构对比（ADR D-29 / 交互稿 §17）：同连接跨库结构 diff（compare.* RPC） */
   compare: import('./services/schemaCompareService').SchemaCompareService;
+  /** 连接配置导入/导出（§5.2 P2 关账 / D-32 批次 C）：树/视图命令与 RPC 共用单一来源 */
+  configTransfer: ConfigTransferService;
   /** 设置中心（交互稿 §16）：打开总设置面板（深链分类） */
   openSettings: (category?: 'ai' | 'queryExport' | 'about') => void;
 }
@@ -155,6 +162,88 @@ export function registerCommands(
       await store.save({ ...cfg, id: newId, name: t('{0} 副本', [cfg.name]), secretRef: secretRefOf(newId) });
       await store.copySecret(connId, newId);
     }),
+
+    // ── 连接配置导出（§5.2 P2 关账 / D-32 批次 C）：单连接 → JSON 文件（不含密码，C-10）──
+    vscode.commands.registerCommand('dbExplorer.exportConnection', async (node?: DbTreeNode) => {
+      const connId = node?.payload.connId;
+      const cfg = connId ? store.get(connId) : undefined;
+      if (!cfg) {
+        return;
+      }
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      const defaultUri = vscode.Uri.file(
+        path.join(wsFolder?.uri.fsPath ?? '', `dbkit-connection-${safeFileName(cfg.name)}.json`),
+      );
+      const target = await vscode.window.showSaveDialog({
+        defaultUri,
+        title: t('导出连接配置'),
+        saveLabel: t('导出'),
+        filters: { JSON: ['json'] },
+      });
+      if (!target) {
+        return;
+      }
+      const r = await services.configTransfer.exportConfigs({ connId: cfg.id });
+      await vscode.workspace.fs.writeFile(target, Buffer.from(r.json, 'utf8'));
+      void vscode.window.showInformationMessage(
+        t('已导出连接配置（不含密码，导入后首连补录）→ {0}', [path.basename(target.fsPath)]),
+      );
+    }),
+
+    // ── 连接配置导入（§5.2 P2 关账 / D-32 批次 C）：JSON 数组批量；结果 Toast 汇总 ──
+    vscode.commands.registerCommand('dbExplorer.importConnections', async () => {
+      const uris = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        title: t('导入连接配置'),
+        openLabel: t('导入'),
+        filters: { JSON: ['json'] },
+      });
+      const file = uris?.[0];
+      if (!file) {
+        return;
+      }
+      let text: string;
+      try {
+        text = Buffer.from(await vscode.workspace.fs.readFile(file)).toString('utf8');
+      } catch (err) {
+        void vscode.window.showErrorMessage(t('文件不可读：{0}', [err instanceof Error ? err.message : String(err)]));
+        return;
+      }
+      const r = await services.configTransfer.importConfigs({ json: text });
+      const skipDetail =
+        r.skipped.length > 0
+          ? t('；跳过 {0} 条（{1}）', [r.skipped.length, r.skipped.map((s) => `${s.name}: ${s.reason}`).join('；')])
+          : '';
+      void vscode.window.showInformationMessage(
+        t('已导入 {0} 个连接配置（密码不随文件迁移，首连时补录）{1}', [r.imported, skipDetail]),
+      );
+    }),
+
+    // ── 数据导入入口（§5.13 / D-32）：树 table 节点「导入数据」→ 打开表格视图直开映射 Dialog。
+    //    第二参带 {connId, db, obj, file}（自动化/命令链路，P-82 口子）直入该文件；
+    //    无 file 时打开面板，由用户点工具栏「导入」弹 OpenDialog。命令面板隐藏（树菜单专用）
+    vscode.commands.registerCommand(
+      'dbExplorer.importData',
+      async (node?: DbTreeNode, arg?: { connId?: string; db?: string; obj?: string; file?: string }) => {
+        const payload = node?.payload ?? arg;
+        const { connId, db, obj } = payload ?? {};
+        if (!connId || !db || !obj) {
+          return;
+        }
+        await openTablePanel(context, services, {
+          connId,
+          db,
+          obj,
+          viewId: `${connId}/${db}/${obj}`,
+          title: `${obj} @ ${db}`,
+          readOnly: store.get(connId)?.readOnly ?? false,
+          env: store.get(connId)?.env ?? null,
+          importFile: arg?.file,
+        });
+      },
+    ),
 
     vscode.commands.registerCommand('dbExplorer.deleteConnection', async (node?: DbTreeNode) => {
       const connId = node?.payload.connId;

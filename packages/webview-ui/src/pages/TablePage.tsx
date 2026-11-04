@@ -3,6 +3,8 @@ import {
   ChangesetUpdatedEventSchema,
   ExportDoneEventSchema,
   ExportProgressEventSchema,
+  ImportDoneEventSchema,
+  ImportProgressEventSchema,
   RowErrorEventSchema,
   RPC_PROTOCOL_VERSION,
   RpcEvents,
@@ -20,6 +22,7 @@ import { CellViewerModal } from './table/CellViewerModal';
 import { DataGrid } from './table/DataGrid';
 import { DdlModal } from './table/DdlModal';
 import { FilterBar } from './table/FilterBar';
+import { ImportDialog } from './table/ImportDialog';
 import { PaginationBar } from './table/PaginationBar';
 import { Toolbar } from './table/Toolbar';
 
@@ -73,6 +76,32 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
           const tracked = useTableStore.getState().exportProgress;
           if (tracked && tracked.exportId === parsed.data.exportId) {
             setExportProgress(null);
+          }
+        }
+        return;
+      }
+      if (evt.event === RpcEvents.importProgress) {
+        const parsed = ImportProgressEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          // 只跟随本视图发起的导入（importId 匹配）
+          const tracked = useTableStore.getState().importProgress;
+          if (tracked && tracked.importId === parsed.data.importId) {
+            useTableStore.getState().setImportProgress({
+              importId: tracked.importId,
+              written: parsed.data.written,
+              total: parsed.data.total,
+            });
+          }
+        }
+        return;
+      }
+      if (evt.event === RpcEvents.importDone) {
+        const parsed = ImportDoneEventSchema.safeParse(evt.payload);
+        if (parsed.success) {
+          // 终态回执：清除 chip + 刷新网格（写入行已落库）；报告 Toast 由 Host 发（P-37 同源）
+          const tracked = useTableStore.getState().importProgress;
+          if (tracked && tracked.importId === parsed.data.importId) {
+            useTableStore.getState().handleImportDone(parsed.data);
           }
         }
         return;
@@ -137,6 +166,13 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
 
         // 3) 首屏取数
         await useTableStore.getState().refresh();
+
+        // 4) 数据导入直入口（§5.13 / D-32）：bootstrap importFile 参数（树「导入数据」命令
+        //    带文件链路）→ 握手后自动起 parse 并打开映射 Dialog，绕开原生 OpenDialog
+        const importFile = window.__BOOTSTRAP__?.params.importFile ?? '';
+        if (importFile !== '') {
+          void useTableStore.getState().startImport(importFile);
+        }
       } catch (err) {
         if (!disposed) {
           useTableStore.setState({
@@ -190,6 +226,7 @@ export function TablePage({ connId, db, obj, rowEstimate, readOnly }: TablePageP
       <ChangePreviewModal env={env === '' ? null : env} />
       <DdlModal />
       <CellViewerModal />
+      <ImportDialog />
       <Toast />
     </div>
   );

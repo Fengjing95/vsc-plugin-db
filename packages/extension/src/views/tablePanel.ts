@@ -8,6 +8,7 @@ import type { EditGuard, ViewStateStore } from '../services/editGuard';
 import { t } from '../services/i18n';
 import type { Logger } from '../services/logger';
 import { createResultExporter } from '../services/resultExporter';
+import { createImporter } from '../services/resultImporter';
 import { buildWebviewHtml, webviewDistRoot } from './webviewHtml';
 
 export interface TableTarget {
@@ -22,6 +23,9 @@ export interface TableTarget {
   readOnly?: boolean;
   /** 环境标识（预览 Modal 环境条 / prod DangerGuard 提示） */
   env?: 'dev' | 'test' | 'prod' | null;
+  /** v0.12.0（§5.13 / D-32）：打开即直开导入映射 Dialog 的文件路径（树「导入数据」命令链路，
+   *  绕开无法自动化的原生 OpenDialog——e2e/自动化入口，P-82 同款口子） */
+  importFile?: string;
 }
 
 export interface TablePanelServices {
@@ -33,6 +37,8 @@ export interface TablePanelServices {
   changesets: ChangeSetService;
   viewStates: ViewStateStore;
   editGuard: EditGuard;
+  /** 列元数据缓存（§7.5，导入映射建议的类型依据） */
+  cache: import('@db-explorer/core').MetadataCache;
   /** AI P2A 批次 A1（交互稿 §15.7 转正）：筛选栏「✨ 自然语言筛选」→ ai.generateFilter（片段回填待确认） */
   ai?: Pick<AiAssistService, 'generateFilterWhere' | 'openSettings'>;
 }
@@ -82,6 +88,7 @@ export async function openTablePanel(
       obj: target.obj,
       rowEstimate: target.rowEstimate !== undefined ? String(target.rowEstimate) : '',
       readOnly: target.readOnly ? 'true' : 'false',
+      importFile: target.importFile ?? '',
     },
   });
 
@@ -109,6 +116,17 @@ export async function openTablePanel(
       logger: services.logger,
       chunkRows: cfg.get('export.chunkRows', 1000),
       timeoutMs: cfg.get('query.timeoutMs', 15000),
+    }),
+    importer: createImporter({
+      webview: panel.webview,
+      connections: services.connections,
+      host: services.host,
+      cache: services.cache,
+      editGuard: services.editGuard,
+      logger: services.logger,
+      batchRows: 500,
+      timeoutMs: Math.max(cfg.get('query.timeoutMs', 15000), 30_000),
+      objLabel: target.obj,
     }),
     handlers: ai
       ? {

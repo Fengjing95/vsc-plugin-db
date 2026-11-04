@@ -139,6 +139,17 @@ export function IconDownload(props: IconProps) {
   );
 }
 
+/** 数据导入（Lucide upload，v0.12.0 / D-32）：与导出 download 对称 */
+export function IconUpload(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m17 8-5-5-5 5" />
+      <path d="M12 3v12" />
+    </Icon>
+  );
+}
+
 /** 适应画布（Lucide maximize：四角括号）——ER 工具栏去文字化（v0.10.1） */
 export function IconMaximize(props: IconProps) {
   return (
