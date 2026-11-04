@@ -12,6 +12,7 @@ import { journey1 } from './journeys/j1';
 import { journey2 } from './journeys/j2';
 import { journey3 } from './journeys/j3';
 import { journey4 } from './journeys/j4';
+import { journey5 } from './journeys/j5';
 
 // 旅程有状态依赖（J1 建连接、J2 建绑定），必须按序全跑；--journey 过滤仅用于调试
 const journeys: Record<string, (ctx: import('./journeys/j1').JourneyCtx) => Promise<void>> = {
@@ -20,6 +21,8 @@ const journeys: Record<string, (ctx: import('./journeys/j1').JourneyCtx) => Prom
   j3: journey3,
   // J-ER（ER P2 / D-28）：依赖 j1 建的连接——表节点右键邻接展开 ER 图 + 边动作 tooltip
   j4: journey4,
+  // J5（数据导入 / D-32）：依赖 j1 建的连接——fixture CSV 追加导入 + NULL/JSON/中文行编码
+  j5: journey5,
 };
 
 function parseArgs(): { locales: string[]; keep: boolean; only: string[] } {

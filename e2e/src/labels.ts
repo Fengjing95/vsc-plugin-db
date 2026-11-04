@@ -25,6 +25,8 @@ export interface UiLabels {
   chartTab: string;
   /** 结果面板「结果 1」Tab（webview console.resultTab） */
   resultTab1: string;
+  /** 导入 Dialog 开始按钮（webview table.import.start，J5 / D-32；n = fixture CSV 行数） */
+  importStart: (n: number) => string;
 }
 
 export function uiLabels(locale: string): UiLabels {
@@ -42,6 +44,7 @@ export function uiLabels(locale: string): UiLabels {
       cancel: '取消',
       chartTab: '图表',
       resultTab1: '结果 1',
+      importStart: (n) => `开始导入（追加 ${n} 行）`,
     };
   }
   return {
@@ -57,6 +60,7 @@ export function uiLabels(locale: string): UiLabels {
     cancel: 'Cancel',
     chartTab: 'Chart',
     resultTab1: 'Result 1',
+    importStart: (n) => `Import (${n} rows to append)`,
   };
 }
 
