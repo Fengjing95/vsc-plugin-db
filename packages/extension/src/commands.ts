@@ -22,7 +22,7 @@ import { openTableDesignPanel } from './views/tableDesignPanel';
 import { openDatabaseDesignPanel } from './views/dbDatabasePanel';
 import { openErDiagramPanel, type ErDiagramPanelDeps } from './views/erDiagramPanel';
 import { openSchemaComparePanel } from './views/schemaComparePanel';
-import { closeTablePanelsFor, openTablePanel } from './views/tablePanel';
+import { closeTablePanel, closeTablePanelsFor, openTablePanel } from './views/tablePanel';
 import type { Logger } from './services/logger';
 
 export interface AppServices {
@@ -222,21 +222,31 @@ export function registerCommands(
     }),
 
     // ── 数据导入入口（§5.13 / D-32）：树 table 节点「导入数据」→ 打开表格视图直开映射 Dialog。
-    //    第二参带 {connId, db, obj, file}（自动化/命令链路，P-82 口子）直入该文件；
-    //    无 file 时打开面板，由用户点工具栏「导入」弹 OpenDialog。命令面板隐藏（树菜单专用）
+    //    第二参带 {connId?, db?, obj?, file}（自动化/命令链路，P-82 口子）直入该文件；
+    //    目标缺省回退树选中节点（同 erFocusTable 口子）。无 file 时打开面板，由用户点工具栏
+    //    「导入」弹 OpenDialog。已打开的面板重开以生效 importFile 引导参数（bootstrap 只在
+    //    首次注入）。命令面板隐藏（树菜单专用）
     vscode.commands.registerCommand(
       'dbExplorer.importData',
       async (node?: DbTreeNode, arg?: { connId?: string; db?: string; obj?: string; file?: string }) => {
-        const payload = node?.payload ?? arg;
+        let target = node;
+        if (!target && !(arg?.connId && arg.db && arg.obj)) {
+          target = await tree.selectedNode();
+        }
+        const payload = target?.payload ?? arg;
         const { connId, db, obj } = payload ?? {};
         if (!connId || !db || !obj) {
           return;
+        }
+        const viewId = `${connId}/${db}/${obj}`;
+        if (arg?.file) {
+          closeTablePanel(viewId);
         }
         await openTablePanel(context, services, {
           connId,
           db,
           obj,
-          viewId: `${connId}/${db}/${obj}`,
+          viewId,
           title: `${obj} @ ${db}`,
           readOnly: store.get(connId)?.readOnly ?? false,
           env: store.get(connId)?.env ?? null,

@@ -176,3 +176,8 @@ export function closeTablePanelsFor(connId: string): void {
     }
   }
 }
+
+/** 按视图关闭单个表格面板（v0.12.0 / D-32：导入命令对已打开面板重开以生效 importFile 引导参数） */
+export function closeTablePanel(viewId: string): void {
+  panels.get(viewId)?.dispose();
+}
