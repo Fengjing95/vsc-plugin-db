@@ -92,6 +92,17 @@ describe('buildExportConnection / buildExportFile', () => {
     expect(f.exportedAt).not.toBe('');
     expect(f.connections).toHaveLength(1);
   });
+
+  it('D-33：visibleDatabases 随导出迁移（未设置不出现字段；空数组同 undefined）', () => {
+    expect(buildExportConnection(baseCfg, true, false).visibleDatabases).toBeUndefined();
+    expect(
+      buildExportConnection({ ...baseCfg, visibleDatabases: [] }, true, false).visibleDatabases,
+    ).toBeUndefined();
+    const filtered = buildExportConnection({ ...baseCfg, visibleDatabases: ['app', 'report'] }, true, false);
+    expect(filtered.visibleDatabases).toEqual(['app', 'report']);
+    // 键名非密码形态：消毒/审计零误伤（该字段在顶层，sanitizeForExport 只递归对象值不触及数组）
+    expect(auditNoSecrets(buildExportFile([filtered]))).toEqual([]);
+  });
 });
 
 describe('auditNoSecrets（C-10 红线）', () => {
@@ -156,6 +167,27 @@ describe('parseImportJson / importPlan', () => {
     expect(plan.usable).toHaveLength(1);
     expect(plan.usable[0].cfg.options).toEqual({ host: 'h' });
     expect(plan.usable[0].cfg.env).toBeUndefined();
+  });
+
+  it('D-33：visibleDatabases 合法数组随导入保留；非法形态回落 undefined', () => {
+    const registry = new DriverRegistry();
+    registry.register(fakeDriver('mysql'));
+    const plan = importPlan(
+      parseImportJson(
+        JSON.stringify({
+          connections: [
+            { name: 'a', driverId: 'mysql', visibleDatabases: ['app'], options: {} },
+            { name: 'b', driverId: 'mysql', visibleDatabases: 'app', options: {} },
+            { name: 'c', driverId: 'mysql', visibleDatabases: ['app', 3], options: {} },
+          ],
+        }),
+      ),
+      registry,
+    );
+    expect(plan.usable).toHaveLength(3);
+    expect(plan.usable[0].cfg.visibleDatabases).toEqual(['app']);
+    expect(plan.usable[1].cfg.visibleDatabases).toBeUndefined();
+    expect(plan.usable[2].cfg.visibleDatabases).toBeUndefined();
   });
 });
 

@@ -294,5 +294,15 @@
   "已导出连接配置（不含密码，导入后首连补录）→ {0}": "Connection config exported (no password; enter it on first connect) → {0}",
   "导入连接配置": "Import Connection Configs",
   "；跳过 {0} 条（{1}）": "; {0} skipped ({1})",
-  "已导入 {0} 个连接配置（密码不随文件迁移，首连时补录）{1}": "Imported {0} connection config(s) (passwords are not migrated; enter them on first connect){1}"
+  "已导入 {0} 个连接配置（密码不随文件迁移，首连时补录）{1}": "Imported {0} connection config(s) (passwords are not migrated; enter them on first connect){1}",
+  "已筛选": "filtered",
+  "已筛选 {0}/{1}": "{0}/{1} shown (filtered)",
+  "已筛选显示库：{0}": "Database filter applied: {0}",
+  "已清除筛选（显示全部库）：{0}": "Filter cleared (showing all databases): {0}",
+  "（所有数据库）": "(All databases)",
+  "清除筛选，显示全部": "Clear filter and show all",
+  "筛选显示的数据库（未连接：仅显示已存筛选，连接后可刷新候选）": "Filter visible databases (not connected: editing the saved filter only; connect to refresh candidates)",
+  "筛选显示的数据库（{0} 个库）": "Filter visible databases ({0} total)",
+  "勾选要显示的库；选「（所有数据库）」或全部清空 = 显示全部": "Check the databases to show; pick \"(All databases)\" or clear all = show everything",
+  "请在连接节点上使用「筛选显示的数据库」。": "Use \"Filter Visible Databases\" on a connection node."
 }

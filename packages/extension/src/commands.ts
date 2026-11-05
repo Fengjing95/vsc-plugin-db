@@ -11,6 +11,7 @@ import { pickSavedQuery, saveActiveQuery } from './services/savedQueryActions';
 import { newQueryDefaultName, sanitizeQueryFileName } from './services/savedQueries';
 import type { QueryFilesService } from './services/queryFiles';
 import { codegenLanguageId, generateCode, getCodegenLanguages, type CodegenLanguage } from './services/codegen';
+import { visibleDatabasesFromSelection } from './services/dbFilter';
 import { t } from './services/i18n';
 import { secretRefOf, type ConnectionStore } from './services/connectionStore';
 import type { ConfigTransferService } from './services/configTransfer';
@@ -302,6 +303,124 @@ export function registerCommands(
       // 全局刷新：清空全部元数据缓存并重载（概要设计 5.3.3）
       tree.clearCacheAndRefresh();
     }),
+
+    // ── 数据库列表筛选显示（ADR D-33）：原生 QuickPick 多选 + apply 参数直存（P-82 口子：
+    //    QuickPick 是原生控件 CDP 不可自动化，e2e/自动化经 bridge 传 apply 参数）──
+    vscode.commands.registerCommand(
+      'dbExplorer.filterDatabases',
+      async (node?: DbTreeNode | string, apply?: string[] | null) => {
+        // 目标连接：树节点 / connId / 连接名（自动化链路用名字）/ 树当前选中
+        const resolveTarget = async (): Promise<string | undefined> => {
+          if (typeof node === 'string') {
+            return store.list().find((c) => c.id === node || c.name === node)?.id;
+          }
+          const picked = node ?? (await tree.selectedNode());
+          return picked?.payload.connId;
+        };
+        const connId = await resolveTarget();
+        if (!connId) {
+          void vscode.window.showInformationMessage(t('请在连接节点上使用「筛选显示的数据库」。'));
+          return;
+        }
+        const cfg = store.get(connId);
+        if (!cfg) {
+          return;
+        }
+        // 自动化直存链路：数组 = 置筛选；null/空数组 = 清除；undefined = 走交互 QuickPick。
+        // 连接态按服务端库列表收敛（失效项忽略、空交集 = 清除，与树渲染收敛同语义）；
+        // 未连接/失败原样落存（树渲染期再收敛）。回执实际存储值供 e2e 断言
+        if (apply !== undefined) {
+          let next: string[] | undefined = apply === null || apply.length === 0 ? undefined : apply;
+          if (next) {
+            try {
+              const conn = await connections.ensureConnected(connId);
+              const dbs = await services.cache.getDatabases(connId, () => conn.listDatabases());
+              const names = new Set(dbs.map((d) => d.name));
+              const valid = next.filter((n) => names.has(n));
+              next = valid.length > 0 ? valid : undefined;
+            } catch {
+              // 未连接：原样落存
+            }
+          }
+          await store.save({ ...cfg, visibleDatabases: next });
+          tree.refresh();
+          void vscode.window.setStatusBarMessage(
+            next ? t('已筛选显示库：{0}', [cfg.name]) : t('已清除筛选（显示全部库）：{0}', [cfg.name]),
+            3000,
+          );
+          return next;
+        }
+
+        const stored = cfg.visibleDatabases;
+        // 候选列表：连接态经缓存拉全量；未连接/失败 = 仅已存筛选可编辑（D-33 岔口 1）
+        let allNames: string[] | undefined;
+        try {
+          const conn = await connections.ensureConnected(connId);
+          const dbs = await services.cache.getDatabases(connId, () => conn.listDatabases());
+          allNames = dbs.map((d) => d.name);
+        } catch {
+          allNames = undefined;
+        }
+
+        const allItem = { label: t('（所有数据库）'), description: t('清除筛选，显示全部') };
+        const qp = vscode.window.createQuickPick();
+        qp.canSelectMany = true;
+        qp.title =
+          allNames === undefined
+            ? t('筛选显示的数据库（未连接：仅显示已存筛选，连接后可刷新候选）')
+            : t('筛选显示的数据库（{0} 个库）', [String(allNames.length)]);
+        qp.placeholder = t('勾选要显示的库；选「（所有数据库）」或全部清空 = 显示全部');
+        qp.items =
+          allNames === undefined
+            ? (stored ?? []).map((name) => ({ label: name }))
+            : [allItem, ...allNames.map((name) => ({ label: name }))];
+        qp.selectedItems =
+          allNames === undefined || stored === undefined || stored.length === 0
+            ? qp.items.filter((i) => (stored ?? []).includes(i.label))
+            : qp.items.filter((i) => i.label !== allItem.label && (stored ?? []).includes(i.label));
+        // 「（所有数据库）」独占：区分「刚点了它」（清空其余）与「点了库项」（移除它）
+        let prevHasAll = qp.selectedItems.some((i) => i.label === allItem.label);
+        qp.onDidChangeSelection((sel) => {
+          const hasAll = sel.some((i) => i.label === allItem.label);
+          if (hasAll && sel.length > 1) {
+            qp.selectedItems = prevHasAll
+              ? sel.filter((i) => i.label !== allItem.label)
+              : [allItem];
+          }
+          prevHasAll = qp.selectedItems.some((i) => i.label === allItem.label);
+        });
+        // 回执三态：数组 = 置筛选；null = 选了「（所有数据库）」= 清除；undefined = Esc 取消不落盘
+        const applied = await new Promise<string[] | null | undefined>((resolve) => {
+          qp.onDidAccept(() => {
+            const sel = qp.selectedItems.map((i) => i.label);
+            resolve(sel.includes(allItem.label) ? null : sel);
+            qp.dispose();
+          });
+          qp.onDidHide(() => {
+            resolve(undefined);
+            qp.dispose();
+          });
+          qp.show();
+        });
+        if (applied === undefined) {
+          return;
+        }
+        const next =
+          allNames === undefined
+            ? applied === null || applied.length === 0
+              ? undefined
+              : applied
+            : applied === null
+              ? undefined
+              : visibleDatabasesFromSelection(applied, allNames);
+        await store.save({ ...cfg, visibleDatabases: next });
+        tree.refresh();
+        void vscode.window.setStatusBarMessage(
+          next ? t('已筛选显示库：{0}', [cfg.name]) : t('已清除筛选（显示全部库）：{0}', [cfg.name]),
+          3000,
+        );
+      },
+    ),
 
     vscode.commands.registerCommand('dbExplorer.refreshNode', (node?: DbTreeNode) => {
       if (node) {

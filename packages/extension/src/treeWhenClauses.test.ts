@@ -143,6 +143,12 @@ describe('树菜单 when × contextValue 匹配矩阵（P-40 守卫）', () => {
       match: ['connection connected', 'connection connected readonly', 'database', 'database er', 'database ddl dbddl dbddl-alter er', 'database er cmp'],
       noMatch: ['connection disconnected'],
     },
+    {
+      // D-33：筛选入口复用 connection 前缀（未连接也可编辑已存筛选）——不新增令牌，P-40 零波及
+      command: 'dbExplorer.filterDatabases',
+      match: ['connection', 'connection connected', 'connection connected dbddl', 'connection connected readonly'],
+      noMatch: ['database', 'database ddl', 'table ddl', 'queries'],
+    },
   ];
 
   for (const { command, match, noMatch } of matrix) {

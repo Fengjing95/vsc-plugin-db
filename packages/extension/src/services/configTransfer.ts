@@ -31,6 +31,8 @@ export interface ExportedConnection {
   group?: string;
   color?: string;
   readOnly?: boolean;
+  /** @since D-33：树库列表筛选（undefined = 显示全部）；仅随导出顺带迁移，键名非密码形态零消毒冲突 */
+  visibleDatabases?: string[];
   options: Record<string, unknown>;
   ssl?: Record<string, unknown>;
   ssh?: Record<string, unknown>;
@@ -78,6 +80,8 @@ export function buildExportConnection(
     group: cfg.group,
     color: cfg.color,
     readOnly: cfg.readOnly === true ? true : undefined,
+    visibleDatabases:
+      Array.isArray(cfg.visibleDatabases) && cfg.visibleDatabases.length > 0 ? [...cfg.visibleDatabases] : undefined,
     options: sanitizeForExport(cfg.options ?? {}),
     ssl: cfg.ssl && typeof cfg.ssl === 'object' ? sanitizeForExport(cfg.ssl) : undefined,
     ssh,
@@ -172,6 +176,11 @@ export function importPlan(file: ExportFile, registry: DriverRegistry): ImportPl
         group: typeof entry.group === 'string' ? entry.group : undefined,
         color: typeof entry.color === 'string' ? entry.color : undefined,
         readOnly: entry.readOnly === true ? true : undefined,
+        // D-33：筛选集合按字符串数组校验（非数组/含非字符串项 = 忽略回落显示全部）
+        visibleDatabases:
+          Array.isArray(entry.visibleDatabases) && entry.visibleDatabases.every((n) => typeof n === 'string')
+            ? entry.visibleDatabases
+            : undefined,
         options: sanitizeForExport(entry.options && typeof entry.options === 'object' ? entry.options : {}),
         ssl: entry.ssl && typeof entry.ssl === 'object' ? sanitizeForExport(entry.ssl) : undefined,
         ssh: entry.ssh && typeof entry.ssh === 'object' ? sanitizeForExport(entry.ssh) : undefined,

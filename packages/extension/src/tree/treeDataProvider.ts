@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import type { MetadataCache, ObjectMeta } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
+import { applyDbFilter } from '../services/dbFilter';
+import type { ConnectionStore } from '../services/connectionStore';
 import type { QueryFilesService } from '../services/queryFiles';
 import { t } from '../services/i18n';
 
@@ -94,9 +96,14 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     private readonly extensionUri?: vscode.Uri,
     /** 树查询目录磁盘层（M8 优化）：数据库下级「查询」目录的数据源；缺省不渲染该目录 */
     private readonly queryFiles?: QueryFilesService,
+    /** 连接配置持久层（D-33）：筛选集合失效项收敛落存；缺省只过滤不落存（单测免依赖） */
+    private readonly store?: ConnectionStore,
   ) {}
 
   private view?: vscode.TreeView<DbTreeNode>;
+
+  /** 收敛落存去重（D-33）：树刷新可能并发重拉同连接子级，同一 connId 收敛进行中不再触发 */
+  private readonly convergingDbFilters = new Set<string>();
 
   /** extension.ts 创建 treeView 后回挂（保留句柄以备 reveal 类需求） */
   attachView(view: vscode.TreeView<DbTreeNode>): void {
@@ -196,12 +203,15 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           type: 'connection',
           label: c.name,
           // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连
+          // D-33：筛选生效时追加「已筛选 n/m」计数——n/m 只从缓存只读取（peekDatabases），
+          // 未命中（未连接）不带计数，禁止为计数触发建连
           description: [
             c.driverId,
             c.env ?? 'dev',
             c.readOnly ? t('只读') : undefined,
             this.sessions?.hasActive(c.id) ? t('事务进行中') : undefined,
             this.connections.isConnected(c.id) ? t('已连接') : t('未连接'),
+            this.dbFilterLabel(c.id, c.visibleDatabases),
           ]
             .filter(Boolean)
             .join(' · '),
@@ -240,7 +250,24 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
         }
         const conn = await this.connections.ensureConnected(connId);
         const dbs = await this.cache.getDatabases(connId, () => conn.listDatabases());
-        return dbs.map((db) => ({
+        // D-33 纯展示层过滤：不动 core/driver，MetadataCache 照常；隐藏库的 Console
+        // 绑定/执行/护栏不受影响（隐藏 ≠ 禁用）。筛选集合含已删除库时渲染忽略失效项，
+        // 并把收敛结果（交集；交集为空 = 清除）异步落存，下次渲染按收敛值展示
+        const visible = this.connections.getConfig(connId)?.visibleDatabases;
+        let rows = dbs;
+        if (visible && visible.length > 0) {
+          const r = applyDbFilter(dbs, visible);
+          if (r.converged) {
+            rows = r.rows;
+            if (r.stale.length > 0) {
+              this.convergeVisibleDatabases(connId, r.converged);
+            }
+          } else {
+            // 筛选全失效 → 显示全部并清除筛选
+            this.convergeVisibleDatabases(connId, undefined);
+          }
+        }
+        return rows.map((db) => ({
           id: `${node.id}:${db.name}`,
           type: 'database',
           label: db.name,
@@ -558,6 +585,50 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   /** 表结构对比能力（ADR D-29 / §17）：supportsSQL 数据源才有 SQL 结构语义 */
   private cmpCapable(connId: string): boolean {
     return this.connections.getDriver(connId)?.capabilities.supportsSQL === true;
+  }
+
+  /** 连接节点 description 的筛选计数（D-33）：「已筛选 n/m」；库列表缓存未命中（未连接）只显示
+   *  「已筛选」——peekDatabases 只读不触发建连。visible 未设置返回 undefined（不加后缀） */
+  private dbFilterLabel(connId: string, visible: string[] | undefined): string | undefined {
+    if (!visible || visible.length === 0) {
+      return undefined;
+    }
+    const cached = this.cache.peekDatabases(connId);
+    if (!cached) {
+      return t('已筛选');
+    }
+    const { rows } = applyDbFilter(cached, visible);
+    return t('已筛选 {0}/{1}', [String(rows.length), String(cached.length)]);
+  }
+
+  /**
+   * 筛选集合失效收敛（D-33）：库被删除后把交集（或清除）落存。fire-and-forget 不阻塞渲染
+   * （当前渲染已按收敛语义展示）；值未变化时跳过，防止树刷新反复触发写盘。
+   */
+  private convergeVisibleDatabases(connId: string, target: string[] | undefined): void {
+    if (!this.store || this.convergingDbFilters.has(connId)) {
+      return;
+    }
+    const cfg = this.connections.getConfig(connId);
+    if (!cfg) {
+      return;
+    }
+    const current = cfg.visibleDatabases;
+    const unchanged =
+      target === undefined
+        ? current === undefined || current.length === 0
+        : current !== undefined &&
+          current.length === target.length &&
+          target.every((n) => current.includes(n));
+    if (unchanged) {
+      return;
+    }
+    this.convergingDbFilters.add(connId);
+    void this.store
+      .save({ ...cfg, visibleDatabases: target })
+      .then(() => this.refresh())
+      .catch(() => undefined)
+      .finally(() => this.convergingDbFilters.delete(connId));
   }
 }
 

@@ -254,6 +254,9 @@ function formHandlers(
       if (sshPassword) {
         await deps.store.setSshPassword(connId, sshPassword);
       }
+      // D-33：表单不承载树库筛选（visibleDatabases），重建 cfg 时必须从既有配置透传，
+      // 否则编辑一次连接即静默清掉筛选（P-88 同族「重建丢带外字段」）
+      const existingVisibleDatabases = deps.store.get(connId)?.visibleDatabases;
       await deps.store.save({
         id: connId,
         name: p.name.trim(),
@@ -262,6 +265,7 @@ function formHandlers(
         group: p.group ?? undefined,
         color: p.color ?? undefined,
         readOnly: p.readOnly ?? false,
+        visibleDatabases: existingVisibleDatabases,
         options,
         ssh,
         secretRef: secretRefOf(connId),
