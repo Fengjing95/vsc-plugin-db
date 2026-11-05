@@ -70,5 +70,8 @@
   "config.dbExplorer.ai.endpoint": "AI 服务地址（OpenAI 兼容 base URL，如 https://api.openai.com/v1；API 密钥在 AI 设置页配置、只存系统密钥库）",
   "config.dbExplorer.ai.model": "AI 模型名（如 deepseek-chat）",
   "config.dbExplorer.ai.temperature": "AI 采样随机度 temperature（0 = 确定性输出，2 = 最大随机度；生成 SQL 建议偏低）",
-  "config.dbExplorer.ai.maxTokens": "AI 单次响应的最大生成 Token 数（解释类回答较长时可调大）"
+  "config.dbExplorer.ai.maxTokens": "AI 单次响应的最大生成 Token 数（解释类回答较长时可调大）",
+  "command.dbExplorer.exportConnection.title": "导出连接配置",
+  "command.dbExplorer.importConnections.title": "导入连接配置",
+  "command.dbExplorer.importData.title": "导入数据"
 }

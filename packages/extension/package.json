@@ -6,7 +6,7 @@
     "theme": "dark"
   },
   "description": "在 VSCode 内浏览、查询、编辑 MySQL / PostgreSQL / Redis / SQLite / MongoDB：资源树、表格视图、SQL Console、结构管理与流式导出。",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "publisher": "db-explorer-dev",
   "license": "Apache-2.0",
   "icon": "media/extension-icon.png",
@@ -87,6 +87,22 @@
       {
         "command": "dbExplorer.copyConnection",
         "title": "%command.dbExplorer.copyConnection.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "dbExplorer.exportConnection",
+        "title": "%command.dbExplorer.exportConnection.title%",
+        "category": "%command.category%"
+      },
+      {
+        "command": "dbExplorer.importConnections",
+        "title": "%command.dbExplorer.importConnections.title%",
+        "category": "%command.category%",
+        "icon": "$(import)"
+      },
+      {
+        "command": "dbExplorer.importData",
+        "title": "%command.dbExplorer.importData.title%",
         "category": "%command.category%"
       },
       {
@@ -347,6 +363,14 @@
         {
           "command": "dbExplorer.ai.explainSql",
           "when": "editorLangId == sql"
+        },
+        {
+          "command": "dbExplorer.exportConnection",
+          "when": "false"
+        },
+        {
+          "command": "dbExplorer.importData",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -356,14 +380,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "dbExplorer.settings",
+          "command": "dbExplorer.importConnections",
           "when": "view == dbExplorer.connections",
           "group": "navigation@2"
         },
         {
-          "command": "dbExplorer.refresh",
+          "command": "dbExplorer.settings",
           "when": "view == dbExplorer.connections",
           "group": "navigation@3"
+        },
+        {
+          "command": "dbExplorer.refresh",
+          "when": "view == dbExplorer.connections",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -416,6 +445,16 @@
           "command": "dbExplorer.copyConnection",
           "when": "viewItem =~ /^connection/",
           "group": "9_cutcopypaste"
+        },
+        {
+          "command": "dbExplorer.exportConnection",
+          "when": "viewItem =~ /^connection/",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "dbExplorer.importData",
+          "when": "viewItem =~ /^table( ddl)?( er)?$/",
+          "group": "2_object@8"
         },
         {
           "command": "dbExplorer.editConnection",

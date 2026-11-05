@@ -20,3 +20,4 @@ export * from './services/schemaDiff';
 export * from './services/erLayout';
 export * from './services/aiPrompt';
 export * from './services/aiProvider';
+export * from './services/dataImport';

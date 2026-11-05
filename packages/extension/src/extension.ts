@@ -12,6 +12,8 @@ import { createSqliteDriver } from '@db-explorer/driver-sqlite';
 import { registerCommands } from './commands';
 import { ConnectionManager } from './services/connectionManager';
 import { ConnectionStore } from './services/connectionStore';
+import { ConfigTransferService } from './services/configTransfer';
+import { createSecretPrompter } from './services/secretPrompt';
 import { ConsoleHistory } from './services/consoleHistory';
 import { ConsoleService } from './services/consoleService';
 import { DdlService } from './services/ddlService';
@@ -79,7 +81,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new ConnectionStore(context.globalState, context.secrets);
   // SSH 主机指纹库（TOFU，globalState 持久化）：ConnectionManager 与连接表单共享同一实例
   const sshFingerprints = new GlobalStateFingerprintStore(context.globalState);
-  const connections = new ConnectionManager(registry, store, sshFingerprints, logger);
+  const connections = new ConnectionManager(registry, store, sshFingerprints, logger, createSecretPrompter(store));
+  // 连接配置导入/导出（§5.2 P2 关账 / D-32 批次 C）：树/视图命令与 RPC（conn.export/importConfigs）共用
+  const configTransfer = new ConfigTransferService(store, registry, (line, level) => logger.write(level ?? 'info', line));
   // 查询统一入口（§5.10 拦截）：DriverHost 装饰器——fetchRows/query/applyChanges 全量 info、
   // previewChanges debug；connId 由懒连接缓存回查。表格取数/编辑提交/导出/Console/DDL 全走此实例
   const queryHost = new LoggingDriverHost(
@@ -205,6 +209,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         changesets,
         viewStates,
         editGuard,
+        cache,
+        configTransfer,
         console: consoleService,
         history,
         queries: queryFiles,

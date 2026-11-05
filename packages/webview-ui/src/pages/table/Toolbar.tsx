@@ -15,6 +15,7 @@ import {
   IconPlus,
   IconRefresh,
   IconUndo,
+  IconUpload,
 } from '../../components/ui/icons';
 import { request } from '../../rpc/client';
 import { rowKeyOfRow, rowKeyString } from '../../lib/editOverlay';
@@ -42,6 +43,9 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
   const runExport = useTableStore((s) => s.runExport);
   const cancelExport = useTableStore((s) => s.cancelExport);
   const exportProgress = useTableStore((s) => s.exportProgress);
+  const startImport = useTableStore((s) => s.startImport);
+  const cancelImport = useTableStore((s) => s.cancelImport);
+  const importProgress = useTableStore((s) => s.importProgress);
   const visibleColumns = useTableStore((s) => s.visibleColumns);
   const setVisibleColumns = useTableStore((s) => s.setVisibleColumns);
   const allColumns = useTableStore((s) => s.allColumns);
@@ -313,6 +317,20 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             </button>
           </span>
         )}
+        {importProgress && (
+          <span className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
+            {t('table.import.progress', [importProgress.written, importProgress.total])}
+            <button
+              type="button"
+              aria-label={t('table.import.cancel')}
+              title={t('table.import.cancel')}
+              className="rounded-sm px-1 hover:bg-accent hover:text-accent-foreground"
+              onClick={() => void cancelImport()}
+            >
+              ✕
+            </button>
+          </span>
+        )}
         <div className="relative w-44 shrink-0">
           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">
             🔍
@@ -408,6 +426,19 @@ export function Toolbar({ db, obj, env }: { db: string; obj: string; env: 'dev' 
             />
           ))}
         </Popover>
+
+        {/* 数据导入（v0.12.0 / §5.13 / D-32）：与导出对称的位置；写操作随编辑权限置灰 */}
+        <Button
+          variant="secondary"
+          size="md"
+          className={iconBtn}
+          disabled={!editEnabled || importProgress !== null}
+          aria-label={t('table.toolbar.import')}
+          title={editEnabled ? t('table.toolbar.importTitle') : t('table.edit.readOnlyReason')}
+          onClick={() => void startImport()}
+        >
+          <IconUpload size={14} />
+        </Button>
 
         <Menu
           trigger={

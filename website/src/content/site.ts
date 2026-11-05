@@ -14,7 +14,7 @@ export const withBase = (path: string) => `${BASE}${path.replace(/^\//, '')}`;
 /** 语言中立数据（品牌/链接/引擎列表——引擎名本身免翻） */
 export const site = {
   name: 'DB Kit',
-  version: 'v0.11.1',
+  version: 'v0.12.0',
   extId: 'db-explorer-dev.db-kit',
   installCommand: 'ext install db-explorer-dev.db-kit',
   urls: {
@@ -233,6 +233,7 @@ const zh: SiteContent = {
     { label: '库级 DDL', cells: ['yes', '建/删 schema', '建/删 schema', '建/删 schema', 'no', 'yes', 'no'] },
     { label: 'SSL / SSH 隧道', cells: ['yes', 'yes', 'yes', '隧道', 'no', 'yes', 'yes'] },
     { label: '后台导出', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+    { label: '数据导入（追加到既有表）', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'no'] },
   ],
   matrixFootnote:
     'SQLite 限中小库（≤ 100MB）；MongoDB 结构类命令不支持；SQL Server 不支持 GO 批与触发器表的 INSERT 回填；Oracle 19c+（thin）：空串即 NULL、Console 超大整数精度受限、暂不支持 TCPS 加密。',
@@ -261,6 +262,11 @@ const zh: SiteContent = {
       icon: '📤',
       title: '百万行导出不卡界面',
       desc: 'CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX 六种格式流式导出转入后台执行：通知中心看进度、随时取消、多任务并发，导完一键定位文件。',
+    },
+    {
+      icon: '📥',
+      title: '数据导入，与导出同款护栏',
+      desc: 'CSV / JSON / NDJSON / Excel 文件一键追加到既有表：列映射按名对齐可手调、类型不符行进错行报告不写入、空字段语义可选（默认 NULL 与导出互逆，往返一致）、500 行 / 批分事务提交（失败批回滚、已写批保留）、后台执行可取消；连接配置支持导出与批量导入 JSON——密码绝不随文件迁移，导入后首连一次性补录。',
     },
     {
       icon: '🔌',
@@ -824,6 +830,7 @@ const en: SiteContent = {
     { label: 'Database-level DDL', cells: ['yes', 'Create/drop schema', 'Create/drop schema', 'Create/drop schema', 'no', 'yes', 'no'] },
     { label: 'SSL / SSH tunnel', cells: ['yes', 'yes', 'yes', 'Tunnel', 'no', 'yes', 'yes'] },
     { label: 'Background export', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+    { label: 'Data import (append to existing table)', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'no'] },
   ],
   matrixFootnote:
     'SQLite is limited to small-to-medium databases (≤ 100MB); MongoDB structural commands are not supported; SQL Server does not support GO batches or INSERT back-fill for tables with triggers; Oracle 19c+ (thin): empty string is NULL, very large integers have reduced precision in the Console, TCPS encryption not yet supported.',
@@ -852,6 +859,11 @@ const en: SiteContent = {
       icon: '📤',
       title: 'Million-row exports that never freeze the UI',
       desc: 'Streaming export in six formats — CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX — runs in the background: track progress from the notification center, cancel anytime, run tasks concurrently, reveal the file when done.',
+    },
+    {
+      icon: '📥',
+      title: 'Data import with the same guardrails as export',
+      desc: 'Append CSV / JSON / NDJSON / Excel files to an existing table in one go: column mapping auto-aligned by name and hand-tunable, type-mismatched rows go to a bad-row report instead of the database, empty-field semantics selectable (defaults to NULL — the inverse of export, round-trip safe), 500-row batches committed per transaction (failed batch rolls back, written batches stay), background execution with cancel; connection configs can also be exported and bulk-imported as JSON — passwords never travel with the file, one-time prompt on first connect.',
     },
     {
       icon: '🔌',

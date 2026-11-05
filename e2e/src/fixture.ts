@@ -49,6 +49,8 @@ export interface Fixture {
   /** 旅程② SQL 文档（J2：SELECT 正常执行 / UPDATE 无 WHERE 触发危险横幅） */
   selectSqlUri: string;
   updateSqlUri: string;
+  /** 旅程⑤ 数据导入 CSV（J5：NULL/JSON/中文行，与 dbkit_e2e 列对齐，id 7..12 不与基线冲突） */
+  importCsvPath: string;
 }
 
 const CREATE_TABLE =
@@ -62,14 +64,29 @@ const SELECT_SQL = 'SELECT id, name, city FROM dbkit_e2e ORDER BY id;\n';
 /** 无 WHERE 的 UPDATE：sqlDanger 判定危险 → Console 横幅（J2 拦截语义） */
 const UPDATE_NO_WHERE_SQL = "UPDATE dbkit_e2e SET city = 'e2e-banner-x';\n";
 
+/** J5 导入 CSV（RFC4180：JSON 列引号转义；空字段 = NULL 语义；中文 + JSON 值编码验证行）。
+ *  列与 dbkit_e2e 对齐；id 7..12 避开基线主键。payload 字符串 "null" 经 JSON.parse → NULL。 */
+const IMPORT_CSV = [
+  'id,name,city,payload,created_at',
+  '7,e2e-imp-1,北京,"{""k"":1}",2026-02-01 00:00:00.000',
+  '8,e2e-imp-2,,,2026-02-02 00:00:00.000',
+  '9,e2e-imp-3,guangzhou,null,2026-02-03 00:00:00.000',
+  '10,e2e-imp-4,,[1,2],2026-02-04 00:00:00.000',
+  '11,e2e-imp-5,chengdu,"{""tags"":[""a"",""中文""]}",2026-02-05 00:00:00.000',
+  '12,e2e-imp-6,,,2026-02-06 00:00:00.000',
+  '',
+].join('\n');
+
 export async function createFixture(runDir: string): Promise<Fixture> {
   const workspaceDir = join(runDir, 'workspace');
   mkdirSync(workspaceDir, { recursive: true });
   const dbPath = join(workspaceDir, 'e2e.db');
   const selectSqlPath = join(workspaceDir, 'j2-select.sql');
   const updateSqlPath = join(workspaceDir, 'j2-update.sql');
+  const importCsvPath = join(workspaceDir, 'j5-import.csv');
   writeFileSync(selectSqlPath, SELECT_SQL);
   writeFileSync(updateSqlPath, UPDATE_NO_WHERE_SQL);
+  writeFileSync(importCsvPath, IMPORT_CSV);
 
   const Database = await loadSqlJs();
   const db = new Database();
@@ -89,5 +106,6 @@ export async function createFixture(runDir: string): Promise<Fixture> {
     workspaceDir,
     selectSqlUri: pathToFileURL(selectSqlPath).toString(),
     updateSqlUri: pathToFileURL(updateSqlPath).toString(),
+    importCsvPath,
   };
 }

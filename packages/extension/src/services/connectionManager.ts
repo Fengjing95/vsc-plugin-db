@@ -10,6 +10,7 @@ import type { ConnectionStore } from './connectionStore';
 import { t } from './i18n';
 import { describeError, describeTarget, type Logger } from './logger';
 import { resolveSshTarget, sshConfigOf, type FingerprintStore, type SshTunnel } from './sshTunnel';
+import type { SecretPrompter } from './secretPrompt';
 
 /** 运行时连接管理：懒连接缓存（ADR D-10），持久化归 ConnectionStore */
 export class ConnectionManager implements vscode.Disposable {
@@ -27,6 +28,8 @@ export class ConnectionManager implements vscode.Disposable {
     private readonly store: ConnectionStore,
     private readonly fingerprints: FingerprintStore,
     private readonly logger: Logger,
+    /** 首连补录（§5.2 / D-32 批次 C）：导入配置取不到密码时的一次性输入框（可缺省，单测免 vscode） */
+    private readonly prompter?: SecretPrompter,
   ) {}
 
   async listConfigs(): Promise<ConnectionConfig[]> {
@@ -79,10 +82,37 @@ export class ConnectionManager implements vscode.Disposable {
       throw new DriverError('E_NOT_FOUND', t('连接 "{0}" 不存在', [connId]));
     }
     const driver = this.registry.require(cfg.driverId);
-    const secret = (await this.store.getSecret(connId)) ?? '';
+    let secret = await this.store.getSecret(connId);
+    // 首连补录（§5.2 / D-32 批次 C）：导入配置取不到密码 → 一次性输入框（不暴露错误堆栈）。
+    // 触发面 = 表单含密码字段且槽位从未写入（undefined；'' 是用户显式「无密码跳过」，不再提示）
+    if (secret === undefined && this.prompter) {
+      const needsPassword = driver
+        .getConnectionFormSchema()
+        .fields.some((f) => f.type === 'password');
+      if (needsPassword) {
+        const entered = await this.prompter.ensurePassword(cfg);
+        if (entered === undefined) {
+          throw new DriverError('E_CANCELED', t('密码未录入，已取消连接（配置已保留，可编辑连接补录密码）'));
+        }
+        secret = entered;
+      }
+    }
     const resolvedTarget = describeTarget(cfg.options);
     // SSH 隧道（概要 §6 #14）：需要时先开隧道，驱动拿到的是本地回环地址（驱动不感知 SSH）
-    const sshSecret = (await this.store.getSshPassword(connId)) ?? '';
+    let sshSecret = await this.store.getSshPassword(connId);
+    if (
+      sshSecret === undefined &&
+      this.prompter &&
+      (cfg.ssh as { enabled?: unknown } | undefined)?.enabled === true &&
+      !(cfg.ssh as { privateKeyPath?: unknown } | undefined)?.privateKeyPath
+    ) {
+      const entered = await this.prompter.ensureSshPassword(cfg);
+      if (entered === undefined) {
+        throw new DriverError('E_CANCELED', t('SSH 密码未录入，已取消连接（配置已保留）'));
+      }
+      sshSecret = entered;
+    }
+    const sshSecretValue = sshSecret ?? '';
     const timeoutMs = vscode.workspace
       .getConfiguration('dbExplorer')
       .get('connection.connectTimeoutMs', 10_000);
@@ -91,7 +121,7 @@ export class ConnectionManager implements vscode.Disposable {
     const started = Date.now();
     let resolved: Awaited<ReturnType<typeof resolveSshTarget>>;
     try {
-      resolved = await resolveSshTarget(cfg, sshSecret, this.fingerprints, timeoutMs);
+      resolved = await resolveSshTarget(cfg, sshSecretValue, this.fingerprints, timeoutMs);
     } catch (err) {
       const ssh = sshConfigOf(cfg);
       this.logger.error(
@@ -108,7 +138,7 @@ export class ConnectionManager implements vscode.Disposable {
       );
     }
     try {
-      const conn = await driver.connect(resolved.cfg, secret);
+      const conn = await driver.connect(resolved.cfg, secret ?? '');
       const elapsed = Date.now() - started;
       this.logger.info(
         'conn',
