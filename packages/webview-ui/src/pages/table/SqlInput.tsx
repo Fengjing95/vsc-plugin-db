@@ -88,7 +88,6 @@ export function SqlInput({
     const onScroll = (): void => syncScroll();
     ta.addEventListener("scroll", onScroll, { passive: true });
     return () => ta.removeEventListener("scroll", onScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refreshCaret = (): void => {

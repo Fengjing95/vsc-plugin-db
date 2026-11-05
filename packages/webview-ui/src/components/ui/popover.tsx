@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils';
 
 interface PopoverProps {
   /** 必须是单个元素（Base UI Trigger 经 render prop 挂载交互） */
-  trigger: ReactElement;
+  trigger: ReactElement<Record<string, unknown>>;
   children: ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
