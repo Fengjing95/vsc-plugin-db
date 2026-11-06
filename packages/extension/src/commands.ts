@@ -284,7 +284,8 @@ export function registerCommands(
     }),
 
     vscode.commands.registerCommand('dbExplorer.disconnectConnection', async (node?: DbTreeNode) => {
-      const connId = node?.payload.connId;
+      // 无参回退树当前选中节点（命令面板/bridge 直呼——P-82 口子，J6 断开重连段依赖）
+      const connId = (node ?? (await tree.selectedNode()))?.payload.connId;
       if (!connId) {
         return;
       }

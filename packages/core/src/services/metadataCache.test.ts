@@ -114,4 +114,19 @@ describe('MetadataCache（概要设计 7.5）', () => {
     expect(out).toHaveLength(1);
     expect(calls).toBe(2);
   });
+
+  it('peekDatabases（D-33 展示用）：从不触发加载；返回最近一次加载值（TTL 过期仍返回）；连接失效后为空', async () => {
+    const { cache, tick } = setup();
+    expect(cache.peekDatabases('c1')).toBeUndefined();
+    expect(cache.size).toBe(0); // peek 不产生条目、不触达任何 load
+
+    await cache.getDatabases('c1', async () => [{ name: 'a' }, { name: 'b' }]);
+    expect(cache.peekDatabases('c1')?.map((d) => d.name)).toEqual(['a', 'b']);
+
+    tick(61_000); // databases TTL 60s 已过：展示层容忍陈旧（重载由 getDatabases 负责）
+    expect(cache.peekDatabases('c1')?.map((d) => d.name)).toEqual(['a', 'b']);
+
+    cache.invalidateConnection('c1');
+    expect(cache.peekDatabases('c1')).toBeUndefined();
+  });
 });

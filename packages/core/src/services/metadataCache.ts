@@ -48,11 +48,11 @@ export class MetadataCache {
     return this.get(this.databases, `db:${connId}`, this.ttls.databases, load);
   }
 
-  /** 只读 peek（D-33）：命中返回缓存值，未命中返回 undefined 且**绝不触发 load**——
-   *  连接节点 description 的筛选计数展示用（禁止为计数触发建连） */
+  /** 只读 peek（D-33，仅供 UI 装饰性展示）：返回**最近一次加载**的库列表——TTL 过期仍返回
+   *  （展示层容忍陈旧，重载由 getDatabases 负责；过期即消失会让已连接节点的计数闪没），
+   *  从未加载/已失效返回 undefined。**绝不触发 load**——禁止为计数触发建连 */
   peekDatabases(connId: string): DatabaseMeta[] | undefined {
-    const hit = this.databases.get(`db:${connId}`);
-    return hit && hit.expiresAt > this.now() ? hit.value : undefined;
+    return this.databases.get(`db:${connId}`)?.value;
   }
 
   async getObjects(connId: string, db: string, load: () => Promise<ObjectMeta[]>): Promise<ObjectMeta[]> {

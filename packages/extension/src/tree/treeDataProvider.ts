@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { MetadataCache, ObjectMeta } from '@db-explorer/core';
+import type { ConnectionConfig, MetadataCache, ObjectMeta } from '@db-explorer/core';
 import type { ConnectionManager } from '../services/connectionManager';
 import { applyDbFilter } from '../services/dbFilter';
 import type { ConnectionStore } from '../services/connectionStore';
@@ -202,20 +202,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           id: `conn:${c.id}`,
           type: 'connection',
           label: c.name,
-          // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连。
-          // 驱动类型文本仅无品牌 logo 时显示（有 logo 时图标已表明类型，描述去重——2026-11-06 用户反馈）
-          // D-33：筛选生效时追加 n/m 计数（locale 无关数字，不带文字）——只从缓存只读取
-          // （peekDatabases），未命中（未连接）不显示计数，禁止为计数触发建连
-          description: [
-            DRIVER_LOGO_FILES[c.driverId] ? undefined : c.driverId,
-            c.env ?? 'dev',
-            c.readOnly ? t('只读') : undefined,
-            this.sessions?.hasActive(c.id) ? t('事务进行中') : undefined,
-            this.connections.isConnected(c.id) ? t('已连接') : t('未连接'),
-            this.dbFilterLabel(c.id, c.visibleDatabases),
-          ]
-            .filter(Boolean)
-            .join(' · '),
+          description: this.connectionDescription(c),
           collapsibleState: Collapsed,
           // 已连接节点附加 connected 令牌：package.json when 据此隐藏未连接时的
           // 新建 Console/刷新/断开按钮（M7 评审：未连接时这三个操作要么强制建连要么无意义）
@@ -268,6 +255,9 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
             this.convergeVisibleDatabases(connId, undefined);
           }
         }
+        // 库列表此刻才进缓存：建连的状态事件触发的根重绘早于 listDatabases 完成（计数缺席），
+        // 这里对连接节点补一次元素级刷新带出 n/m（描述不变则不 fire，第二遍幂等终止）
+        this.refreshConnectionDescription(connId);
         return rows.map((db) => ({
           id: `${node.id}:${db.name}`,
           type: 'database',
@@ -589,11 +579,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
   }
 
   /** 连接节点 description 的筛选计数（D-33，2026-11-06 用户反馈两轮瘦身）：「n/m」裸数字
-   *  （locale 无关，不走 t()）；库列表缓存未命中（未连接/缓存过期）**不显示计数**——
-   *  半残的「n/?」被否决，持久化总数会引入配置写盘噪声，为装饰性计数不值；peekDatabases
-   *  只读不触发建连，连接展开后树刷新自然带出计数。visible 未设置同样返回 undefined */
+   *  （locale 无关，不走 t()）；**仅已连接时显示**——未连接不显示（半残的「n/?」与持久化
+   *  总数两案均否决：后者每次 listDatabases 都要写配置盘，为装饰性计数不值）。数据源 =
+   *  peekDatabases 只读（不触发建连）；已连接但库列表尚未拉回时同样不显示，拉回后由
+   *  refreshConnectionDescription 补刷。visible 未设置返回 undefined */
   private dbFilterLabel(connId: string, visible: string[] | undefined): string | undefined {
-    if (!visible || visible.length === 0) {
+    if (!visible || visible.length === 0 || !this.connections.isConnected(connId)) {
       return undefined;
     }
     const cached = this.cache.peekDatabases(connId);
@@ -602,6 +593,40 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     }
     const { rows } = applyDbFilter(cached, visible);
     return `${rows.length}/${cached.length}`;
+  }
+
+  /** 连接节点 description（根构建与元素级刷新同源）：连接状态徽标（概要 §8.1）；驱动类型文本
+   *  仅无品牌 logo 时显示（有 logo 时图标已表明类型——2026-11-06 用户反馈去重）；D-33 筛选计数 */
+  private connectionDescription(c: ConnectionConfig): string {
+    return [
+      DRIVER_LOGO_FILES[c.driverId] ? undefined : c.driverId,
+      c.env ?? 'dev',
+      c.readOnly ? t('只读') : undefined,
+      this.sessions?.hasActive(c.id) ? t('事务进行中') : undefined,
+      this.connections.isConnected(c.id) ? t('已连接') : t('未连接'),
+      this.dbFilterLabel(c.id, c.visibleDatabases),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  /**
+   * 连接节点描述的按需补刷（D-33「连接之后再更新」）：description 依赖异步拉取的库列表，
+   * 而建连的状态事件触发的根重绘早于 listDatabases 完成——不补刷则计数缺席到下一次无关刷新。
+   * 原地更新「当前」节点对象再元素级 fire（getTreeItem 读 node.description）；描述未变不 fire，
+   * 元素刷新引发的第二遍 getChildren 走缓存命中、描述相同即终止。id 代数不变 → 展开态保留（P-33）
+   */
+  private refreshConnectionDescription(connId: string): void {
+    const node = this.connectionNodes.get(`conn:${connId}`);
+    const cfg = this.connections.getConfig(connId);
+    if (!node || !cfg) {
+      return;
+    }
+    const next = this.connectionDescription(cfg);
+    if (node.description !== next) {
+      node.description = next;
+      this.emitter.fire(node);
+    }
   }
 
   /**
