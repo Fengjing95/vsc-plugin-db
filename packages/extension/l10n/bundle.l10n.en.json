@@ -295,8 +295,6 @@
   "导入连接配置": "Import Connection Configs",
   "；跳过 {0} 条（{1}）": "; {0} skipped ({1})",
   "已导入 {0} 个连接配置（密码不随文件迁移，首连时补录）{1}": "Imported {0} connection config(s) (passwords are not migrated; enter them on first connect){1}",
-  "已筛选": "filtered",
-  "已筛选 {0}/{1}": "{0}/{1} shown (filtered)",
   "已筛选显示库：{0}": "Database filter applied: {0}",
   "已清除筛选（显示全部库）：{0}": "Filter cleared (showing all databases): {0}",
   "（所有数据库）": "(All databases)",

@@ -21,7 +21,7 @@ The presentation layer (native views + Webview) calls the Extension Host service
 
 | Capability | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
 |---|---|---|---|---|---|---|---|
-| Resource tree | databases/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | schemas/tables/views/columns/keys/indexes | single database/tables/columns | databases/collections/field catalog | key-type catalog/keys |
+| Resource tree | databases/tables/views/columns/keys/indexes (system databases hidden) | schemas/tables/views/columns/keys/indexes (system schemas hidden) | schemas/tables/views/columns/keys/indexes (system schemas hidden) | schemas/tables/views/columns/keys/indexes (system-maintained users hidden) | single database/tables/columns | databases/collections/field catalog (admin/config/local hidden) | key-type catalog/keys |
 | Database list filter (multi-schema instances, tree display layer) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Data browsing (filter/sort/search push down + pagination) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ typed display |
 | Table editing (change set + optimistic locking + transactional commit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ document edit | — (read-only) |

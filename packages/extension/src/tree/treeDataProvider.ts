@@ -202,11 +202,12 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           id: `conn:${c.id}`,
           type: 'connection',
           label: c.name,
-          // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连
-          // D-33：筛选生效时追加「已筛选 n/m」计数——n/m 只从缓存只读取（peekDatabases），
-          // 未命中（未连接）不带计数，禁止为计数触发建连
+          // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连。
+          // 驱动类型文本仅无品牌 logo 时显示（有 logo 时图标已表明类型，描述去重——2026-11-06 用户反馈）
+          // D-33：筛选生效时追加 n/m 计数（locale 无关数字，不带文字）——只从缓存只读取
+          // （peekDatabases），未命中（未连接）显示 n/?，禁止为计数触发建连
           description: [
-            c.driverId,
+            DRIVER_LOGO_FILES[c.driverId] ? undefined : c.driverId,
             c.env ?? 'dev',
             c.readOnly ? t('只读') : undefined,
             this.sessions?.hasActive(c.id) ? t('事务进行中') : undefined,
@@ -587,18 +588,19 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     return this.connections.getDriver(connId)?.capabilities.supportsSQL === true;
   }
 
-  /** 连接节点 description 的筛选计数（D-33）：「已筛选 n/m」；库列表缓存未命中（未连接）只显示
-   *  「已筛选」——peekDatabases 只读不触发建连。visible 未设置返回 undefined（不加后缀） */
+  /** 连接节点 description 的筛选计数（D-33，2026-11-06 用户反馈瘦身）：「n/m」裸数字
+   *  （locale 无关，不走 t()）；库列表缓存未命中（未连接）显示「n/?」——peekDatabases
+   *  只读不触发建连。visible 未设置返回 undefined（不加后缀） */
   private dbFilterLabel(connId: string, visible: string[] | undefined): string | undefined {
     if (!visible || visible.length === 0) {
       return undefined;
     }
     const cached = this.cache.peekDatabases(connId);
     if (!cached) {
-      return t('已筛选');
+      return `${visible.length}/?`;
     }
     const { rows } = applyDbFilter(cached, visible);
-    return t('已筛选 {0}/{1}', [String(rows.length), String(cached.length)]);
+    return `${rows.length}/${cached.length}`;
   }
 
   /**

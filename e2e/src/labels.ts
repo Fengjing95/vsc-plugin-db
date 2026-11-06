@@ -27,10 +27,8 @@ export interface UiLabels {
   resultTab1: string;
   /** 导入 Dialog 开始按钮（webview table.import.start，J5 / D-32；n = fixture CSV 行数） */
   importStart: (n: number) => string;
-  /** 连接节点 description 筛选计数（extension「已筛选 {0}/{1}」，J6 / D-33） */
+  /** 连接节点 description 筛选计数（extension「n/m」裸数字，J6 / D-33） */
   dbFiltered: (n: number, m: number) => string;
-  /** 连接节点 description 筛选标记（计数形态的公共子串，J6 负断言用） */
-  dbFilteredPlain: string;
 }
 
 export function uiLabels(locale: string): UiLabels {
@@ -49,8 +47,7 @@ export function uiLabels(locale: string): UiLabels {
       chartTab: '图表',
       resultTab1: '结果 1',
       importStart: (n) => `开始导入（追加 ${n} 行）`,
-      dbFiltered: (n, m) => `已筛选 ${n}/${m}`,
-      dbFilteredPlain: '已筛选',
+      dbFiltered: (n, m) => `${n}/${m}`,
     };
   }
   return {
@@ -67,8 +64,7 @@ export function uiLabels(locale: string): UiLabels {
     chartTab: 'Chart',
     resultTab1: 'Result 1',
     importStart: (n) => `Import (${n} rows to append)`,
-    dbFiltered: (n, m) => `${n}/${m} shown (filtered)`,
-    dbFilteredPlain: 'filtered',
+    dbFiltered: (n, m) => `${n}/${m}`,
   };
 }
 
