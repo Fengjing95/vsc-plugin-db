@@ -6,7 +6,7 @@
 
 ### 特性
 
-- **数据库列表筛选显示（ADR D-33）**：多库实例（如 Oracle 几十个 schema）找库难——连接节点新增「筛选显示的数据库」：`$(filter)` 行内按钮 + 右键菜单双入口，原生 QuickPick 多选勾选要显示的库（顶部「（所有数据库）」独占项 = 清除筛选；未连接时编辑已存筛选）；筛选生效时连接节点 description 追加 `n/m` 计数（裸数字、locale 无关；库列表缓存只读，不为计数建连；未连接显示 `n/?`）；连接节点有品牌图标时描述不再重复驱动类型文本；生效层 = **纯树展示层过滤**（`ConnectionConfig.visibleDatabases`，core/driver 零改动）——被隐藏库的 Console 绑定/执行/护栏完全不受影响；筛选集合里库被删除后自动收敛（失效项忽略、空交集 = 自动清除回全部）；系统库（mysql information_schema 族 / PG·MSSQL 系统 schema / Oracle maintained 用户 / mongo admin·config·local）维持驱动层 D-15 口径默认不上树，树与筛选候选仅含用户库；连接配置导入/导出顺带迁移该字段，连接表单编辑不清掉筛选；e2e 新增 J6（bridge 直呼命令 apply 参数直存，QuickPick 原生控件不可自动化的 P-82 口子）
+- **数据库列表筛选显示（ADR D-33）**：多库实例（如 Oracle 几十个 schema）找库难——连接节点新增「筛选显示的数据库」：`$(filter)` 行内按钮 + 右键菜单双入口，原生 QuickPick 多选勾选要显示的库（顶部「（所有数据库）」独占项 = 清除筛选；未连接时编辑已存筛选）；筛选生效时连接节点 description 追加 `n/m` 计数（裸数字、locale 无关；库列表缓存只读，不为计数建连；未连接不显示计数，连接展开后自动带出）；连接节点有品牌图标时描述不再重复驱动类型文本；生效层 = **纯树展示层过滤**（`ConnectionConfig.visibleDatabases`，core/driver 零改动）——被隐藏库的 Console 绑定/执行/护栏完全不受影响；筛选集合里库被删除后自动收敛（失效项忽略、空交集 = 自动清除回全部）；系统库（mysql information_schema 族 / PG·MSSQL 系统 schema / Oracle maintained 用户 / mongo admin·config·local）维持驱动层 D-15 口径默认不上树，树与筛选候选仅含用户库；连接配置导入/导出顺带迁移该字段，连接表单编辑不清掉筛选；e2e 新增 J6（bridge 直呼命令 apply 参数直存，QuickPick 原生控件不可自动化的 P-82 口子）
 
 ### 工程设施
 

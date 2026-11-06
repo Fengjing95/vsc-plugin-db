@@ -205,7 +205,7 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
           // 连接状态徽标（概要 §8.1：未连接 / 已连接）；懒连接语义下展开即建连。
           // 驱动类型文本仅无品牌 logo 时显示（有 logo 时图标已表明类型，描述去重——2026-11-06 用户反馈）
           // D-33：筛选生效时追加 n/m 计数（locale 无关数字，不带文字）——只从缓存只读取
-          // （peekDatabases），未命中（未连接）显示 n/?，禁止为计数触发建连
+          // （peekDatabases），未命中（未连接）不显示计数，禁止为计数触发建连
           description: [
             DRIVER_LOGO_FILES[c.driverId] ? undefined : c.driverId,
             c.env ?? 'dev',
@@ -588,16 +588,17 @@ export class ConnectionsTreeProvider implements vscode.TreeDataProvider<DbTreeNo
     return this.connections.getDriver(connId)?.capabilities.supportsSQL === true;
   }
 
-  /** 连接节点 description 的筛选计数（D-33，2026-11-06 用户反馈瘦身）：「n/m」裸数字
-   *  （locale 无关，不走 t()）；库列表缓存未命中（未连接）显示「n/?」——peekDatabases
-   *  只读不触发建连。visible 未设置返回 undefined（不加后缀） */
+  /** 连接节点 description 的筛选计数（D-33，2026-11-06 用户反馈两轮瘦身）：「n/m」裸数字
+   *  （locale 无关，不走 t()）；库列表缓存未命中（未连接/缓存过期）**不显示计数**——
+   *  半残的「n/?」被否决，持久化总数会引入配置写盘噪声，为装饰性计数不值；peekDatabases
+   *  只读不触发建连，连接展开后树刷新自然带出计数。visible 未设置同样返回 undefined */
   private dbFilterLabel(connId: string, visible: string[] | undefined): string | undefined {
     if (!visible || visible.length === 0) {
       return undefined;
     }
     const cached = this.cache.peekDatabases(connId);
     if (!cached) {
-      return `${visible.length}/?`;
+      return undefined;
     }
     const { rows } = applyDbFilter(cached, visible);
     return `${rows.length}/${cached.length}`;

@@ -34,7 +34,7 @@ export const journey6: JourneyFn = async (ctx) => {
   const { page, bridge, labels } = ctx;
   await dismissOverlays(page, 1000);
 
-  // 1. 展开连接（预热库列表缓存——description 计数走 peekDatabases，缓存未命中会降级为 n/?），
+  // 1. 展开连接（预热库列表缓存——description 计数走 peekDatabases，缓存未命中不显示计数），
   //    快照筛选前描述（清除后断言恢复一致）
   await expandRow(await waitTreeRow(page, 'e2e-sqlite'));
   await waitTreeRow(page, 'main');
