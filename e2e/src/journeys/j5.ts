@@ -28,8 +28,10 @@ export const journey5: JourneyFn = async (ctx) => {
     throw new Error(`importData 执行失败: ${executed.error}`);
   }
 
-  // 3. 映射 Dialog：重开后的表格 webview 内出现（标题含文件名 + 映射建议 + 开始按钮）
-  const freshTable = await findWebviewFrame(page, (b) => b.page === 'table' && b.params.obj === 'dbkit_e2e');
+  // 3. 映射 Dialog：重开后的表格 webview 内出现（标题含文件名 + 映射建议 + 开始按钮）。
+  //    必须排除旧帧 table：重开时旧面板销毁是异步的，命令返回那一刻旧 iframe 可能尚未摘除且
+  //    bootstrap 同样命中——选中旧帧即随后 Frame was detached（v0.13.0 发布 PR CI en 轮偶发，P-93）
+  const freshTable = await findWebviewFrame(page, (b) => b.page === 'table' && b.params.obj === 'dbkit_e2e', 30_000, table);
   const dialog = freshTable.locator('[role="dialog"]');
   await dialog.getByText('j5-import.csv').first().waitFor({ state: 'visible', timeout: 30_000 });
   // 映射建议可见（文件列表头 id 出现在映射区）

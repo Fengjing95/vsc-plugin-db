@@ -44,16 +44,20 @@ export async function connectWorkbench(cdpPort: number, timeoutMs = 90_000): Pro
   throw new Error('workbench 未出现（.monaco-workbench 超时）');
 }
 
-/** 按 __BOOTSTRAP__ 定位 webview iframe 帧（OOPIF；VSCode 桌面 webview = vscode-webview:// iframe） */
+/** 按 __BOOTSTRAP__ 定位 webview iframe 帧（OOPIF；VSCode 桌面 webview = vscode-webview:// iframe）。
+ *  exclude：「关闭后重开」场景排除旧帧——旧面板销毁是异步的，命令返回那一刻旧 iframe 可能尚未摘除
+ *  且 bootstrap 同样命中，选中即随后 `Frame was detached`（P-93，J5 CI 偶发）；已摘除帧一律跳过 */
 export async function findWebviewFrame(
   page: Page,
   want: (boot: WebviewBoot) => boolean,
   timeoutMs = 30_000,
+  exclude?: Frame,
 ): Promise<Frame> {
   const deadline = Date.now() + timeoutMs;
   const lastSeen: string[] = [];
   while (Date.now() < deadline) {
     for (const frame of page.frames()) {
+      if (frame === exclude || frame.isDetached()) continue;
       if (!frame.url().startsWith('vscode-webview://')) continue;
       try {
         const boot = (await frame.evaluate(() => (window as { __BOOTSTRAP__?: WebviewBoot }).__BOOTSTRAP__ ?? null)) as
