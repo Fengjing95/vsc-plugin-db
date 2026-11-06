@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type {
   ConnDbOptionsResult,
   ConnMetaResult,
@@ -628,7 +628,8 @@ function FieldRow({
     </label>
   );
 
-  let input: JSX.Element;
+  // React 19 类型：全局 JSX 命名空间移除（React.JSX.Element 同义）
+  let input: ReactElement;
   if (field.type === 'password') {
     input = (
       <div className="relative">

@@ -10,7 +10,7 @@ interface MenuItemDef {
 }
 
 interface MenuProps {
-  trigger: ReactElement;
+  trigger: ReactElement<Record<string, unknown>>;
   items: ReadonlyArray<MenuItemDef>;
   contentClassName?: string;
   align?: 'start' | 'center' | 'end';

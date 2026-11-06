@@ -2,6 +2,12 @@
 
 本项目的所有重要变更记录在此文件中。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本遵循语义化版本（0.x 为预稳定阶段）。
 
+## [Unreleased]
+
+### 工程设施
+
+- **React 18.3.1 → 19.3.1 底座升级**（webview 与官网同步）：入口已是 `createRoot` 零迁移负担；zustand 5 / TanStack Table 8.21 / react-virtual 3.14 / Base UI 1.0.0-rc.0 的 peer 依赖均已声明 React 19（pnpm install 零 peer 警告），升级面收敛在类型层——Base UI `render` prop 的 trigger 包装属性改标 `ReactElement<Record<string, unknown>>`（@types/react 19 起裸 `ReactElement` 即 `ReactElement<unknown>` 不再满足其元素参数型）+ 全局 `JSX` 命名空间移除（改 `ReactElement`）；既有 `forwardRef` 写法按兼容口径保留不强制清理。回归网从严：四道门禁 + e2e 双语言全旅程（J1–J5）+ 官网 zh/en 双构建 + webview 可视化回归（表格页/列设置弹层锚点/连接表单 stub 截图对照）全绿
+
 ## [0.12.0] - 2026-11-04
 
 数据导入（追加到既有表，ADR D-32 批次 B）+ 连接配置导入/导出（§5.2 P2 关账，批次 C 随车）。

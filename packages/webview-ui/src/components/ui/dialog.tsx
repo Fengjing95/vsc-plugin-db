@@ -1,10 +1,9 @@
 import { Dialog as BaseDialog } from '@base-ui-components/react/dialog';
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from '../../lib/utils';
-
 interface DialogProps {
   /** 必须是单个元素（Base UI Trigger 经 render prop 挂载交互；P-1） */
-  trigger?: ReactElement;
+  trigger?: ReactElement<Record<string, unknown>>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   title: ReactNode;

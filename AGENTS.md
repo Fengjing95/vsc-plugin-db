@@ -55,6 +55,9 @@
 - **P-4 下拉选中项看不清** → `text-primary`（按钮蓝）配面板底色对比不足。→ 选中项用 `--vscode-list-activeSelection*` 前景/背景对 + `font-medium`；悬停高亮用 `not-data-[selected]:` 与选中态隔离，避免两状态叠色。
 - **P-21 Dialog 弹层内 useVirtualizer 列表空白**（M4 预览弹窗踩，真实环境必现）→ Base UI Dialog 的 portal 内容比持有 useVirtualizer 的组件**晚一个 commit 挂载**；useVirtualizer 的无依赖 layout effect（virtual-core `_willUpdate`）在滚动容器 ref 尚未挂载时执行，且组件自身此后未再渲染 → `scrollElement` 恒为 null、永不订阅 RO，`getVirtualItems()` 恒空（容器高度正常、内容全空）。→ **虚拟列表必须与其滚动容器抽成同一子组件**（同 commit 挂载，ref 就绪先于子组件 layout effect）；凡在 Dialog/Popover 等弹层内用 useVirtualizer 一律照此模式。排查：从滚动容器沿 fiber 链找 Virtualizer 实例看 `scrollElement` 是否 null。
 
+### React 19 底座（chore/react19 批次）
+- **P-90 React 19 / @types/react 19 的升级面收敛在类型层（本批全量核实）**→ zustand 5 / @tanstack/react-table 8.21 / @tanstack/react-virtual 3.14 / @base-ui-components/react 1.0.0-rc.0 的 peer 依赖均已声明 `^19`（pnpm install 零 peer 警告），入口早已 `createRoot`，仓库无裸 `useRef<T>()`（19 类型强制实参的红线没碰到）——实际只有两类编译错：① **裸 `ReactElement` 在 @types/react 19 下即 `ReactElement<unknown>`**，不再满足 Base UI `Trigger render` 的元素参数型 `ReactElement<Record<string, unknown>>`（dialog/menu/popover 三个包装组件报 TS2322）——**修法是把包装组件的 `trigger` prop 直接标成 `ReactElement<Record<string, unknown>>` 而不是在 render 处 cast**：调用点 JSX 元素（如 `<Button>`）的 props 类型天然可赋值，零调用点波及；② **全局 `JSX` 命名空间移除**（`let input: JSX.Element` 报 TS2503）——用 `ReactElement`（或 `React.JSX.Element`）。另两处静默变化：eslint-plugin-react-hooks 7.x 会把「已不再报错的 `eslint-disable-next-line react-hooks/exhaustive-deps`」标成 unused directive warning（lint 退出码仍 0，`pnpm lint` 输出要扫一眼）；React 19 运行时行为差（事件合成/自动批处理）在 e2e 双语言全旅程 + stub 截图回归下未观测到任何差异。
+
 ### 布局
 - **P-5 数据量少也出现整页滚动条** → 表格页根节点 `h-screen`（100vh）+ 任何 body padding 都会溢出视口。→ `body` 必须保持 `padding: 0`（legacy.css 有注释）；留白只加在页面内容容器上（如连接表单 `.form-wrap`）。表格页根节点带 `overflow-hidden` 兜底，滚动只发生在网格内部。
 
