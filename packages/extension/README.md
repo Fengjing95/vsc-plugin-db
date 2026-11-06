@@ -68,7 +68,7 @@ Generate SQL from natural language (CodeLens / `Alt+\` inserts straight into the
 
 <img alt="DB Kit 表格视图总览" src="https://raw.githubusercontent.com/Fengjing95/vsc-plugin-db/main/docs/images/overview-table.png" width="100%">
 
-左侧资源树一键展开库 / 表 / 列 / 键 / 索引；右侧表格视图的筛选、排序、搜索全部**参数化下推到数据库执行**——不拉全表，千万行级也只取你看到的那一页。
+左侧资源树一键展开库 / 表 / 列 / 键 / 索引（系统库如 `information_schema` 默认不上树）；多库实例（如 Oracle 几十个 schema）可**筛选显示的数据库**——连接节点 `$(filter)` 行内按钮 / 右键勾选，节点上显示 `n/m` 计数；右侧表格视图的筛选、排序、搜索全部**参数化下推到数据库执行**——不拉全表，千万行级也只取你看到的那一页。
 
 ## ✨ 亮点
 
@@ -111,6 +111,7 @@ CSV / JSON / NDJSON / Markdown / SQL INSERT / XLSX 六种格式流式导出转�
 | 能力 | MySQL | PostgreSQL | SQL Server | Oracle | SQLite | MongoDB | Redis |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | 资源树浏览 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 数据库列表筛选（多库实例找库，树展示层） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 表格编辑 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ 文档编辑 | 只读 |
 | SQL Console / 命令控制台 | ✓ | ✓ | ✓ | ✓ | ✓ | mongosh | ✓ |
 | 结构编辑（表 / 列） | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |

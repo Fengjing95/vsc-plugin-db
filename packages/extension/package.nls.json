@@ -73,5 +73,6 @@
   "config.dbExplorer.ai.maxTokens": "AI 单次响应的最大生成 Token 数（解释类回答较长时可调大）",
   "command.dbExplorer.exportConnection.title": "导出连接配置",
   "command.dbExplorer.importConnections.title": "导入连接配置",
-  "command.dbExplorer.importData.title": "导入数据"
+  "command.dbExplorer.importData.title": "导入数据",
+  "command.dbExplorer.filterDatabases.title": "筛选显示的数据库"
 }

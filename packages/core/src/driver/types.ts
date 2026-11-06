@@ -89,6 +89,9 @@ export interface ConnectionConfig {
   color?: string;
   readOnly?: boolean;
   env?: 'dev' | 'test' | 'prod';
+  /** @since v0.13.0（D-33）：树库列表显示层过滤——undefined = 显示全部（默认）。
+   *  纯展示层口径：不影响 Console 绑定/执行/护栏；列表中被删除的库在树渲染时忽略并收敛 */
+  visibleDatabases?: string[];
   /** 驱动专属连接参数；密码不入此结构（存 SecretStorage，经 secret 参数传递） */
   options: Record<string, unknown>;
   ssl?: Record<string, unknown>;

@@ -73,5 +73,6 @@
   "config.dbExplorer.ai.maxTokens": "Maximum output tokens per AI response (raise it for long explanations)",
   "command.dbExplorer.exportConnection.title": "Export Connection Config",
   "command.dbExplorer.importConnections.title": "Import Connection Configs",
-  "command.dbExplorer.importData.title": "Import Data"
+  "command.dbExplorer.importData.title": "Import Data",
+  "command.dbExplorer.filterDatabases.title": "Filter Visible Databases"
 }

@@ -227,6 +227,7 @@ const zh: SiteContent = {
   },
   matrixRows: [
     { label: '资源树浏览', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+    { label: '数据库列表筛选（多库实例找库）', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
     { label: '表格编辑', cells: ['yes', 'yes', 'yes', 'yes', 'yes', '文档编辑', '只读'] },
     { label: 'SQL Console / 命令控制台', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'mongosh', 'yes'] },
     { label: '结构编辑（表 / 列）', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'no', 'no'] },
@@ -288,7 +289,7 @@ const zh: SiteContent = {
   heroShot: {
     file: 'overview-table.png',
     title: '资源树 + 表格工作台',
-    desc: '左侧资源树一键展开库 / 表 / 列 / 键 / 索引；右侧筛选、排序、搜索全部参数化下推到数据库执行——不拉全表，千万行级也只取你看到的那一页。',
+    desc: '左侧资源树一键展开库 / 表 / 列 / 键 / 索引，多库实例可筛选显示的数据库（节点上带 n/m 计数）；右侧筛选、排序、搜索全部参数化下推到数据库执行——不拉全表，千万行级也只取你看到的那一页。',
   },
   quickStart: {
     install: [
@@ -824,6 +825,7 @@ const en: SiteContent = {
   },
   matrixRows: [
     { label: 'Resource tree', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
+    { label: 'Database list filter (multi-schema instances)', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes'] },
     { label: 'Table editing', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'Document edit', 'Read-only'] },
     { label: 'SQL Console / command console', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'mongosh', 'yes'] },
     { label: 'Schema editing (tables / columns)', cells: ['yes', 'yes', 'yes', 'yes', 'yes', 'no', 'no'] },
@@ -885,7 +887,7 @@ const en: SiteContent = {
   heroShot: {
     file: 'overview-table.png',
     title: 'Resource tree + table workbench',
-    desc: 'Expand databases / tables / columns / keys / indexes from the tree on the left; filtering, sorting and search on the right are all pushed down to the database with parameterized SQL — no full-table scans; at tens of millions of rows you still fetch only the page you see.',
+    desc: 'Expand databases / tables / columns / keys / indexes from the tree on the left; filter the visible databases on multi-schema instances (with an n/m counter on the node); filtering, sorting and search on the right are all pushed down to the database with parameterized SQL — no full-table scans; at tens of millions of rows you still fetch only the page you see.',
   },
   quickStart: {
     install: [
